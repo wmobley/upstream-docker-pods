@@ -43,11 +43,11 @@ async def list_campaigns(
     ] = None,
     start_date: Annotated[
         Optional[datetime],
-        Query(description="Start date of the campaign", example="2024-01-01"),
+        Query(description="Start date of the campaign", examples=["2024-01-01"]),
     ] = None,
     end_date: Annotated[
         Optional[datetime],
-        Query(description="End date of the campaign", example="2025-01-01"),
+        Query(description="End date of the campaign", examples=["2025-01-01"]),
     ] = None,
     sensor_variables: Annotated[
         Optional[List[str]], Query(description="List of sensor variables to filter by")
