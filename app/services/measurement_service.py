@@ -55,7 +55,7 @@ class MeasurementService:
 
     def get_measurements_with_confidence_intervals(self, sensor_id: int, interval: str, interval_value: int, start_date: Optional[datetime], end_date: Optional[datetime], min_value: Optional[float], max_value: Optional[float]) -> List[AggregatedMeasurement]:
         return self.measurement_repository.get_measurements_with_confidence_intervals(sensor_id=sensor_id, interval=interval, interval_value=interval_value, start_date=start_date, end_date=end_date, min_value=min_value, max_value=max_value)
-    def update_measurement(self, measurement_id: int, measurement: MeasurementUpdate) -> MeasurementCreateResponse | None:
+    def update_measurement(self, measurement_id: int, measurement: MeasurementUpdate) -> Optional[MeasurementCreateResponse]:
         response = self.measurement_repository.update_measurement(measurement_id, measurement)
         if not response:
             return None

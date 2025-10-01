@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Iterator
+from typing import Iterator, Optional
 
 from app.db.repositories.sensor_repository import SensorRepository
 from app.db.repositories.measurement_repository import MeasurementRepository
@@ -49,8 +49,8 @@ class ExportService:
     def export_measurements_csv(
         self,
         station_id: int,
-        start_date: datetime | None = None,
-        end_date: datetime | None = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
     ) -> Iterator[str]:
         """Export measurements for a station as CSV with streaming support.
 

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Optional
 
 from app.services.campaign_service import CampaignService
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -162,9 +162,9 @@ async def export_measurements_csv(
     campaign_id: int,
     station_id: int,
     start_date: Annotated[
-        datetime | None, Query(description="Start date filter")
+        Optional[datetime], Query(description="Start date filter")
     ] = None,
-    end_date: Annotated[datetime | None, Query(description="End date filter")] = None,
+    end_date: Annotated[Optional[datetime], Query(description="End date filter")] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:

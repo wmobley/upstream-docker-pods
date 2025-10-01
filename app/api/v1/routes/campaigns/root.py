@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
@@ -38,19 +38,19 @@ async def list_campaigns(
     page: int = 1,
     limit: int = 20,
     bbox: Annotated[
-        str | None,
+        Optional[str],
         Query(description="Bounding box of the campaign west,south,east,north"),
     ] = None,
     start_date: Annotated[
-        datetime | None,
+        Optional[datetime],
         Query(description="Start date of the campaign", example="2024-01-01"),
     ] = None,
     end_date: Annotated[
-        datetime | None,
+        Optional[datetime],
         Query(description="End date of the campaign", example="2025-01-01"),
     ] = None,
     sensor_variables: Annotated[
-        list[str] | None, Query(description="List of sensor variables to filter by")
+        Optional[List[str]], Query(description="List of sensor variables to filter by")
     ] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

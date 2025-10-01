@@ -11,7 +11,7 @@ class StationService:
 
     def create_station(self, station: StationCreate, campaign_id: int) -> StationCreateResponse:
         return StationCreateResponse(id=self.station_repository.create_station(station, campaign_id).stationid)
-    def update_station(self, station_id: int, station: StationUpdate) -> StationCreateResponse | None:
+    def update_station(self, station_id: int, station: StationUpdate) -> Optional[StationCreateResponse]:
         response = self.station_repository.update_station(station_id, station)
         if not response:
             return None
@@ -29,8 +29,8 @@ class StationService:
         rows, total_count = self.station_repository.list_stations_and_summary(campaign_id, page, limit)
         stations : List[StationItemWithSummary] = []
         for row in rows:
-            sensor_types : list[str | None] = row[2]
-            sensor_variables : list[str | None] = row[3]
+            sensor_types : List[Optional[str]] = row[2]
+            sensor_variables : List[Optional[str]] = row[3]
             geometry = json.loads(row[4]) if row[4] else {}
             station = StationItemWithSummary(
                 id=row[0].stationid,

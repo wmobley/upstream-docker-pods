@@ -145,7 +145,7 @@ class CampaignRepository:
         self.db.commit()
         return True
 
-    def update_campaign(self, campaign_id: int, request: Union[CampaignsIn, CampaignUpdate], partial: bool = False) -> Campaign | None:
+    def update_campaign(self, campaign_id: int, request: Union[CampaignsIn, CampaignUpdate], partial: bool = False) -> Optional[Campaign]:
         db_campaign = self.db.query(Campaign).filter(Campaign.campaignid == campaign_id).first()
         if not db_campaign:
             return None

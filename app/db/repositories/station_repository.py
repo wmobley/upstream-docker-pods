@@ -107,7 +107,7 @@ class StationRepository:
         self.db.commit()
         return True
 
-    def update_station(self, station_id: int, request:  StationUpdate, partial: bool = False) -> Station | None:
+    def update_station(self, station_id: int, request:  StationUpdate, partial: bool = False) -> Optional[Station]:
         db_station = self.db.query(Station).filter(Station.stationid == station_id).first()
 
         if not db_station:

@@ -64,7 +64,7 @@ class SensorRepository:
         self.db.commit()
         return sensors
 
-    def get_sensor(self, sensor_id: int) -> GetSensorResponse | None:
+    def get_sensor(self, sensor_id: int) -> Optional[GetSensorResponse]:
         stmt = (
             select(Sensor, SensorStatistics)
             .outerjoin(SensorStatistics, Sensor.sensorid == SensorStatistics.sensorid)
@@ -171,7 +171,7 @@ class SensorRepository:
         postprocess: Optional[bool] = None,
         sort_by: Optional[SortField] = None,
         sort_order: str = "asc",
-    ) -> Tuple[list[Row[Tuple[Sensor, SensorStatistics]]], int]:
+    ) -> Tuple[List[Row[Tuple[Sensor, SensorStatistics]]], int]:
         count_stmt = (
             select(func.count())
             .select_from(Sensor)
@@ -225,7 +225,7 @@ class SensorRepository:
         limit: int = 20,
         sort_by: Optional[SortField] = None,
         sort_order: str = "asc",
-    ) -> tuple[list[Row[Tuple[Sensor, SensorStatistics]]], int]:
+    ) -> Tuple[List[Row[Tuple[Sensor, SensorStatistics]]], int]:
         stmt = select(Sensor, SensorStatistics).outerjoin(
             SensorStatistics, Sensor.sensorid == SensorStatistics.sensorid
         )
@@ -270,7 +270,7 @@ class SensorRepository:
 
     def get_sensor_by_alias_and_station_id(
         self, alias: str, station_id: int
-    ) -> Sensor | None:
+    ) -> Optional[Sensor]:
         return (
             self.db.query(Sensor)
             .filter(Sensor.alias == alias, Sensor.stationid == station_id)
@@ -279,7 +279,7 @@ class SensorRepository:
 
     def update_sensor(
         self, sensor_id: int, request: SensorUpdate, partial: bool = False
-    ) -> Sensor | None:
+    ) -> Optional[Sensor]:
         db_station = self.db.query(Sensor).filter(Sensor.sensorid == sensor_id).first()
 
         if not db_station:

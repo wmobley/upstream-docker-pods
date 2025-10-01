@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional, List
+from typing import Any, Optional, List, Union
 from pydantic import BaseModel, Field
 
 from app.api.v1.schemas.sensor import SensorItem
@@ -24,11 +24,11 @@ class StationCreate(BaseModel):
 class StationItem(BaseModel):
     id: int
     name: str
-    description: str | None = None
-    contact_name: str | None = None
-    contact_email: str | None = None
-    active: bool | None = None
-    start_date: datetime | None = None
+    description: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    active: Optional[bool] = None
+    start_date: Optional[datetime] = None
     geometry: dict = Field(default_factory=dict, nullable=True)  # type: ignore[call-overload,type-arg]
 
 class StationItemWithSummary(StationItem):

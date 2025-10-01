@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 import typing
 
 from sqlalchemy.orm import Session
@@ -48,8 +48,8 @@ class MeasurementRepository:
         variable_name: Optional[str] = None,
         page: int = 1,
         limit: int = 20,
-    ) -> tuple[
-        list[tuple[Measurement, str]], int, float | None, float | None, float | None
+    ) -> Tuple[
+        List[Tuple[Measurement, str]], int, Optional[float], Optional[float], Optional[float]
     ]:
         query = self.db.query(
             Measurement, func.ST_AsGeoJSON(Measurement.geometry).label("geometry")
@@ -150,10 +150,10 @@ class MeasurementRepository:
         sensor_id: int,
         interval: str = "hour",
         interval_value: int = 1,
-        start_date: datetime | None = None,
-        end_date: datetime | None = None,
-        min_value: float | None = None,
-        max_value: float | None = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        min_value: Optional[float] = None,
+        max_value: Optional[float] = None,
     ) -> List[AggregatedMeasurement]:
 
         stmt = text(
@@ -181,7 +181,7 @@ class MeasurementRepository:
 
         return measurements
 
-    def get_latest_measurement_by_sensor_id(self, sensor_id: int) -> Measurement | None:
+    def get_latest_measurement_by_sensor_id(self, sensor_id: int) -> Optional[Measurement]:
         return (
             self.db.query(Measurement)
             .filter(Measurement.sensorid == sensor_id)
@@ -191,7 +191,7 @@ class MeasurementRepository:
 
     def update_measurement(
         self, measurement_id: int, request: MeasurementUpdate, partial: bool = False
-    ) -> Measurement | None:
+    ) -> Optional[Measurement]:
 
         db_measurement = (
             self.db.query(Measurement)
@@ -252,8 +252,8 @@ class MeasurementRepository:
         self,
         campaign_id: int,
         chunk_size: int = 1000,
-        start_date: datetime | None = None,
-        end_date: datetime | None = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
     ) -> "typing.Iterator[List[typing.Tuple[Measurement, str]]]":
         """Generator that yields measurements for a campaign in chunks."""
         from app.db.models.sensor import Sensor
@@ -327,8 +327,8 @@ class MeasurementRepository:
         self,
         station_id: int,
         chunk_size: int = 1000,
-        start_date: datetime | None = None,
-        end_date: datetime | None = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
     ) -> "typing.Iterator[List[typing.Tuple[Measurement, str]]]":
         """Generator that yields measurements for a station in chunks."""
         from app.db.models.sensor import Sensor
@@ -368,8 +368,8 @@ class MeasurementRepository:
         self,
         station_id: int,
         chunk_size: int = 1000,
-        start_date: datetime | None = None,
-        end_date: datetime | None = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
     ) -> "typing.Iterator[List[typing.Tuple[datetime, float, float, str, float]]]":
         """Generator that yields measurements with coordinates for a station in chunks.
 
@@ -419,8 +419,8 @@ class MeasurementRepository:
         self,
         station_id: int,
         chunk_size: int = 1000,
-        start_date: datetime | None = None,
-        end_date: datetime | None = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
     ) -> "typing.Iterator[List[typing.Dict[str, typing.Any]]]":
         """Generator that yields pre-grouped measurements for a station in chunks.
 
