@@ -6,10 +6,10 @@ from pydantic import BaseModel
 class PyTASUser(BaseModel):
     id: int
     username: str
-    role: str | None = None
-    firstName: str | None = None
-    lastName: str | None = None
-    email: str | None = None
+    role: Optional[str] = None
+    firstName: Optional[str] = None
+    lastName: Optional[str] = None
+    email: Optional[str] = None
 
 
 class PyTASPi(BaseModel):

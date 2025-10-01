@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple, Union
 
 from app.api.v1.schemas.sensor import (
     SensorCreateResponse,
@@ -31,21 +31,21 @@ class SensorService:
             variablename=response.variablename,
             statistics=None
         )
-    def update_sensor(self, sensor_id: int, sensor: SensorUpdate) -> SensorCreateResponse | None:
+    def update_sensor(self, sensor_id: int, sensor: SensorUpdate) -> Optional[SensorCreateResponse]:
         response = self.sensor_repository.update_sensor(sensor_id, sensor)
         if not response:
             return None
         return SensorCreateResponse(
             id=response.sensorid,
         )
-    def partial_update_sensor(self, sensor_id: int, sensor: SensorUpdate) -> SensorCreateResponse | None:
+    def partial_update_sensor(self, sensor_id: int, sensor: SensorUpdate) -> Optional[SensorCreateResponse]:
         response = self.sensor_repository.update_sensor(sensor_id, sensor, partial=True)
         if not response:
             return None
         return SensorCreateResponse(
             id=response.sensorid,
         )
-    def get_sensor(self, sensor_id: int) -> GetSensorResponse | None:
+    def get_sensor(self, sensor_id: int) -> Optional[GetSensorResponse]:
         return self.sensor_repository.get_sensor(sensor_id)
 
     def get_sensors(
@@ -103,11 +103,11 @@ class SensorService:
         station_id: int,
         page: int = 1,
         limit: int = 20,
-        variable_name: str | None = None,
-        units: str | None = None,
-        alias: str | None = None,
-        description_contains: str | None = None,
-        postprocess: bool | None = None,
+        variable_name: Optional[str] = None,
+        units: Optional[str] = None,
+        alias: Optional[str] = None,
+        description_contains: Optional[str] = None,
+        postprocess: Optional[bool] = None,
         sort_by: Optional[SortField] = None,
         sort_order: str = "asc"
     ) -> Tuple[List[SensorItem], int]:

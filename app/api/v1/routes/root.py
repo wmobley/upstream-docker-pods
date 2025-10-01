@@ -1,3 +1,4 @@
+from typing import Dict
 # mypy: allow-untyped-calls
 
 import jwt
@@ -20,7 +21,7 @@ def create_token(username: str, jwt_secret: str) -> str:
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     jwt_secret: str = Depends(get_jwt_secret)
-) -> dict[str, str]:
+) -> Dict[str, str]:
     authenticated = authenticate_user(form_data.username, form_data.password)
     if not authenticated:
         raise HTTPException(status_code=400, detail="Incorrect username or password")

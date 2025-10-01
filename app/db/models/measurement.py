@@ -12,7 +12,7 @@ class Measurement(Base):
     __tablename__ = "measurements"
 
     measurementid: Mapped[int] = mapped_column(primary_key=True, index=True)
-    sensorid: Mapped[int] = mapped_column(ForeignKey("sensors.sensorid"))
+    sensorid: Mapped[int] = mapped_column(ForeignKey("sensors.sensorid", ondelete="CASCADE"))
     stationid: Mapped[int] = mapped_column()
     collectiontime: Mapped[datetime] = mapped_column()
     measurementvalue: Mapped[float] = mapped_column()

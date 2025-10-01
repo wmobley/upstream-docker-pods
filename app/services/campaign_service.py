@@ -5,6 +5,7 @@ from app.db.repositories.campaign_repository import CampaignRepository
 from app.api.v1.schemas.campaign import CampaignsIn, CampaignCreateResponse, GetCampaignResponse, ListCampaignsResponseItem, Location, SummaryGetCampaign, SummaryListCampaigns, CampaignUpdate
 
 
+from typing import List, Optional, Tuple, Union
 class CampaignService:
     def __init__(self, campaign_repository: CampaignRepository):
         self.campaign_repository = campaign_repository
@@ -14,14 +15,14 @@ class CampaignService:
         return CampaignCreateResponse(
             id=response.campaignid,
         )
-    def update_campaign(self, campaign_id: int, campaign: CampaignsIn) -> CampaignCreateResponse | None:
+    def update_campaign(self, campaign_id: int, campaign: CampaignsIn) -> Optional[CampaignCreateResponse]:
         response = self.campaign_repository.update_campaign(campaign_id, campaign)
         if not response:
             return None
         return CampaignCreateResponse(
             id=response.campaignid,
         )
-    def partial_update_campaign(self, campaign_id: int, campaign: CampaignUpdate) -> CampaignCreateResponse | None:
+    def partial_update_campaign(self, campaign_id: int, campaign: CampaignUpdate) -> Optional[CampaignCreateResponse]:
         response = self.campaign_repository.update_campaign(campaign_id, campaign, partial=True)
         if not response:
             return None
@@ -31,21 +32,21 @@ class CampaignService:
 
     def get_campaigns_with_summary(
         self,
-        allocations: list[str] | None = None,
-        bbox: str | None = None,
-        start_date: datetime | None = None,
-        end_date: datetime | None = None,
-        sensor_variables: list[str] | None = None,
+        allocations: Optional[List[str]] = None,
+        bbox: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        sensor_variables: Optional[List[str]] = None,
         page: int = 1,
         limit: int = 20,
-    ) -> tuple[list[ListCampaignsResponseItem], int]:
+    ) -> Tuple[List[ListCampaignsResponseItem], int]:
         rows, total_count = self.campaign_repository.get_campaigns_and_summary(
             allocations, bbox, start_date, end_date, sensor_variables, page, limit
         )
-        items: list[ListCampaignsResponseItem] = []
+        items: List[ListCampaignsResponseItem] = []
         for row in rows:
-            sensor_types : list[str | None] = row[3]
-            variable_names : list[str | None] = row[4]
+            sensor_types : List[Optional[str]] = row[3]
+            variable_names : List[Optional[str]] = row[4]
             item = ListCampaignsResponseItem(
                 id=row[0].campaignid,
                 name=row[0].campaignname,
@@ -70,7 +71,7 @@ class CampaignService:
             items.append(item)
         return items, total_count
 
-    def get_campaign_with_summary(self, campaign_id: int) -> GetCampaignResponse | None:
+    def get_campaign_with_summary(self, campaign_id: int) -> Optional[GetCampaignResponse]:
         campaign = self.campaign_repository.get_campaign(campaign_id)
         if not campaign:
             return None

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Union
 from datetime import datetime
 from app.api.v1.schemas.measurement import MeasurementItem
 
@@ -17,8 +17,7 @@ def calculate_triangle_area(p1: MeasurementItem, p2: MeasurementItem, p3: Measur
     y2 = p2.value
     y3 = p3.value
 
-    # Area = |(x1(y2-y3) + x2(y3-y1) + x3(y1-y2))/2|
-    area = abs((x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)) / 2.0)
+    # Area = |(x1(y2-y3) + x2(y3-y1) + x3(y1-y2))/Union[2, area] = abs((x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)) / 2.0)
     return area
 
 

@@ -4,7 +4,7 @@ from sqlalchemy import insert
 from sqlalchemy.dialects.postgresql import insert
 from starlette.formparsers import MultiPartParser
 from fastapi import HTTPException, UploadFile
-from pandantic import Pandantic
+from pandantic.basemodel import PandanticBaseModel
 from geoalchemy2 import WKTElement
 from sqlalchemy.orm import Session
 from app.db.models.measurement import Measurement
@@ -12,13 +12,14 @@ from app.db.repositories.sensor_repository import SensorRepository
 from app.db.models.sensor import Sensor
 from app.api.v1.schemas.sensor import SensorIn
 
+from typing import Dict, List, Union
 # Constants
 MultiPartParser.spool_max_size = 500 * 1024 * 1024
 BATCH_SIZE = 10000
 DEFAULT_VARIABLE_NAME = 'No BestGuess Formula'
 
 
-def process_batch(batch: list[dict[str, int | datetime | float | WKTElement]], session: Session) -> int:
+def process_batch(batch: List[Dict[str, Union[int, datetime, float, WKTElement]]], session: Session) -> int:
     """Process a batch of measurements and insert to database."""
     if not batch:
         return 0
@@ -32,14 +33,14 @@ def process_batch(batch: list[dict[str, int | datetime | float | WKTElement]], s
     batch.clear()
     return inserted_count
 
-def process_sensors_file(file: UploadFile, station_id: int, upload_event_id: int, session: Session) -> dict[str, int]:
+def process_sensors_file(file: UploadFile, station_id: int, upload_event_id: int, session: Session) -> Dict[str, int]:
     """Process the sensors CSV file and return a mapping of aliases to sensor IDs."""
     # Read CSV using pandas
     sensor_repository = SensorRepository(session)
     df_sensors = pd.read_csv(file.file, keep_default_na=False, na_values=[])
-    sensor_maps : list[Sensor]= []
-    existing_sensors : list[Sensor]= []
-    validator = Pandantic(schema=SensorIn)
+    sensor_maps : List[Sensor]= []
+    existing_sensors : List[Sensor]= []
+    validator = PandanticBaseModel(schema=SensorIn)
 
     try:
         validator.validate(dataframe=df_sensors, errors="raise")
@@ -69,7 +70,7 @@ def process_sensors_file(file: UploadFile, station_id: int, upload_event_id: int
         Sensor.alias, Sensor.sensorid
     ).filter(Sensor.upload_file_events_id == upload_event_id).all()
 
-    response: dict[str, int] = {}
+    response: Dict[str, int] = {}
     for el in alias_to_sensorid:
         if el.alias is not None:
           response[el.alias] = el.sensorid
@@ -86,7 +87,7 @@ def create_measurement_dict(
     geometry: WKTElement,
     sensor_id: int,
     upload_event_id: int
-) -> dict[str, int | datetime | float | WKTElement]:
+) -> Dict[str, Union[int, datetime, float, WKTElement]]:
     """Create a measurement dictionary with all required fields."""
     return {
         'stationid': station_id,
@@ -100,7 +101,7 @@ def create_measurement_dict(
 def process_measurements_file(
     file: UploadFile,
     station_id: int,
-    alias_to_sensorid_map: dict[str, int],
+    alias_to_sensorid_map: Dict[str, int],
     upload_event_id: int,
     session: Session
 ) -> int:
@@ -150,7 +151,7 @@ def process_measurements_file(
 
     return total_measurements
 
-def update_sensor_statistics(sensor_repository: SensorRepository, alias_to_sensorid_map: dict[str, int]) -> None:
+def update_sensor_statistics(sensor_repository: SensorRepository, alias_to_sensorid_map: Dict[str, int]) -> None:
     """Update statistics for all sensors."""
     for sensor_id in alias_to_sensorid_map.values():
         sensor_repository.delete_sensor_statistics(sensor_id)

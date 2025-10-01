@@ -1,4 +1,4 @@
-from typing import Optional, List, Tuple, Union, Any
+from typing import Any, List, Optional, Tuple, Union
 from sqlalchemy.orm import Session
 from sqlalchemy import Row, Sequence, or_, select, func, Column
 from sqlalchemy.sql import text
@@ -51,12 +51,12 @@ class SensorRepository:
         self.db.refresh(db_sensor)
         return db_sensor
 
-    def create_sensors(self, sensors: list[Sensor]) -> list[Sensor]:
+    def create_sensors(self, sensors: List[Sensor]) -> List[Sensor]:
         self.db.add_all(sensors)
         self.db.commit()
         return sensors
 
-    def get_sensor(self, sensor_id: int) -> GetSensorResponse | None:
+    def get_sensor(self, sensor_id: int) -> Optional[GetSensorResponse]:
         stmt = select(
             Sensor,
             SensorStatistics
@@ -112,7 +112,7 @@ class SensorRepository:
         self.db.query(Measurement).filter(Measurement.sensorid == sensor_id).delete()
         self.db.commit()
 
-    def get_sort_column(self, sort_by: SortField) -> Column[Any] | None:
+    def get_sort_column(self, sort_by: SortField) -> Optional[Column[Any]]:
         if sort_by.value in [
             SortField.ALIAS.value,
             SortField.DESCRIPTION.value,
@@ -144,14 +144,14 @@ class SensorRepository:
         station_id: int,
         page: int = 1,
         limit: int = 20,
-        variable_name: str | None = None,
-        units: str | None = None,
-        alias: str | None = None,
-        description_contains: str | None = None,
-        postprocess: bool | None = None,
+        variable_name: Optional[str] = None,
+        units: Optional[str] = None,
+        alias: Optional[str] = None,
+        description_contains: Optional[str] = None,
+        postprocess: Optional[bool] = None,
         sort_by: Optional[SortField] = None,
         sort_order: str = "asc"
-    ) -> Tuple[list[Row[Tuple[Sensor, SensorStatistics]]], int]:
+    ) -> Tuple[List[Row[Tuple[Sensor, SensorStatistics]]], int]:
         count_stmt = select(func.count()).select_from(Sensor).where(Sensor.stationid == station_id)
         stmt = select(Sensor, SensorStatistics).outerjoin(SensorStatistics, Sensor.sensorid == SensorStatistics.sensorid)
         stmt = stmt.where(Sensor.stationid == station_id)
@@ -195,7 +195,7 @@ class SensorRepository:
         limit: int = 20,
         sort_by: Optional[SortField] = None,
         sort_order: str = "asc"
-    ) -> tuple[list[Row[Tuple[Sensor, SensorStatistics]]], int]:
+    ) -> Tuple[List[Row[Tuple[Sensor, SensorStatistics]]], int]:
         stmt = select(Sensor, SensorStatistics).outerjoin(
             SensorStatistics,
             Sensor.sensorid == SensorStatistics.sensorid
@@ -226,20 +226,25 @@ class SensorRepository:
         return result, total_count
 
     def delete_sensor(self, sensor_id: int) -> bool:
-        db_sensor = self.get_sensor(sensor_id)
+        db_sensor = self.db.query(Sensor).filter(Sensor.sensorid == sensor_id).first()
         if db_sensor:
+            # Delete related measurements first (more efficient for large datasets)
+            self.db.query(Measurement).filter(Measurement.sensorid == sensor_id).delete()
+            # Delete sensor statistics
+            self.db.query(SensorStatistics).filter(SensorStatistics.sensorid == sensor_id).delete()
+            # Delete the sensor itself
             self.db.delete(db_sensor)
             self.db.commit()
             return True
         return False
 
-    def list_sensor_variables(self) -> list[str]:
+    def list_sensor_variables(self) -> List[str]:
         return [row[0] for row in self.db.query(Sensor.variablename).distinct().all()]
 
-    def get_sensor_by_alias_and_station_id(self, alias: str, station_id: int) -> Sensor | None:
+    def get_sensor_by_alias_and_station_id(self, alias: str, station_id: int) -> Optional[Sensor]:
         return self.db.query(Sensor).filter(Sensor.alias == alias, Sensor.stationid == station_id).first()
 
-    def update_sensor(self, sensor_id: int, request:  SensorUpdate, partial: bool = False) -> Sensor | None:
+    def update_sensor(self, sensor_id: int, request:  SensorUpdate, partial: bool = False) -> Optional[Sensor]:
         
         db_station = self.db.query(Sensor).filter(Sensor.sensorid == sensor_id).first()
         

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, List, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
@@ -28,10 +28,10 @@ async def create_campaign(campaign: CampaignsIn,
 async def list_campaigns(
     page: int = 1,
     limit: int = 20,
-    bbox: Annotated[str | None, Query(description="Bounding box of the campaign west,south,east,north")] = None,
-    start_date: Annotated[datetime | None, Query(description="Start date of the campaign", example="2024-01-01")] = None,
-    end_date: Annotated[datetime | None, Query(description="End date of the campaign", example="2025-01-01")] = None,
-    sensor_variables: Annotated[list[str] | None, Query(description="List of sensor variables to filter by")] = None,
+    bbox: Annotated[Optional[str], Query(description="Bounding box of the campaign west,south,east,north")] = None,
+    start_date: Annotated[Optional[datetime], Query(description="Start date of the campaign", example="2024-01-01")] = None,
+    end_date: Annotated[Optional[datetime], Query(description="End date of the campaign", example="2025-01-01")] = None,
+    sensor_variables: Annotated[Optional[List[str]], Query(description="List of sensor variables to filter by")] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> ListCampaignsResponsePagination:
