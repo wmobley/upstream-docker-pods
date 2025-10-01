@@ -180,3 +180,25 @@ def force_update_single_sensor_statistics(
     )
     
     return sensor_service.force_update_single_sensor_statistics(sensor_id)
+
+@router.delete("/sensors/{sensor_id}", status_code=204)
+def delete_sensor_sensor_id(
+    campaign_id: int,
+    station_id: int,
+    sensor_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+
+    sensor_service = SensorService(
+        sensor_repository=SensorRepository(db),
+        measurement_repository=MeasurementRepository(db)
+    )
+    sensor_service.delete_sensor_measurements(sensor_id)
+    success = sensor_service.delete_sensor(sensor_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Sensor not found")
+
+    return Response(status_code=204)
