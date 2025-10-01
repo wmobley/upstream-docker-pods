@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from pydantic import BaseModel
 
@@ -8,48 +8,48 @@ from app.api.v1.schemas.measurement import MeasurementIn
 
 # Pydantic model for incoming sensor data
 class SensorIn(BaseModel):
-    alias: str | float
+    alias: Union[str, float]
     description: Optional[str] = None
     postprocess: Optional[bool] = True
     postprocessscript: Optional[str] = None
     units: Optional[str] = None
-    variablename: str | None = None
+    variablename: Optional[str] = None
 
 class SensorCreateResponse(BaseModel):
     id: int
 
 class SensorStatistics(BaseModel):
-    max_value: float | None = None
-    min_value: float | None = None
-    avg_value: float | None = None
-    stddev_value: float | None = None
-    percentile_90: float | None = None
-    percentile_95: float | None = None
-    percentile_99: float | None = None
-    count: int | None = None
-    first_measurement_value: float | None = None
-    first_measurement_collectiontime: datetime | None = None
-    last_measurement_time: datetime | None = None
-    last_measurement_value: float | None = None
-    stats_last_updated: datetime | None = None
+    max_value: Optional[float] = None
+    min_value: Optional[float] = None
+    avg_value: Optional[float] = None
+    stddev_value: Optional[float] = None
+    percentile_90: Optional[float] = None
+    percentile_95: Optional[float] = None
+    percentile_99: Optional[float] = None
+    count: Optional[int] = None
+    first_measurement_value: Optional[float] = None
+    first_measurement_collectiontime: Optional[datetime] = None
+    last_measurement_time: Optional[datetime] = None
+    last_measurement_value: Optional[float] = None
+    stats_last_updated: Optional[datetime] = None
 
 
 class SensorItem(BaseModel):
     id: int
-    alias: str | None = None
-    description: str | None = None
-    postprocess: bool | None = True
-    postprocessscript: str | None = None
-    units: str | None = None
-    variablename: str | None = None
-    statistics: SensorStatistics | None = None
+    alias: Optional[str] = None
+    description: Optional[str] = None
+    postprocess: Optional[bool] = True
+    postprocessscript: Optional[str] = None
+    units: Optional[str] = None
+    variablename: Optional[str] = None
+    statistics: Optional[SensorStatistics] = None
 
 class ListSensorsResponse(SensorItem):
     pass
 
 
 class GetSensorResponse(SensorItem):
-    statistics: SensorStatistics | None = None
+    statistics: Optional[SensorStatistics] = None
 
 # Pydantic model for incoming sensor and measurement data
 class SensorAndMeasurementIn(BaseModel):
@@ -58,7 +58,7 @@ class SensorAndMeasurementIn(BaseModel):
 
 
 class ListSensorsResponsePagination(BaseModel):
-    items: list[SensorItem]
+    items: List[SensorItem]
     total: int
     page: int
     size: int

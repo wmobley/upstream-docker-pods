@@ -1,6 +1,6 @@
 from datetime import datetime
 import json
-from typing import Union
+from typing import Union, List, Optional, Tuple
 
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, select, or_
@@ -31,7 +31,7 @@ class CampaignRepository:
         self.db.refresh(db_campaign)
         return db_campaign
 
-    def get_campaign(self, id: int) -> Campaign | None:
+    def get_campaign(self, id: int) -> Optional[Campaign]:
         stmt = (
             select(Campaign)
             .options(
@@ -58,14 +58,14 @@ class CampaignRepository:
 
     def get_campaigns_and_summary(
         self,
-        allocations: list[str] | None,
-        bbox: str | None,
-        start_date: datetime | None,
-        end_date: datetime | None,
-        sensor_variables: list[str] | None,
+        allocations: Optional[List[str]],
+        bbox: Optional[str],
+        start_date: Optional[datetime],
+        end_date: Optional[datetime],
+        sensor_variables: Optional[List[str]],
         page: int = 1,
         limit: int = 20,
-    ) -> tuple[list[tuple[Campaign, int, int, list[str | None], list[str | None], str | None]], int]:
+    ) -> Tuple[List[Tuple[Campaign, int, int, List[Optional[str]], List[Optional[str]], Optional[str]]], int]:
         # Base campaign query
         query = self.db.query(
             Campaign,
@@ -132,11 +132,11 @@ class CampaignRepository:
         stations = self.db.query(Station).filter(Station.campaignid == campaign_id).all()
         return sum(len(station.sensors) for station in stations)
 
-    def get_sensor_types(self, campaign_id: int) -> list[str]:
+    def get_sensor_types(self, campaign_id: int) -> List[str]:
         stations = self.db.query(Station).filter(Station.campaignid == campaign_id).all()
         return list(set(sensor.alias for station in stations for sensor in station.sensors))
 
-    def get_sensor_variables(self, campaign_id: int) -> list[str]:
+    def get_sensor_variables(self, campaign_id: int) -> List[str]:
         stations = self.db.query(Station).filter(Station.campaignid == campaign_id).all()
         return list(set(sensor.variablename for station in stations for sensor in station.sensors))
 

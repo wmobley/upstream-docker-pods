@@ -1,5 +1,6 @@
 # type: ignore
 from datetime import datetime
+from typing import Optional
 from pydantic import (
     BaseModel,
     Field,
@@ -12,11 +13,11 @@ from dateutil.parser import parse
 class SensorCSV(BaseModel):
 
     alias: str
-    variablename: str | None = Field(alias='BestGuessFormula', default=None)
-    postprocess: bool | None = Field(default=True)
-    postprocessscript: str | None = Field(default=None)
-    description: str | None = Field(default=None)
-    units: str | None = Field(default=None)
+    variablename: Optional[str] = Field(alias='BestGuessFormula', default=None)
+    postprocess: Optional[bool] = Field(default=True)
+    postprocessscript: Optional[str] = Field(default=None)
+    description: Optional[str] = Field(default=None)
+    units: Optional[str] = Field(default=None)
 
     @field_validator('alias', mode="before")
     @classmethod

@@ -59,7 +59,7 @@ class SensorRepository:
         self.db.refresh(db_sensor)
         return db_sensor
 
-    def create_sensors(self, sensors: list[Sensor]) -> list[Sensor]:
+    def create_sensors(self, sensors: List[Sensor]) -> List[Sensor]:
         self.db.add_all(sensors)
         self.db.commit()
         return sensors
@@ -132,7 +132,7 @@ class SensorRepository:
         self.db.query(Measurement).filter(Measurement.sensorid == sensor_id).delete()
         self.db.commit()
 
-    def get_sort_column(self, sort_by: SortField) -> Column[Any] | None:
+    def get_sort_column(self, sort_by: SortField) -> Optional[Column[Any]]:
         if sort_by.value in [
             SortField.ALIAS.value,
             SortField.DESCRIPTION.value,
@@ -164,11 +164,11 @@ class SensorRepository:
         station_id: int,
         page: int = 1,
         limit: int = 20,
-        variable_name: str | None = None,
-        units: str | None = None,
-        alias: str | None = None,
-        description_contains: str | None = None,
-        postprocess: bool | None = None,
+        variable_name: Optional[str] = None,
+        units: Optional[str] = None,
+        alias: Optional[str] = None,
+        description_contains: Optional[str] = None,
+        postprocess: Optional[bool] = None,
         sort_by: Optional[SortField] = None,
         sort_order: str = "asc",
     ) -> Tuple[list[Row[Tuple[Sensor, SensorStatistics]]], int]:
@@ -265,7 +265,7 @@ class SensorRepository:
             return True
         return False
 
-    def list_sensor_variables(self) -> list[str]:
+    def list_sensor_variables(self) -> List[str]:
         return [row[0] for row in self.db.query(Sensor.variablename).distinct().all()]
 
     def get_sensor_by_alias_and_station_id(
@@ -280,7 +280,6 @@ class SensorRepository:
     def update_sensor(
         self, sensor_id: int, request: SensorUpdate, partial: bool = False
     ) -> Sensor | None:
-
         db_station = self.db.query(Sensor).filter(Sensor.sensorid == sensor_id).first()
 
         if not db_station:

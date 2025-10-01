@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Union
 
 from geoalchemy2 import Geometry
 from geojson_pydantic import Point
@@ -28,13 +28,13 @@ class MeasurementItem(BaseModel):
     value: float
     geometry: Point
     collectiontime: datetime
-    sensorid: int | None = None
-    variablename: str | None = None  # modified
-    variabletype: str | None = None
-    description: str | None = None
+    sensorid: Optional[int] = None
+    variablename: Optional[str] = None  # modified
+    variabletype: Optional[str] = None
+    description: Optional[str] = None
 
 class ListMeasurementsResponsePagination(BaseModel):
-    items: list[MeasurementItem]
+    items: List[MeasurementItem]
     total: int
     page: int
     size: int
@@ -43,7 +43,7 @@ class ListMeasurementsResponsePagination(BaseModel):
     max_value: float
     average_value: float
     downsampled: bool
-    downsampled_total: int | None = None
+    downsampled_total: Optional[int] = None
 
 class AggregatedMeasurement(BaseModel):
     measurement_time: datetime

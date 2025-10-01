@@ -14,10 +14,10 @@ class StationType(str, Enum):
 
 class StationCreate(BaseModel):
     name: str
-    description: str | None = None
-    contact_name: str | None = None
-    contact_email: str | None = None
-    active: bool | None = True
+    description: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    active: Optional[bool] = True
     start_date: datetime
     station_type: StationType  = StationType.STATIC
 
@@ -37,7 +37,7 @@ class StationItemWithSummary(StationItem):
     sensor_variables: List[str]
 
 class GetStationResponse(StationItem):
-    sensors: List[SensorItem] | None = None
+    sensors: Optional[List[SensorItem]] = None
 
 class ListStationsResponsePagination(BaseModel):
     items: List[StationItemWithSummary]
@@ -48,8 +48,8 @@ class ListStationsResponsePagination(BaseModel):
 
 class SensorSummaryForStations(BaseModel):
     id: int
-    variable_name: str | None = None
-    measurement_unit: str | None = None
+    variable_name: Optional[str] = None
+    measurement_unit: Optional[str] = None
 
 class StationsListResponseItem(StationItem):
     start_date: datetime
@@ -59,9 +59,9 @@ class StationsListResponseItem(StationItem):
 
 class StationUpdate(BaseModel):
     name: Optional[str] = None
-    description: Optional[str] | None = None
-    contact_name: Optional[str] | None = None
-    contact_email: Optional[str] | None = None
-    active: Optional[bool] | None = None
-    start_date: Optional[datetime] | None = None
-    station_type: Optional[StationType] | None  = None
+    description: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    active: Optional[bool] = None
+    start_date: Optional[datetime] = None
+    station_type: Optional[StationType] = None

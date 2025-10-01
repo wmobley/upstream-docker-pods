@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
@@ -25,10 +25,10 @@ async def list_sensors(
     station_id: int,
     page: int = 1,
     limit: int = 20,
-    variable_name: str | None = Query(None, description="Filter sensors by variable name (partial match)"),
-    units: str | None = Query(None, description="Filter sensors by units (exact match)"),
-    alias: str | None = Query(None, description="Filter sensors by alias (partial match)"),
-    description_contains: str | None = Query(None, description="Filter sensors by text in description (partial match)"),
+    variable_name: Optional[str] = Query(None, description="Filter sensors by variable name (partial match)"),
+    units: Optional[str] = Query(None, description="Filter sensors by units (exact match)"),
+    alias: Optional[str] = Query(None, description="Filter sensors by alias (partial match)"),
+    description_contains: Optional[str] = Query(None, description="Filter sensors by text in description (partial match)"),
     postprocess: Optional[bool] = Query(None, description="Filter sensors by postprocess flag"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -87,7 +87,7 @@ async def get_sensor(
 
 
 @router.delete("/sensors", status_code=204)
-def delete_sensor(
+def delete_sensors(
     campaign_id: int,
     station_id: int,
     db: Session = Depends(get_db),
@@ -98,6 +98,29 @@ def delete_sensor(
     station_repository = StationRepository(db)
     station_service = StationService(station_repository=station_repository)
     station_service.delete_station_sensors(station_id=station_id)
+    return Response(status_code=204)
+
+
+@router.delete("/sensors/{sensor_id}", status_code=204)
+def delete_sensor(
+    campaign_id: int,
+    station_id: int,
+    sensor_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+
+    sensor_service = SensorService(
+        sensor_repository=SensorRepository(db),
+        measurement_repository=MeasurementRepository(db)
+    )
+
+    success = sensor_service.delete_sensor(sensor_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Sensor not found")
+
     return Response(status_code=204)
 
 

@@ -1,3 +1,4 @@
+from typing import Dict
 # mypy: allow-untyped-calls
 
 import jwt

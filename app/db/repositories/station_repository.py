@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional, Tuple, Union
 
 from sqlalchemy.orm import Session
 
@@ -30,7 +30,7 @@ class StationRepository:
         self.db.refresh(db_station)
         return db_station
 
-    def get_station(self, station_id: int) -> Station | None:
+    def get_station(self, station_id: int) -> Optional[Station]:
         # Query the station with its sensors and convert geometry to GeoJSON
         result = self.db.query(
             Station,
@@ -61,10 +61,10 @@ class StationRepository:
             return Station(**station_dict)
         return None
 
-    def get_stations_by_campaign_id(self, campaign_id: int, page: int = 1, limit: int = 20) -> list[Station]:
+    def get_stations_by_campaign_id(self, campaign_id: int, page: int = 1, limit: int = 20) -> List[Station]:
         return self.db.query(Station).filter(Station.campaignid == campaign_id).offset((page - 1) * limit).limit(limit).all()
 
-    def list_stations_and_summary(self, campaign_id: int, page: int = 1, limit: int = 20) -> tuple[list[tuple[Station, int, list[str | None], list[str | None], str | None]], int]:
+    def list_stations_and_summary(self, campaign_id: int, page: int = 1, limit: int = 20) -> Tuple[List[Tuple[Station, int, List[Optional[str]], List[Optional[str]], Optional[str]]], int]:
         query = self.db.query(Station,
             func.count(Sensor.sensorid.distinct()).label('sensor_count'),
             func.array_agg(func.distinct(Sensor.alias)).label('sensor_types'),
@@ -82,7 +82,7 @@ class StationRepository:
         start_date: Optional[datetime] = None,
         page: int = 1,
         limit: int = 20,
-    ) -> tuple[list[Station], int]:
+    ) -> Tuple[List[Station], int]:
         query = self.db.query(Station)
         if campaign_id:
             query = query.filter(Station.campaignid == campaign_id)
@@ -108,7 +108,6 @@ class StationRepository:
         return True
 
     def update_station(self, station_id: int, request:  StationUpdate, partial: bool = False) -> Station | None:
-
         db_station = self.db.query(Station).filter(Station.stationid == station_id).first()
 
         if not db_station:

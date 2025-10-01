@@ -8,41 +8,41 @@ from app.api.v1.schemas.station import StationsListResponseItem
 
 class CampaignsIn(BaseModel):
     name: str
-    contact_name: str | None = None
-    contact_email: str | None = None
-    description: str | None = None
-    start_date: datetime | None = None
-    end_date: datetime | None = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    description: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
     allocation: str
 
 class CampaignCreateResponse(BaseModel):
     id: int
 
 class Location(BaseModel):
-    bbox_west: float | None = None
-    bbox_east: float | None = None
-    bbox_south: float | None = None
-    bbox_north: float | None = None
+    bbox_west: Optional[float] = None
+    bbox_east: Optional[float] = None
+    bbox_south: Optional[float] = None
+    bbox_north: Optional[float] = None
 
 class SummaryListCampaigns(BaseModel):
-    sensor_types: List[str] | None = None
-    variable_names: List[str] | None = None
+    sensor_types: Optional[List[str]] = None
+    variable_names: Optional[List[str]] = None
 
 class ListCampaignsResponseItem(BaseModel):
     id: int
     name: str
-    location: Location | None = None
-    description: str | None = None
-    contact_name: str | None = None
-    contact_email: str | None = None
-    start_date: datetime | None = None
-    end_date: datetime | None = None
-    allocation: str | None = None
+    location: Optional[Location] = None
+    description: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    allocation: Optional[str] = None
     summary: SummaryListCampaigns
     geometry: dict = Field(default_factory=dict, nullable=True)  # type: ignore[call-overload,type-arg]
 
 class ListCampaignsResponsePagination(BaseModel):
-    items: list[ListCampaignsResponseItem]
+    items: List[ListCampaignsResponseItem]
     total: int
     page: int
     size: int
@@ -57,13 +57,13 @@ class SummaryGetCampaign(BaseModel):
 class GetCampaignResponse(BaseModel):
     id: int
     name: str
-    description: str | None = None
-    contact_name: str | None = None
-    contact_email: str | None = None
-    start_date: datetime | None = None
-    end_date: datetime | None = None
+    description: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
     allocation: str
-    location: Location | None = None
+    location: Optional[Location] = None
     summary: SummaryGetCampaign
     geometry: dict = Field(default_factory=dict, nullable=True)  # type: ignore[call-overload,type-arg]
     stations: list[StationsListResponseItem] = []

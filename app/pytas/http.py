@@ -330,7 +330,7 @@ class TASClient:
         else:
             r.raise_for_status()
 
-    def projects_for_user(self, username: str) -> list[PyTASProject]:
+    def projects_for_user(self, username: str) -> List[PyTASProject]:
         headers = {"Content-Type": "application/json"}
         r = requests.get(
             "{0}/v1/projects/username/{1}".format(self.baseURL, username),
@@ -448,7 +448,7 @@ class TASClient:
         else:
             raise Exception("Failed to remove user from project", resp["message"])
 
-    def get_project_members(self, project_id: str) -> list[PyTASUser]:
+    def get_project_members(self, project_id: str) -> List[PyTASUser]:
         headers = {"Content-Type": "application/json"}
         r = requests.get(
             "{0}/v1/projects/{1}/users".format(self.baseURL, project_id),

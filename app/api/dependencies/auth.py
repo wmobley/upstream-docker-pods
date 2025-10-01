@@ -1,4 +1,5 @@
 import jwt
+from typing import Dict, Union
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
@@ -11,7 +12,7 @@ settings : Settings = get_settings()
 
 
 
-def authenticate_user(username: str, password: str) -> dict[str, str | bool]:
+def authenticate_user(username: str, password: str) -> Dict[str, Union[str, bool]]:
     if settings.ENV == "dev":
         return {"status": "success", "message": "ok", "result": True}
     else:
@@ -47,8 +48,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
 
 
 # Function to decode a JWT token using the specified secret and algorithm
-def unhash(token: str) -> dict[str, str]:
+def unhash(token: str) -> Dict[str, str]:
     return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.ALG]) # type: ignore[no-any-return]
 
-def hash(payload: dict[str, str]) -> str:
+def hash(payload: Dict[str, str]) -> str:
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.ALG)

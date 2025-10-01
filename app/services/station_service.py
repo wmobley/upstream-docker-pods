@@ -4,13 +4,13 @@ from app.api.v1.schemas.station import GetStationResponse,  StationItemWithSumma
 from app.db.repositories.station_repository import StationRepository
 
 
+from typing import List, Optional, Tuple, Union
 class StationService:
     def __init__(self, station_repository: StationRepository):
         self.station_repository = station_repository
 
     def create_station(self, station: StationCreate, campaign_id: int) -> StationCreateResponse:
         return StationCreateResponse(id=self.station_repository.create_station(station, campaign_id).stationid)
-
     def update_station(self, station_id: int, station: StationUpdate) -> StationCreateResponse | None:
         response = self.station_repository.update_station(station_id, station)
         if not response:
@@ -18,16 +18,16 @@ class StationService:
         return StationCreateResponse(
             id=response.campaignid,
         )
-    def partial_update_station(self, station_id: int, station: StationUpdate) -> StationCreateResponse | None:
+    def partial_update_station(self, station_id: int, station: StationUpdate) -> Optional[StationCreateResponse]:
         response = self.station_repository.update_station(station_id, station, partial=True)
         if not response:
             return None
         return StationCreateResponse(
             id=response.campaignid,
         )
-    def get_stations_with_summary(self, campaign_id: int, page: int = 1, limit: int = 20) -> tuple[list[StationItemWithSummary], int]:
+    def get_stations_with_summary(self, campaign_id: int, page: int = 1, limit: int = 20) -> Tuple[List[StationItemWithSummary], int]:
         rows, total_count = self.station_repository.list_stations_and_summary(campaign_id, page, limit)
-        stations : list[StationItemWithSummary] = []
+        stations : List[StationItemWithSummary] = []
         for row in rows:
             sensor_types : list[str | None] = row[2]
             sensor_variables : list[str | None] = row[3]
@@ -45,7 +45,7 @@ class StationService:
         return stations, total_count
 
 
-    def get_station(self, station_id: int) -> GetStationResponse | None:
+    def get_station(self, station_id: int) -> Optional[GetStationResponse]:
         row = self.station_repository.get_station(station_id)
         geometry = {}
         if row:

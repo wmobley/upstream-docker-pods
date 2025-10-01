@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List
+from typing import List, Optional, Tuple
 import typing
 
 from sqlalchemy.orm import Session
@@ -35,17 +35,17 @@ class MeasurementRepository:
         self.db.refresh(db_measurement)
         return db_measurement
 
-    def get_measurement(self, measurement_id: int) -> Measurement | None:
+    def get_measurement(self, measurement_id: int) -> Optional[Measurement]:
         return self.db.query(Measurement).get(measurement_id)
 
     def list_measurements(
         self,
-        sensor_id: int | None = None,
-        start_date: datetime | None = None,
-        end_date: datetime | None = None,
-        min_value: float | None = None,
-        max_value: float | None = None,
-        variable_name: str | None = None,
+        sensor_id: Optional[int] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        min_value: Optional[float] = None,
+        max_value: Optional[float] = None,
+        variable_name: Optional[str] = None,
         page: int = 1,
         limit: int = 20,
     ) -> tuple[
@@ -198,7 +198,6 @@ class MeasurementRepository:
             .filter(Measurement.measurementid == measurement_id)
             .first()
         )
-
         if not db_measurement:
             return None
 

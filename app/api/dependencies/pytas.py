@@ -6,13 +6,14 @@ from app.db.session import SessionLocal
 from app.pytas.http import TASClient # type: ignore[attr-defined]
 from app.core.config import get_settings
 
+from typing import List
 settings = get_settings()
 
 ENVIRONMENT = settings.ENV
 
 dev_allocations = ["WEATHER-456", "WEATHER-457", "WEATHER-458", "TEST-123", "string"]
 
-def get_allocations(username: str) -> list[str]:
+def get_allocations(username: str) -> List[str]:
     if ENVIRONMENT == "dev":
         return dev_allocations
     else:
