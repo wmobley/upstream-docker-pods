@@ -5,7 +5,7 @@ from sqlalchemy import insert
 from sqlalchemy.dialects.postgresql import insert
 from starlette.formparsers import MultiPartParser
 from fastapi import HTTPException, UploadFile
-from pandantic.basemodel import PandanticBaseModel
+from pandantic import BaseModel as PandanticBaseModel
 from geoalchemy2 import WKTElement
 from sqlalchemy.orm import Session
 from app.db.models.measurement import Measurement
