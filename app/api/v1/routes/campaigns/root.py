@@ -84,7 +84,7 @@ async def get_campaign(
 
 
 @router.delete("/{campaign_id}", status_code=204)
-def delete_sensor(
+def delete_campaign(
     campaign_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
