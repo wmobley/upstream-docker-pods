@@ -196,7 +196,7 @@ def delete_sensor(
         sensor_repository=SensorRepository(db),
         measurement_repository=MeasurementRepository(db)
     )
-
+    success = sensor_service.delete_sensor_measurements(sensor_id)
     success = sensor_service.delete_sensor(sensor_id)
     if not success:
         raise HTTPException(status_code=404, detail="Sensor not found")
