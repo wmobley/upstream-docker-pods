@@ -71,7 +71,7 @@ class SensorUpdate(BaseModel):
     postprocess: Optional[bool] = True
     postprocessscript: Optional[str] = None
     units: Optional[str] = None
-    variablename: Optional[str] | None = None
+    variablename: Optional[str] = None
 
 
 class ForceUpdateSensorStatisticsResponse(BaseModel):
