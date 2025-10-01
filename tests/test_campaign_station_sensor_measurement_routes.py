@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from unittest.mock import ANY
 import jwt
 
@@ -21,7 +21,7 @@ def client() -> TestClient:
     return TestClient(app)
 
 @pytest.fixture
-def auth_headers() -> dict[str, str]:
+def auth_headers() -> Dict[str, str]:
     """Create authentication headers with a JWT token"""
     payload = {
         "sub": "test_user",
@@ -80,7 +80,7 @@ def mock_measurement_repo(
         sensor_id: int, page: int, limit: int, start_date: Any, end_date: Any,
         min_value: Any, max_value: Any, # variable_name is not a param in route
         # downsample_threshold is handled by service, repo just returns data
-    ) -> Tuple[List[Tuple[MeasurementModel, str]], int, float | None, float | None, float | None]:
+    ) -> Tuple[List[Tuple[MeasurementModel, str]], int, Optional[float], Optional[float], Optional[float]]:
         # Simulate filtering and pagination based on inputs if needed for more complex tests
         # For now, return sample data
         paginated_data = sample_measurement_model_data[(page-1)*limit : page*limit]
@@ -90,7 +90,7 @@ def mock_measurement_repo(
     repository.get_measurements_with_confidence_intervals.return_value = sample_aggregated_measurements_data
 
     # For PUT/PATCH
-    def update_measurement_mock(measurement_id: int, request: Any, partial: bool = False) -> MeasurementModel | None:
+    def update_measurement_mock(measurement_id: int, request: Any, partial: bool = False) -> Optional[MeasurementModel]:
         if measurement_id == 1: # Assume measurement 1 exists
             updated_model = MeasurementModel(
                 measurementid=measurement_id,

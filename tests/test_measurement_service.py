@@ -2,13 +2,14 @@ from unittest.mock import patch, Mock
 from geoalchemy2 import Geometry
 import pytest
 from datetime import datetime, timedelta
+from typing import Optional
 from geojson_pydantic import Point
 from app.api.v1.schemas.measurement import MeasurementItem, ListMeasurementsResponsePagination
 from app.services.measurement_service import MeasurementService
 from app.db.repositories.measurement_repository import MeasurementRepository
 
 # Mock data for testing
-def create_mock_measurement(id_value: int, measurement_value: float, collection_time: datetime, geometry: Point | None = None) -> MeasurementItem:
+def create_mock_measurement(id_value: int, measurement_value: float, collection_time: datetime, geometry: Optional[Point] = None) -> MeasurementItem:
     if geometry is None:
         geometry = {"type": "Point", "coordinates": [10.0, 20.0]}
 

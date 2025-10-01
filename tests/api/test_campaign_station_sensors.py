@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
-from typing import Tuple, List, Dict, Any, Optional
+from typing import Tuple, List, Dict, Any, Optional, Union
 import pytest
 import jwt
 from fastapi.testclient import TestClient
@@ -18,7 +18,7 @@ def client() -> TestClient:
     return TestClient(app)
 
 @pytest.fixture
-def auth_headers() -> dict[str, str]:
+def auth_headers() -> Dict[str, str]:
     """Create authentication headers with a JWT token"""
     # Create a test token
     payload = {
@@ -30,7 +30,7 @@ def auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 @pytest.fixture
-def sample_sensors() -> list[Sensor]:
+def sample_sensors() -> List[Sensor]:
     return [
         Sensor(
             sensorid=1,
@@ -65,7 +65,7 @@ def sample_sensors() -> list[Sensor]:
     ]
 
 @pytest.fixture
-def sample_statistics() -> list[SensorStatistics]:
+def sample_statistics() -> List[SensorStatistics]:
     return [
         SensorStatistics(
             sensorid=1,
@@ -111,19 +111,19 @@ def sample_statistics() -> list[SensorStatistics]:
 
 
 @pytest.fixture
-def mock_sensor_repository(sample_sensors: list[Sensor], sample_statistics: list[SensorStatistics]) -> MagicMock:
+def mock_sensor_repository(sample_sensors: List[Sensor], sample_statistics: List[SensorStatistics]) -> MagicMock:
     repository = MagicMock(spec=SensorRepository)
 
     def get_sensors_by_station_id_mock(
         station_id: int,
         page: int = 1,
         limit: int = 20,
-        variable_name: str | None = None,
-        units: str | None = None,
-        alias: str | None = None,
-        description_contains: str | None = None,
-        postprocess: bool | None = None,
-        sort_by: SortField | None = None,
+        variable_name: Optional[str] = None,
+        units: Optional[str] = None,
+        alias: Optional[str] = None,
+        description_contains: Optional[str] = None,
+        postprocess: Optional[bool] = None,
+        sort_by: Optional[SortField] = None,
         sort_order: str = "asc"
     ) -> Tuple[List[Tuple[Sensor, SensorStatistics]], int]:
         # Filter sensors based on parameters
@@ -189,7 +189,7 @@ def mock_sensor_repository(sample_sensors: list[Sensor], sample_statistics: list
 
 @patch('app.api.v1.routes.campaigns.campaign_station_sensors.SensorRepository')
 @patch('app.core.config.get_settings')
-def test_list_sensors_basic(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: list[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
+def test_list_sensors_basic(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: List[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
     # Setup mocks
     mock_repository_class.return_value = mock_sensor_repository
     mock_settings = MagicMock()
@@ -213,7 +213,7 @@ def test_list_sensors_basic(mock_get_settings: MagicMock, mock_repository_class:
 
 @patch('app.api.v1.routes.campaigns.campaign_station_sensors.SensorRepository')
 @patch('app.core.config.get_settings')
-def test_list_sensors_with_variable_name_filter(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: list[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
+def test_list_sensors_with_variable_name_filter(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: List[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
     # Setup mocks
     mock_repository_class.return_value = mock_sensor_repository
     mock_settings = MagicMock()
@@ -233,7 +233,7 @@ def test_list_sensors_with_variable_name_filter(mock_get_settings: MagicMock, mo
 
 @patch('app.api.v1.routes.campaigns.campaign_station_sensors.SensorRepository')
 @patch('app.core.config.get_settings')
-def test_list_sensors_with_units_filter(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: list[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
+def test_list_sensors_with_units_filter(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: List[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
     # Setup mocks
     mock_repository_class.return_value = mock_sensor_repository
     mock_settings = MagicMock()
@@ -253,7 +253,7 @@ def test_list_sensors_with_units_filter(mock_get_settings: MagicMock, mock_repos
 
 @patch('app.api.v1.routes.campaigns.campaign_station_sensors.SensorRepository')
 @patch('app.core.config.get_settings')
-def test_list_sensors_with_alias_filter(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: list[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
+def test_list_sensors_with_alias_filter(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: List[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
     # Setup mocks
     mock_repository_class.return_value = mock_sensor_repository
     mock_settings = MagicMock()
@@ -273,7 +273,7 @@ def test_list_sensors_with_alias_filter(mock_get_settings: MagicMock, mock_repos
 
 @patch('app.api.v1.routes.campaigns.campaign_station_sensors.SensorRepository')
 @patch('app.core.config.get_settings')
-def test_list_sensors_with_description_filter(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: list[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
+def test_list_sensors_with_description_filter(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: List[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
     # Setup mocks
     mock_repository_class.return_value = mock_sensor_repository
     mock_settings = MagicMock()
@@ -294,7 +294,7 @@ def test_list_sensors_with_description_filter(mock_get_settings: MagicMock, mock
 
 @patch('app.api.v1.routes.campaigns.campaign_station_sensors.SensorRepository')
 @patch('app.core.config.get_settings')
-def test_list_sensors_with_postprocess_filter(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: list[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
+def test_list_sensors_with_postprocess_filter(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: List[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
     # Setup mocks
     mock_repository_class.return_value = mock_sensor_repository
     mock_settings = MagicMock()
@@ -314,7 +314,7 @@ def test_list_sensors_with_postprocess_filter(mock_get_settings: MagicMock, mock
 
 @patch('app.api.v1.routes.campaigns.campaign_station_sensors.SensorRepository')
 @patch('app.core.config.get_settings')
-def test_list_sensors_pagination(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: list[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
+def test_list_sensors_pagination(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: List[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
     # Setup mocks
     mock_repository_class.return_value = mock_sensor_repository
     mock_settings = MagicMock()
@@ -346,7 +346,7 @@ def test_list_sensors_pagination(mock_get_settings: MagicMock, mock_repository_c
 
 @patch('app.api.v1.routes.campaigns.campaign_station_sensors.SensorRepository')
 @patch('app.core.config.get_settings')
-def test_list_sensors_combined_filters(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: list[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
+def test_list_sensors_combined_filters(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient, sample_sensors: List[Sensor], mock_sensor_repository: MagicMock, auth_headers: Dict[str, str]) -> None:
     # Setup mocks
     mock_repository_class.return_value = mock_sensor_repository
     mock_settings = MagicMock()
@@ -393,7 +393,7 @@ def test_list_sensors_sort_by_alias_asc(
     mock_get_settings: MagicMock,
     mock_repository_class: MagicMock,
     client: TestClient,
-    sample_sensors: list[Sensor],
+    sample_sensors: List[Sensor],
     mock_sensor_repository: MagicMock,
     auth_headers: Dict[str, str]
 ) -> None:
@@ -421,7 +421,7 @@ def test_list_sensors_sort_by_alias_desc(
     mock_get_settings: MagicMock,
     mock_repository_class: MagicMock,
     client: TestClient,
-    sample_sensors: list[Sensor],
+    sample_sensors: List[Sensor],
     mock_sensor_repository: MagicMock,
     auth_headers: Dict[str, str]
 ) -> None:
@@ -449,7 +449,7 @@ def test_list_sensors_sort_by_max_value(
     mock_get_settings: MagicMock,
     mock_repository_class: MagicMock,
     client: TestClient,
-    sample_sensors: list[Sensor],
+    sample_sensors: List[Sensor],
     mock_sensor_repository: MagicMock,
     auth_headers: Dict[str, str]
 ) -> None:
@@ -477,7 +477,7 @@ def test_list_sensors_sort_with_filters(
     mock_get_settings: MagicMock,
     mock_repository_class: MagicMock,
     client: TestClient,
-    sample_sensors: list[Sensor],
+    sample_sensors: List[Sensor],
     mock_sensor_repository: MagicMock,
     auth_headers: Dict[str, str]
 ) -> None:
