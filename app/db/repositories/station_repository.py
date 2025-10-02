@@ -95,7 +95,8 @@ class StationRepository:
         return query.offset((page - 1) * limit).limit(limit).all(), total_count
 
     def delete_station(self, station_id: int) -> bool:
-        db_station = self.get_station(station_id)
+        # Query the station directly from the database session for deletion
+        db_station = self.db.query(Station).filter(Station.stationid == station_id).first()
         if db_station:
             self.db.delete(db_station)
             self.db.commit()

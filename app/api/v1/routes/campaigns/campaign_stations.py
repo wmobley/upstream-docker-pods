@@ -94,6 +94,28 @@ def delete_sensor(
     return Response(status_code=204)
 
 
+@router.delete("/stations/{station_id}", status_code=204)
+def delete_station(
+    campaign_id: int,
+    station_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+
+    # Use station service to delete individual station
+    station_service = StationService(StationRepository(db))
+    deleted_station = station_service.delete_station(station_id)
+
+    if not deleted_station:
+        raise HTTPException(status_code=404, detail="Station not found")
+
+    return Response(status_code=204)
+
+
+
+
 @router.put("/stations/{station_id}", response_model=StationCreateResponse)
 def update_station(
     station_id: int,
