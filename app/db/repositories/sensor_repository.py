@@ -64,12 +64,15 @@ class SensorRepository:
         self.db.commit()
         return sensors
 
-    def get_sensor(self, sensor_id: int) -> GetSensorResponse | None:
+    def get_sensor(self, sensor_id: int, published_only: bool = False) -> GetSensorResponse | None:
         stmt = (
             select(Sensor, SensorStatistics)
             .outerjoin(SensorStatistics, Sensor.sensorid == SensorStatistics.sensorid)
             .where(Sensor.sensorid == sensor_id)
         )
+
+        if published_only:
+            stmt = stmt.where(Sensor.is_published == True)
 
         result = self.db.execute(stmt).first()
 
@@ -111,6 +114,9 @@ class SensorRepository:
                     statistics.stats_last_updated if statistics else None
                 ),
             ),
+            # publishing fields
+            is_published=getattr(sensor, 'is_published', False),
+            published_at=getattr(sensor, 'published_at', None),
         )
 
     def delete_sensor_statistics(self, sensor_id: int) -> bool:
@@ -169,8 +175,9 @@ class SensorRepository:
         alias: str | None = None,
         description_contains: str | None = None,
         postprocess: bool | None = None,
-        sort_by: Optional[SortField] = None,
+        sort_by: SortField | None = None,
         sort_order: str = "asc",
+        published_only: bool = False,
     ) -> Tuple[list[Row[Tuple[Sensor, SensorStatistics]]], int]:
         count_stmt = (
             select(func.count())
@@ -202,6 +209,10 @@ class SensorRepository:
             stmt = stmt.where(Sensor.postprocess == postprocess)
             count_stmt = count_stmt.where(Sensor.postprocess == postprocess)
 
+        if published_only:
+            stmt = stmt.where(Sensor.is_published == True)
+            count_stmt = count_stmt.where(Sensor.is_published == True)
+
         # Handle sorting
         if sort_by:
             sort_column = self.get_sort_column(sort_by)
@@ -218,12 +229,12 @@ class SensorRepository:
 
     def get_sensors(
         self,
-        station_id: Optional[int] = None,
-        variable_name: Optional[str] = None,
-        postprocess: Optional[bool] = None,
+        station_id: int | None = None,
+        variable_name: str | None = None,
+        postprocess: bool | None = None,
         page: int = 1,
         limit: int = 20,
-        sort_by: Optional[SortField] = None,
+        sort_by: SortField | None = None,
         sort_order: str = "asc",
     ) -> tuple[list[Row[Tuple[Sensor, SensorStatistics]]], int]:
         stmt = select(Sensor, SensorStatistics).outerjoin(

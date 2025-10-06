@@ -1,6 +1,6 @@
 from datetime import datetime
 import json
-from typing import Union
+from typing import Union, Optional
 
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, select, or_
@@ -31,7 +31,7 @@ class CampaignRepository:
         self.db.refresh(db_campaign)
         return db_campaign
 
-    def get_campaign(self, id: int) -> Campaign | None:
+    def get_campaign(self, id: int, published_only: bool = False) -> Campaign | None:
         stmt = (
             select(Campaign)
             .options(
@@ -39,6 +39,9 @@ class CampaignRepository:
             )
             .filter(Campaign.campaignid == id)
         )
+
+        if published_only:
+            stmt = stmt.filter(Campaign.is_published == True)
         result = self.db.execute(stmt).first()
 
         if not result:
@@ -65,6 +68,7 @@ class CampaignRepository:
         sensor_variables: list[str] | None,
         page: int = 1,
         limit: int = 20,
+        published_only: bool = False,
     ) -> tuple[list[tuple[Campaign, int, int, list[str | None], list[str | None], str | None]], int]:
         # Base campaign query
         query = self.db.query(
@@ -109,6 +113,9 @@ class CampaignRepository:
             )
         if sensor_variables:
             query = query.filter(Sensor.variablename.in_(sensor_variables))
+
+        if published_only:
+            query = query.filter(Campaign.is_published == True)
 
         total_count = query.count()
 

@@ -2,15 +2,17 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
-from app.api.dependencies.auth import get_current_user
+from app.api.dependencies.auth import get_current_user, get_current_user_optional
 from app.api.dependencies.pytas import check_allocation_permission
 from app.api.v1.schemas.sensor import SensorItem, GetSensorResponse, ListSensorsResponsePagination, SensorStatistics, SensorCreateResponse, SensorUpdate, ForceUpdateSensorStatisticsResponse, UpdateSensorStatisticsResponse
+from app.api.v1.schemas.campaign import PublishRequest, PublishResponse
 from app.api.v1.schemas.user import User
 from app.db.session import get_db
 from app.db.repositories.sensor_repository import SensorRepository, SortField
 from app.db.repositories.station_repository import StationRepository
 from app.services.sensor_service import SensorService
 from app.services.station_service import StationService
+from app.services.publishing_service import PublishingService
 from app.db.repositories.measurement_repository import MeasurementRepository
 
 
@@ -29,32 +31,49 @@ async def list_sensors(
     units: str | None = Query(None, description="Filter sensors by units (exact match)"),
     alias: str | None = Query(None, description="Filter sensors by alias (partial match)"),
     description_contains: str | None = Query(None, description="Filter sensors by text in description (partial match)"),
-    postprocess: Optional[bool] = Query(None, description="Filter sensors by postprocess flag"),
-    current_user: User = Depends(get_current_user),
+    postprocess: bool | None = Query(None, description="Filter sensors by postprocess flag"),
+    current_user: User | None = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
-    sort_by: Optional[SortField] = Query(None, description="Sort sensors by field"),
+    sort_by: SortField | None = Query(None, description="Sort sensors by field"),
     sort_order: str = Query("asc", description="Sort order (asc or desc)"),
 ) -> ListSensorsResponsePagination:
-    if not check_allocation_permission(current_user, campaign_id):
-        raise HTTPException(status_code=404, detail="Allocation is incorrect")
-
     sensor_service = SensorService(
         sensor_repository=SensorRepository(db),
         measurement_repository=MeasurementRepository(db)
     )
 
-    items, total_count = sensor_service.get_sensors_by_station_id(
-        station_id=station_id,
-        page=page,
-        limit=limit,
-        variable_name=variable_name,
-        units=units,
-        alias=alias,
-        description_contains=description_contains,
-        postprocess=postprocess,
-        sort_by=sort_by,
-        sort_order=sort_order
-    )
+    if current_user:
+        # Authenticated user - check allocation permissions, show all sensors
+        if not check_allocation_permission(current_user, campaign_id):
+            raise HTTPException(status_code=404, detail="Allocation is incorrect")
+        items, total_count = sensor_service.get_sensors_by_station_id(
+            station_id=station_id,
+            page=page,
+            limit=limit,
+            variable_name=variable_name,
+            units=units,
+            alias=alias,
+            description_contains=description_contains,
+            postprocess=postprocess,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            published_only=False
+        )
+    else:
+        # Unauthenticated user - show only published sensors in published stations/campaigns
+        items, total_count = sensor_service.get_sensors_by_station_id(
+            station_id=station_id,
+            page=page,
+            limit=limit,
+            variable_name=variable_name,
+            units=units,
+            alias=alias,
+            description_contains=description_contains,
+            postprocess=postprocess,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            published_only=True
+        )
 
     return ListSensorsResponsePagination(
         items=items,
@@ -69,18 +88,23 @@ async def get_sensor(
     station_id: int,
     sensor_id: int,
     campaign_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user_optional),
     db: Session = Depends(get_db)
 ) -> GetSensorResponse:
-    if not check_allocation_permission(current_user, campaign_id):
-        raise HTTPException(status_code=404, detail="Allocation is incorrect")
-
     sensor_service = SensorService(
         sensor_repository=SensorRepository(db),
         measurement_repository=MeasurementRepository(db)
     )
 
-    response = sensor_service.get_sensor(sensor_id)
+    if current_user:
+        # Authenticated user - check allocation permissions, show all sensors
+        if not check_allocation_permission(current_user, campaign_id):
+            raise HTTPException(status_code=404, detail="Sensor not found")
+        response = sensor_service.get_sensor(sensor_id, published_only=False)
+    else:
+        # Unauthenticated user - show only if published and parent entities are published
+        response = sensor_service.get_sensor(sensor_id, published_only=True)
+
     if response is None:
         raise HTTPException(status_code=404, detail="Sensor not found")
     return response
@@ -202,3 +226,42 @@ def delete_sensor_sensor_id(
         raise HTTPException(status_code=404, detail="Sensor not found")
 
     return Response(status_code=204)
+
+
+@router.post("/sensors/{sensor_id}/publish", response_model=PublishResponse)
+def publish_sensor(
+    campaign_id: int,
+    station_id: int,
+    sensor_id: int,
+    publish_request: PublishRequest = PublishRequest(),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> PublishResponse:
+    """Publish a sensor with optional cascading to measurements."""
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+
+    publishing_service = PublishingService(db)
+    result = publishing_service.publish_sensor(
+        sensor_id,
+        cascade=publish_request.cascade,
+        force=publish_request.force
+    )
+    return PublishResponse(**result)
+
+
+@router.post("/sensors/{sensor_id}/unpublish", response_model=PublishResponse)
+def unpublish_sensor(
+    campaign_id: int,
+    station_id: int,
+    sensor_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> PublishResponse:
+    """Unpublish a sensor."""
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+
+    publishing_service = PublishingService(db)
+    result = publishing_service.unpublish_sensor(sensor_id)
+    return PublishResponse(**result)

@@ -25,8 +25,8 @@ class StationService:
         return StationCreateResponse(
             id=response.campaignid,
         )
-    def get_stations_with_summary(self, campaign_id: int, page: int = 1, limit: int = 20) -> tuple[list[StationItemWithSummary], int]:
-        rows, total_count = self.station_repository.list_stations_and_summary(campaign_id, page, limit)
+    def get_stations_with_summary(self, campaign_id: int, page: int = 1, limit: int = 20, published_only: bool = False) -> tuple[list[StationItemWithSummary], int]:
+        rows, total_count = self.station_repository.list_stations_and_summary(campaign_id, page, limit, published_only)
         stations : list[StationItemWithSummary] = []
         for row in rows:
             sensor_types : list[str | None] = row[2]
@@ -41,12 +41,18 @@ class StationService:
                 sensor_variables=[x for x in sensor_variables if x is not None],
                 sensor_count=row[1]
             )
+            # include publishing state from DB
+            try:
+                station.is_published = getattr(row[0], 'is_published', False)
+                station.published_at = getattr(row[0], 'published_at', None)
+            except Exception:
+                pass
             stations.append(station)
         return stations, total_count
 
 
-    def get_station(self, station_id: int) -> GetStationResponse | None:
-        row = self.station_repository.get_station(station_id)
+    def get_station(self, station_id: int, published_only: bool = False) -> GetStationResponse | None:
+        row = self.station_repository.get_station(station_id, published_only)
         geometry = {}
         if row:
             try:
@@ -72,7 +78,13 @@ class StationService:
                 description=sensor.description,
                 postprocess=sensor.postprocess,
                 variablename=sensor.variablename,
-            ) for sensor in row.sensors]
+                # surface sensor publishing state
+                is_published=getattr(sensor, 'is_published', False),
+                published_at=getattr(sensor, 'published_at', None),
+            ) for sensor in row.sensors],
+            # surface station publishing state
+            is_published=getattr(row, 'is_published', False),
+            published_at=getattr(row, 'published_at', None),
         )
     def delete_station_sensors(self, station_id: int) -> bool:
         return self.station_repository.delete_station_sensors(station_id)

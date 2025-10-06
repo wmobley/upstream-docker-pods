@@ -38,6 +38,8 @@ class ListCampaignsResponseItem(BaseModel):
     start_date: datetime | None = None
     end_date: datetime | None = None
     allocation: str | None = None
+    is_published: bool = False
+    published_at: datetime | None = None
     summary: SummaryListCampaigns
     geometry: dict = Field(default_factory=dict, nullable=True)  # type: ignore[call-overload,type-arg]
 
@@ -63,6 +65,8 @@ class GetCampaignResponse(BaseModel):
     start_date: datetime | None = None
     end_date: datetime | None = None
     allocation: str
+    is_published: bool = False
+    published_at: datetime | None = None
     location: Location | None = None
     summary: SummaryGetCampaign
     geometry: dict = Field(default_factory=dict, nullable=True)  # type: ignore[call-overload,type-arg]
@@ -70,10 +74,23 @@ class GetCampaignResponse(BaseModel):
 
 
 class CampaignUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    contact_name: Optional[str] = None
-    contact_email: Optional[str] = None
-    allocation: Optional[str] = None
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
+    name: str | None = None
+    description: str | None = None
+    contact_name: str | None = None
+    contact_email: str | None = None
+    allocation: str | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+
+
+class PublishRequest(BaseModel):
+    cascade: bool = False
+    force: bool = False
+
+
+class PublishResponse(BaseModel):
+    id: int
+    type: str
+    is_published: bool
+    published_at: datetime | None = None
+    cascaded_items: List[str] = []

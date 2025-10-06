@@ -5,7 +5,7 @@ from app.services.campaign_service import CampaignService
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from app.api.dependencies.auth import get_current_user
+from app.api.dependencies.auth import get_current_user, get_current_user_optional
 from app.api.dependencies.pytas import check_allocation_permission
 from app.api.v1.schemas.station import (
     GetStationResponse,
@@ -14,6 +14,7 @@ from app.api.v1.schemas.station import (
     StationCreateResponse,
     StationUpdate,
 )
+from app.api.v1.schemas.campaign import PublishRequest, PublishResponse
 from app.api.v1.schemas.user import User
 from app.db.session import get_db
 from app.db.repositories.station_repository import StationRepository
@@ -22,6 +23,7 @@ from app.db.repositories.sensor_repository import SensorRepository
 from app.db.repositories.measurement_repository import MeasurementRepository
 from app.services.station_service import StationService
 from app.services.export_service import ExportService
+from app.services.publishing_service import PublishingService
 
 router = APIRouter(prefix="/campaigns/{campaign_id}", tags=["stations"])
 
@@ -45,15 +47,24 @@ async def list_stations(
     campaign_id: int,
     page: int = 1,
     limit: int = 20,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ) -> ListStationsResponsePagination:
-    if not check_allocation_permission(current_user, campaign_id):
-        raise HTTPException(status_code=404, detail="Allocation is incorrect")
     station_service = StationService(StationRepository(db))
-    stations, total_count = station_service.get_stations_with_summary(
-        campaign_id, page, limit
-    )
+
+    if current_user:
+        # Authenticated user - check allocation permissions, show all stations
+        if not check_allocation_permission(current_user, campaign_id):
+            raise HTTPException(status_code=404, detail="Allocation is incorrect")
+        stations, total_count = station_service.get_stations_with_summary(
+            campaign_id, page, limit, published_only=False
+        )
+    else:
+        # Unauthenticated user - show only published stations in published campaigns
+        stations, total_count = station_service.get_stations_with_summary(
+            campaign_id, page, limit, published_only=True
+        )
+
     return ListStationsResponsePagination(
         items=stations,
         total=total_count,
@@ -68,13 +79,20 @@ async def list_stations(
 async def get_station(
     station_id: int,
     campaign_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ) -> GetStationResponse:
-    if not check_allocation_permission(current_user, campaign_id):
-        raise HTTPException(status_code=404, detail="Allocation is incorrect")
     station_service = StationService(StationRepository(db))
-    station = station_service.get_station(station_id)
+
+    if current_user:
+        # Authenticated user - check allocation permissions, show all stations
+        if not check_allocation_permission(current_user, campaign_id):
+            raise HTTPException(status_code=404, detail="Station not found")
+        station = station_service.get_station(station_id, published_only=False)
+    else:
+        # Unauthenticated user - show only if published and campaign is published
+        station = station_service.get_station(station_id, published_only=True)
+
     if not station:
         raise HTTPException(status_code=404, detail="Station not found")
     return station
@@ -210,3 +228,40 @@ async def export_measurements_csv(
             "Content-Disposition": f'attachment; filename="measurements-{station_id}.csv"'
         },
     )
+
+
+@router.post("/stations/{station_id}/publish", response_model=PublishResponse)
+def publish_station(
+    campaign_id: int,
+    station_id: int,
+    publish_request: PublishRequest = PublishRequest(),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> PublishResponse:
+    """Publish a station with optional cascading to sensors and measurements."""
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+
+    publishing_service = PublishingService(db)
+    result = publishing_service.publish_station(
+        station_id,
+        cascade=publish_request.cascade,
+        force=publish_request.force
+    )
+    return PublishResponse(**result)
+
+
+@router.post("/stations/{station_id}/unpublish", response_model=PublishResponse)
+def unpublish_station(
+    campaign_id: int,
+    station_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> PublishResponse:
+    """Unpublish a station."""
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+
+    publishing_service = PublishingService(db)
+    result = publishing_service.unpublish_station(station_id)
+    return PublishResponse(**result)

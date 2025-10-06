@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 import json
 from app.api.v1.schemas.station import SensorSummaryForStations, StationsListResponseItem
 from app.db.repositories.campaign_repository import CampaignRepository
@@ -38,9 +39,10 @@ class CampaignService:
         sensor_variables: list[str] | None = None,
         page: int = 1,
         limit: int = 20,
+        published_only: bool = False,
     ) -> tuple[list[ListCampaignsResponseItem], int]:
         rows, total_count = self.campaign_repository.get_campaigns_and_summary(
-            allocations, bbox, start_date, end_date, sensor_variables, page, limit
+            allocations, bbox, start_date, end_date, sensor_variables, page, limit, published_only
         )
         items: list[ListCampaignsResponseItem] = []
         for row in rows:
@@ -55,6 +57,8 @@ class CampaignService:
                 start_date=row[0].startdate,
                 end_date=row[0].enddate,
                 allocation=row[0].allocation,
+                is_published=row[0].is_published,
+                published_at=row[0].published_at,
                 location=Location(
                     bbox_west=row[0].bbox_west,
                     bbox_east=row[0].bbox_east,
@@ -70,8 +74,8 @@ class CampaignService:
             items.append(item)
         return items, total_count
 
-    def get_campaign_with_summary(self, campaign_id: int) -> GetCampaignResponse | None:
-        campaign = self.campaign_repository.get_campaign(campaign_id)
+    def get_campaign_with_summary(self, campaign_id: int, published_only: bool = False) -> GetCampaignResponse | None:
+        campaign = self.campaign_repository.get_campaign(campaign_id, published_only=published_only)
         if not campaign:
             return None
         stations = [StationsListResponseItem(
@@ -98,6 +102,8 @@ class CampaignService:
             start_date=campaign.startdate,
             end_date=campaign.enddate,
             allocation=campaign.allocation,
+            is_published=campaign.is_published,
+            published_at=campaign.published_at,
             location=Location(
                 bbox_west=campaign.bbox_west,
                 bbox_east=campaign.bbox_east,

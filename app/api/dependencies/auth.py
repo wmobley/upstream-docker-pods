@@ -1,6 +1,7 @@
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from typing import Optional
 
 from app.api.v1.schemas.user import User
 from app.pytas.http import TASClient # type: ignore[attr-defined]
@@ -52,3 +53,22 @@ def unhash(token: str) -> dict[str, str]:
 
 def hash(payload: dict[str, str]) -> str:
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.ALG)
+
+
+# Optional authentication - allows both authenticated and unauthenticated access
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="api/v1/token", auto_error=False)
+
+async def get_current_user_optional(token: str | None = Depends(oauth2_scheme_optional)) -> User | None:
+    """Get current user if authenticated, otherwise return None for public access."""
+    if not token:
+        return None
+
+    if settings.ENV == "dev":
+        return User(username="test")
+
+    try:
+        user_dict = unhash(token)
+        return User(username=user_dict["username"])
+    except jwt.InvalidTokenError:
+        # Invalid token = treat as unauthenticated (public access)
+        return None

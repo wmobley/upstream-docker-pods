@@ -15,21 +15,21 @@ class SensorStatistics(Base):
         ForeignKey('sensors.sensorid', ondelete='CASCADE'),
         primary_key=True
     )
-    max_value: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
-    min_value: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
-    avg_value: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
-    stddev_value: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
-    percentile_90: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
-    percentile_95: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
-    percentile_99: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
-    count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    first_measurement_value: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
-    first_measurement_collectiontime: Mapped[Optional[datetime]] = mapped_column(
+    max_value: Mapped[float | None] = mapped_column(Numeric, nullable=True)
+    min_value: Mapped[float | None] = mapped_column(Numeric, nullable=True)
+    avg_value: Mapped[float | None] = mapped_column(Numeric, nullable=True)
+    stddev_value: Mapped[float | None] = mapped_column(Numeric, nullable=True)
+    percentile_90: Mapped[float | None] = mapped_column(Numeric, nullable=True)
+    percentile_95: Mapped[float | None] = mapped_column(Numeric, nullable=True)
+    percentile_99: Mapped[float | None] = mapped_column(Numeric, nullable=True)
+    count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    first_measurement_value: Mapped[float | None] = mapped_column(Numeric, nullable=True)
+    first_measurement_collectiontime: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=True
     )
-    last_measurement_value: Mapped[Optional[float]] = mapped_column(Numeric, nullable=True)
-    last_measurement_collectiontime: Mapped[Optional[datetime]] = mapped_column(
+    last_measurement_value: Mapped[float | None] = mapped_column(Numeric, nullable=True)
+    last_measurement_collectiontime: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=True
     )

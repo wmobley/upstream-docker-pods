@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 
 from pydantic import BaseModel
 
@@ -9,10 +9,10 @@ from app.api.v1.schemas.measurement import MeasurementIn
 # Pydantic model for incoming sensor data
 class SensorIn(BaseModel):
     alias: str | float
-    description: Optional[str] = None
-    postprocess: Optional[bool] = True
-    postprocessscript: Optional[str] = None
-    units: Optional[str] = None
+    description: str | None = None
+    postprocess: bool | None = True
+    postprocessscript: str | None = None
+    units: str | None = None
     variablename: str | None = None
 
 class SensorCreateResponse(BaseModel):
@@ -43,6 +43,8 @@ class SensorItem(BaseModel):
     units: str | None = None
     variablename: str | None = None
     statistics: SensorStatistics | None = None
+    is_published: bool = False
+    published_at: datetime | None = None
 
 class ListSensorsResponse(SensorItem):
     pass
@@ -66,12 +68,12 @@ class ListSensorsResponsePagination(BaseModel):
 
 
 class SensorUpdate(BaseModel):
-    alias: Optional[str] = None
-    description: Optional[str] = None
-    postprocess: Optional[bool] = True
-    postprocessscript: Optional[str] = None
-    units: Optional[str] = None
-    variablename: Optional[str] | None = None
+    alias: str | None = None
+    description: str | None = None
+    postprocess: bool | None = True
+    postprocessscript: str | None = None
+    units: str | None = None
+    variablename: str | None = None
 
 
 class ForceUpdateSensorStatisticsResponse(BaseModel):

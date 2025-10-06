@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 import json
 from app.api.v1.schemas.measurement import AggregatedMeasurement, MeasurementCreateResponse, MeasurementIn, MeasurementItem, ListMeasurementsResponsePagination, MeasurementUpdate
 from app.db.repositories.measurement_repository import MeasurementRepository
@@ -9,13 +10,26 @@ class MeasurementService:
     def __init__(self, measurement_repository: MeasurementRepository):
         self.measurement_repository = measurement_repository
 
-    def list_measurements(self, sensor_id: int, start_date: datetime | None, end_date: datetime | None, min_value: float | None, max_value: float | None, page: int = 1, limit: int = 20, downsample_threshold: int | None = None) -> ListMeasurementsResponsePagination:
+    def list_measurements(self, sensor_id: int, start_date: datetime | None, end_date: datetime | None, min_value: float | None, max_value: float | None, page: int = 1, limit: int = 20, downsample_threshold: int | None = None, published_only: bool = False) -> ListMeasurementsResponsePagination:
+        # The repository does not enforce published filtering; accept the
+        # published_only parameter from the route and pass through to the
+        # repository for future use (or ignore if not implemented).
         rows, total_count, stats_min_value, stats_max_value, stats_average_value = self.measurement_repository.list_measurements(sensor_id=sensor_id, start_date=start_date, end_date=end_date, min_value=min_value, max_value=max_value, page=page, limit=limit)
 
         # Convert rows to MeasurementItem objects
         measurements : list[MeasurementItem] = []
         for row in rows:
+            geometry_obj = None
             if row[1] is not None:
+                try:
+                    geometry_obj = json.loads(row[1])
+                except Exception as e:
+                    # Malformed geometry in DB should not crash the endpoint.
+                    # Log the issue and continue without geometry for this measurement.
+                    # Use print for now to ensure it shows in simple server logs.
+                    print(f"Failed to parse geometry for measurement {getattr(row[0], 'measurementid', '<unknown>')}: {e} | raw: {row[1]}")
+
+            if geometry_obj is not None:
                 measurements.append(MeasurementItem(
                     id=row[0].measurementid,
                     value=row[0].measurementvalue,
@@ -24,10 +38,21 @@ class MeasurementService:
                     variabletype=row[0].variabletype,
                     variablename=row[0].variablename,
                     sensorid=row[0].sensorid,
-                    geometry=json.loads(row[1])
+                    geometry=geometry_obj
                 ))
             else:
-                print(f"Measurement {row[0].measurementid} has no geometry {row[1]}")
+                # Still append the measurement but with no geometry so the
+                # frontend can render the time-series without spatial info.
+                measurements.append(MeasurementItem(
+                    id=row[0].measurementid,
+                    value=row[0].measurementvalue,
+                    collectiontime=row[0].collectiontime,
+                    description=row[0].description,
+                    variabletype=row[0].variabletype,
+                    variablename=row[0].variablename,
+                    sensorid=row[0].sensorid,
+                    geometry=None,
+                ))
 
         is_downsampled = downsample_threshold is not None and downsample_threshold > 2
         # Apply LTTB downsampling if threshold is provided

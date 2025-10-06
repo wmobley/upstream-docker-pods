@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import List, Optional
 
 from geoalchemy2 import Geometry
 from geojson_pydantic import Point
@@ -8,17 +8,17 @@ from pydantic import BaseModel, Field
 
 # Pydantic model for incoming measurement data
 class MeasurementIn(BaseModel):
-    sensorid: Optional[int] = None
+    sensorid: int | None = None
     collectiontime: datetime
-    geometry: Optional[str] = Field(
+    geometry: str | None = Field(
         default=None,
         description='Geometry in Well-Known Text (WKT) format, e.g. "POINT(longitude latitude)"',
          examples=['POINT(10.12345 20.54321)']
     )
     measurementvalue: float
-    variablename: Optional[str] = None  # modified
-    variabletype: Optional[str] = None
-    description: Optional[str] = None
+    variablename: str | None = None  # modified
+    variabletype: str | None = None
+    description: str | None = None
 
 class MeasurementCreateResponse(BaseModel):
     id: int
@@ -67,14 +67,14 @@ class AggregatedMeasurement(BaseModel):
 
 # Pydantic model for incoming measurement data
 class MeasurementUpdate(BaseModel):
-    sensorid: Optional[int] = None
-    collectiontime: Optional[datetime] = None
-    geometry: Optional[str] = Field(
+    sensorid: int | None = None
+    collectiontime: datetime | None = None
+    geometry: str | None = Field(
         default=None,
         description='Geometry in Well-Known Text (WKT) format, e.g. "POINT(longitude latitude)"',
          examples=['POINT(10.12345 20.54321)']
     )
-    measurementvalue: Optional[float] = None
-    variablename: Optional[str] = None  # modified
-    variabletype: Optional[str] = None
-    description: Optional[str] = None
+    measurementvalue: float | None = None
+    variablename: str | None = None  # modified
+    variabletype: str | None = None
+    description: str | None = None

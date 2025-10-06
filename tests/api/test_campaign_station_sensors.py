@@ -118,12 +118,12 @@ def mock_sensor_repository(sample_sensors: list[Sensor], sample_statistics: list
         station_id: int,
         page: int = 1,
         limit: int = 20,
-        variable_name: str | None = None,
-        units: str | None = None,
-        alias: str | None = None,
-        description_contains: str | None = None,
-        postprocess: bool | None = None,
-        sort_by: SortField | None = None,
+        variable_name: Optional[str] = None,
+        units: Optional[str] = None,
+        alias: Optional[str] = None,
+        description_contains: Optional[str] = None,
+        postprocess: Optional[bool] = None,
+        sort_by: Optional[SortField] = None,
         sort_order: str = "asc"
     ) -> Tuple[List[Tuple[Sensor, SensorStatistics]], int]:
         # Filter sensors based on parameters

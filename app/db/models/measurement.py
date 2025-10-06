@@ -17,9 +17,14 @@ class Measurement(Base):
     collectiontime: Mapped[datetime] = mapped_column()
     measurementvalue: Mapped[float] = mapped_column()
     geometry: Mapped[Geometry] = mapped_column(Geometry("POINT", srid=4326))
-    variablename: Mapped[Optional[str]] = mapped_column()
-    variabletype: Mapped[Optional[str]] = mapped_column()
-    description: Mapped[Optional[str]] = mapped_column()
+    variablename: Mapped[str | None] = mapped_column()
+    variabletype: Mapped[str | None] = mapped_column()
+    description: Mapped[str | None] = mapped_column()
+
+    # publishing fields
+    is_published: Mapped[bool] = mapped_column(default=False)
+    published_at: Mapped[datetime | None] = mapped_column()
+
     # relationships
     sensor: Mapped["Sensor"] = relationship(
         back_populates="measurements", lazy="joined"

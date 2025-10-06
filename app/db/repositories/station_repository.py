@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
+import logging
 from app.api.v1.schemas.station import StationCreate, StationUpdate
 from app.db.models.sensor import Sensor
 from app.db.models.station import Station
@@ -30,7 +31,7 @@ class StationRepository:
         self.db.refresh(db_station)
         return db_station
 
-    def get_station(self, station_id: int) -> Station | None:
+    def get_station(self, station_id: int, published_only: bool = False) -> Station | None:
         # Query the station with its sensors and convert geometry to GeoJSON
         result = self.db.query(
             Station,
@@ -39,10 +40,21 @@ class StationRepository:
             joinedload(Station.sensors)
         ).filter(
             Station.stationid == station_id
-        ).first()
+        )
+
+        if published_only:
+            result = result.filter(Station.is_published == True)
+
+        result = result.first()
 
         if result:
             station, geometry_str = result
+            # Debug: log publishing state retrieved from DB
+            try:
+                import logging
+                logging.info("StationRepository.get_station: fetched station %s is_published=%s published_at=%s", station.stationid, getattr(station, 'is_published', None), getattr(station, 'published_at', None))
+            except Exception:
+                pass
             # Create a new Station instance with the GeoJSON geometry
             station_dict = {
                 'stationid': station.stationid,
@@ -56,30 +68,44 @@ class StationRepository:
                 'startdate': station.startdate,
                 'station_type': station.station_type,
                 'geometry': geometry_str,
-                'sensors': station.sensors
+                'sensors': station.sensors,
+                # publishing fields - include so callers can see current DB state
+                'is_published': getattr(station, 'is_published', False),
+                'published_at': getattr(station, 'published_at', None),
             }
+            # Log the dictionary we are about to return so callers can inspect values
+            try:
+                logging.info("StationRepository.get_station: station_dict=%s", station_dict)
+            except Exception:
+                # best-effort logging; ignore failures
+                pass
             return Station(**station_dict)
         return None
 
     def get_stations_by_campaign_id(self, campaign_id: int, page: int = 1, limit: int = 20) -> list[Station]:
         return self.db.query(Station).filter(Station.campaignid == campaign_id).offset((page - 1) * limit).limit(limit).all()
 
-    def list_stations_and_summary(self, campaign_id: int, page: int = 1, limit: int = 20) -> tuple[list[tuple[Station, int, list[str | None], list[str | None], str | None]], int]:
+    def list_stations_and_summary(self, campaign_id: int, page: int = 1, limit: int = 20, published_only: bool = False) -> tuple[list[tuple[Station, int, list[str | None], list[str | None], str | None]], int]:
         query = self.db.query(Station,
             func.count(Sensor.sensorid.distinct()).label('sensor_count'),
             func.array_agg(func.distinct(Sensor.alias)).label('sensor_types'),
             func.array_agg(func.distinct(Sensor.variablename)).label('sensor_variables'),
             func.ST_AsGeoJSON(Station.geometry).label('geometry')
-        ).select_from(Station).outerjoin(Sensor).filter(Station.campaignid == campaign_id).group_by(Station.stationid)
+        ).select_from(Station).outerjoin(Sensor).filter(Station.campaignid == campaign_id)
+
+        if published_only:
+            query = query.filter(Station.is_published == True)
+
+        query = query.group_by(Station.stationid)
 
         total_count = query.count()
         return query.offset((page - 1) * limit).limit(limit).all(), total_count
 
     def get_stations(
         self,
-        campaign_id: Optional[int] = None,
-        active: Optional[bool] = None,
-        start_date: Optional[datetime] = None,
+        campaign_id: int | None = None,
+        active: bool | None = None,
+        start_date: datetime | None = None,
         page: int = 1,
         limit: int = 20,
     ) -> tuple[list[Station], int]:

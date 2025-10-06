@@ -15,12 +15,12 @@ class Station(Base):
         ForeignKey("campaigns.campaignid"), nullable=True
     )
     stationname: Mapped[str] = mapped_column(unique=True)
-    projectid: Mapped[Optional[str]] = mapped_column()
-    description: Mapped[Optional[str]] = mapped_column()
-    contactname: Mapped[Optional[str]] = mapped_column()
-    contactemail: Mapped[Optional[str]] = mapped_column()
-    active: Mapped[Optional[bool]] = mapped_column()
-    startdate: Mapped[Optional[datetime]] = mapped_column()
+    projectid: Mapped[str | None] = mapped_column()
+    description: Mapped[str | None] = mapped_column()
+    contactname: Mapped[str | None] = mapped_column()
+    contactemail: Mapped[str | None] = mapped_column()
+    active: Mapped[bool | None] = mapped_column()
+    startdate: Mapped[datetime | None] = mapped_column()
 
 
     # Station type
@@ -28,6 +28,10 @@ class Station(Base):
 
     # Location for static stations
     geometry: Mapped[geoalchemy2.types.Geometry] = mapped_column(geoalchemy2.types.Geometry("GEOMETRY", srid=4326))
+
+    # publishing fields
+    is_published: Mapped[bool] = mapped_column(default=False)
+    published_at: Mapped[datetime | None] = mapped_column()
 
     # relationships
     campaign: Mapped["Campaign"] = relationship(

@@ -36,9 +36,9 @@ class PyTASAllocation(BaseModel):
     end: str
     status: str
     justification: str
-    decisionSummary: Optional[str]
+    decisionSummary: str | None
     dateRequested: str
-    dateReviewed: Optional[str]
+    dateReviewed: str | None
     computeRequested: int
     computeAllocated: int
     storageRequested: int
