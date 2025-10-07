@@ -124,7 +124,8 @@ class TestCampaignStationSensorRoutes:
                 description_contains=None,
                 postprocess=None,
                 sort_by=SortField.ALIAS,
-                sort_order="desc"
+                sort_order="desc",
+                published_only=False
             )
 
     def test_list_sensors_permission_denied(self, client_with_auth):
@@ -147,7 +148,7 @@ class TestCampaignStationSensorRoutes:
             )
             assert response.status_code == 200
             assert response.json()["id"] == self.sensor_id
-            mock_get.assert_called_once_with(self.sensor_id)
+            mock_get.assert_called_once_with(self.sensor_id, published_only=False)
 
     def test_get_sensor_not_found(self, client_with_auth):
         with patch('app.api.v1.routes.campaigns.campaign_station_sensors.check_allocation_permission', return_value=True), \
@@ -157,7 +158,7 @@ class TestCampaignStationSensorRoutes:
             )
             assert response.status_code == 404
             assert response.json()["detail"] == "Sensor not found"
-            mock_get.assert_called_once_with(self.sensor_id)
+            mock_get.assert_called_once_with(self.sensor_id, published_only=False)
 
     # DELETE /campaigns/{campaign_id}/stations/{station_id}/sensors
     # Note: The route function is named delete_sensor, but it deletes all sensors for a station.

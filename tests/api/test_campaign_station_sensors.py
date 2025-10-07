@@ -40,7 +40,8 @@ def sample_sensors() -> list[Sensor]:
             postprocess=True,
             postprocessscript="temp * 1.8 + 32",
             units="°F",
-            variablename="temperature"
+            variablename="temperature",
+            is_published=True
         ),
         Sensor(
             sensorid=2,
@@ -50,7 +51,8 @@ def sample_sensors() -> list[Sensor]:
             postprocess=False,
             postprocessscript=None,
             units="%",
-            variablename="humidity"
+            variablename="humidity",
+            is_published=True
         ),
         Sensor(
             sensorid=3,
@@ -60,7 +62,8 @@ def sample_sensors() -> list[Sensor]:
             postprocess=True,
             postprocessscript="pressure * 0.000145038",
             units="psi",
-            variablename="pressure"
+            variablename="pressure",
+            is_published=True
         )
     ]
 
@@ -124,7 +127,8 @@ def mock_sensor_repository(sample_sensors: list[Sensor], sample_statistics: list
         description_contains: Optional[str] = None,
         postprocess: Optional[bool] = None,
         sort_by: Optional[SortField] = None,
-        sort_order: str = "asc"
+        sort_order: str = "asc",
+        published_only: bool = False
     ) -> Tuple[List[Tuple[Sensor, SensorStatistics]], int]:
         # Filter sensors based on parameters
         filtered_sensors = sample_sensors.copy()
@@ -132,6 +136,10 @@ def mock_sensor_repository(sample_sensors: list[Sensor], sample_statistics: list
 
         # Apply station_id filter
         filtered_sensors = [s for s in filtered_sensors if s.stationid == station_id]
+
+        # Apply published_only filter
+        if published_only:
+            filtered_sensors = [s for s in filtered_sensors if getattr(s, 'is_published', False)]
 
         # Apply variable_name filter
         if variable_name:

@@ -26,7 +26,7 @@ class MeasurementCreateResponse(BaseModel):
 class MeasurementItem(BaseModel):
     id: int
     value: float
-    geometry: Point
+    geometry: Point | None
     collectiontime: datetime
     sensorid: int | None = None
     variablename: str | None = None  # modified

@@ -6,8 +6,24 @@ from sqlalchemy.orm import Session
 from app.main import app
 from app.api.v1.schemas.station import StationCreate, StationUpdate, StationCreateResponse, GetStationResponse, StationItemWithSummary
 from app.api.v1.schemas.user import User
-from app.api.dependencies.auth import get_current_user
+from app.api.dependencies.auth import get_current_user, get_current_user_optional
 from app.db.session import get_db
+import jwt
+from datetime import datetime, timedelta
+
+TEST_JWT_SECRET = "test-secret-key"
+TEST_JWT_ALGORITHM = "HS256"
+
+@pytest.fixture
+def auth_headers() -> dict[str, str]:
+    """Create authentication headers with a JWT token"""
+    payload = {
+        "sub": "testuser",
+        "exp": datetime.utcnow() + timedelta(minutes=30),
+        "iat": datetime.utcnow(),
+    }
+    token = jwt.encode(payload, TEST_JWT_SECRET, algorithm=TEST_JWT_ALGORITHM)
+    return {"Authorization": f"Bearer {token}"}
 
 # Mock data for testing
 MOCK_USER = User(
@@ -81,6 +97,7 @@ def client_with_auth():
         'SECRET_KEY': 'test-secret-key',
     }):
         app.dependency_overrides[get_current_user] = override_get_current_user
+        app.dependency_overrides[get_current_user_optional] = override_get_current_user
         app.dependency_overrides[get_db] = override_get_db
         client = TestClient(app)
         yield client
@@ -138,7 +155,7 @@ class TestCampaignStationRoutes:
             assert data["total"] == 1
             assert len(data["items"]) == 1
             assert data["items"][0]["id"] == MOCK_STATION_ITEM_SUMMARY["id"]
-            mock_list.assert_called_once_with(self.campaign_id, 1, 20)
+            mock_list.assert_called_once_with(self.campaign_id, 1, 20, published_only=False)
 
     def test_list_stations_permission_denied(self, client_with_auth):
         with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=False):
@@ -154,7 +171,7 @@ class TestCampaignStationRoutes:
             response = client_with_auth.get(f"/api/v1/campaigns/{self.campaign_id}/stations/{self.station_id}")
             assert response.status_code == 200
             assert response.json()["id"] == self.station_id
-            mock_get.assert_called_once_with(self.station_id)
+            mock_get.assert_called_once_with(self.station_id, published_only=False)
 
     def test_get_station_not_found(self, client_with_auth):
         with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=True), \
@@ -162,7 +179,7 @@ class TestCampaignStationRoutes:
             response = client_with_auth.get(f"/api/v1/campaigns/{self.campaign_id}/stations/{self.station_id}")
             assert response.status_code == 404
             assert response.json()["detail"] == "Station not found"
-            mock_get.assert_called_once_with(self.station_id)
+            mock_get.assert_called_once_with(self.station_id, published_only=False)
 
     # DELETE /campaigns/{campaign_id}/stations
     # Note: The route function is named delete_sensor, but it deletes campaign stations.

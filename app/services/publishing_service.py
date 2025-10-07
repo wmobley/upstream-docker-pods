@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Any
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 import logging
@@ -16,7 +16,7 @@ class PublishingService:
     def __init__(self, db: Session):
         self.db = db
 
-    def publish_campaign(self, campaign_id: int, cascade: bool = False, force: bool = False) -> dict:
+    def publish_campaign(self, campaign_id: int, cascade: bool = False, force: bool = False) -> dict[str, Any]:
         """Publish a campaign and optionally cascade to stations, sensors, and measurements."""
         campaign = self.db.query(Campaign).filter(Campaign.campaignid == campaign_id).first()
         if not campaign:
@@ -55,7 +55,7 @@ class PublishingService:
             "cascaded_items": cascaded_items
         }
 
-    def publish_station(self, station_id: int, cascade: bool = False, force: bool = False) -> dict:
+    def publish_station(self, station_id: int, cascade: bool = False, force: bool = False) -> dict[str, Any]:
         """Publish a station and optionally cascade to sensors and measurements."""
         station = self.db.query(Station).filter(Station.stationid == station_id).first()
         if not station:
@@ -70,7 +70,7 @@ class PublishingService:
         # so clients can publish stations independently of the campaign.
         return self._publish_station_internal(station, cascade)
 
-    def _publish_station_internal(self, station: Station, cascade: bool = False) -> dict:
+    def _publish_station_internal(self, station: Station, cascade: bool = False) -> dict[str, Any]:
         """Internal method to publish a station."""
         logging.info("_publish_station_internal: publishing station %s (before: is_published=%s)", station.stationid, getattr(station, 'is_published', None))
         station.is_published = True
@@ -100,7 +100,7 @@ class PublishingService:
             "cascaded_items": cascaded_items
         }
 
-    def publish_sensor(self, sensor_id: int, cascade: bool = False, force: bool = False) -> dict:
+    def publish_sensor(self, sensor_id: int, cascade: bool = False, force: bool = False) -> dict[str, Any]:
         """Publish a sensor and optionally cascade to measurements."""
         sensor = self.db.query(Sensor).filter(Sensor.sensorid == sensor_id).first()
         if not sensor:
@@ -113,7 +113,7 @@ class PublishingService:
         # been removed to allow independent publishing of sensors.
         return self._publish_sensor_internal(sensor, cascade)
 
-    def _publish_sensor_internal(self, sensor: Sensor, cascade: bool = False) -> dict:
+    def _publish_sensor_internal(self, sensor: Sensor, cascade: bool = False) -> dict[str, Any]:
         """Internal method to publish a sensor."""
         sensor.is_published = True
         sensor.published_at = datetime.utcnow()
@@ -140,7 +140,7 @@ class PublishingService:
             "cascaded_items": cascaded_items
         }
 
-    def publish_measurement(self, measurement_id: int, force: bool = False) -> dict:
+    def publish_measurement(self, measurement_id: int, force: bool = False) -> dict[str, Any]:
         """Publish a measurement."""
         measurement = self.db.query(Measurement).filter(Measurement.measurementid == measurement_id).first()
         if not measurement:
@@ -153,7 +153,7 @@ class PublishingService:
         # publishing of measurements.
         return self._publish_measurement_internal(measurement)
 
-    def _publish_measurement_internal(self, measurement: Measurement) -> dict:
+    def _publish_measurement_internal(self, measurement: Measurement) -> dict[str, Any]:
         """Internal method to publish a measurement."""
         measurement.is_published = True
         measurement.published_at = datetime.utcnow()
@@ -170,7 +170,7 @@ class PublishingService:
             "cascaded_items": []
         }
 
-    def unpublish_campaign(self, campaign_id: int) -> dict:
+    def unpublish_campaign(self, campaign_id: int) -> dict[str, Any]:
         """Unpublish a campaign."""
         campaign = self.db.query(Campaign).filter(Campaign.campaignid == campaign_id).first()
         if not campaign:
@@ -191,7 +191,7 @@ class PublishingService:
             "cascaded_items": []
         }
 
-    def unpublish_station(self, station_id: int) -> dict:
+    def unpublish_station(self, station_id: int) -> dict[str, Any]:
         """Unpublish a station."""
         station = self.db.query(Station).filter(Station.stationid == station_id).first()
         if not station:
@@ -212,7 +212,7 @@ class PublishingService:
             "cascaded_items": []
         }
 
-    def unpublish_sensor(self, sensor_id: int) -> dict:
+    def unpublish_sensor(self, sensor_id: int) -> dict[str, Any]:
         """Unpublish a sensor."""
         sensor = self.db.query(Sensor).filter(Sensor.sensorid == sensor_id).first()
         if not sensor:
@@ -233,7 +233,7 @@ class PublishingService:
             "cascaded_items": []
         }
 
-    def unpublish_measurement(self, measurement_id: int) -> dict:
+    def unpublish_measurement(self, measurement_id: int) -> dict[str, Any]:
         """Unpublish a measurement."""
         measurement = self.db.query(Measurement).filter(Measurement.measurementid == measurement_id).first()
         if not measurement:

@@ -32,55 +32,38 @@ async def list_sensors(
     alias: str | None = Query(None, description="Filter sensors by alias (partial match)"),
     description_contains: str | None = Query(None, description="Filter sensors by text in description (partial match)"),
     postprocess: bool | None = Query(None, description="Filter sensors by postprocess flag"),
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     sort_by: SortField | None = Query(None, description="Sort sensors by field"),
     sort_order: str = Query("asc", description="Sort order (asc or desc)"),
 ) -> ListSensorsResponsePagination:
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
     sensor_service = SensorService(
         sensor_repository=SensorRepository(db),
         measurement_repository=MeasurementRepository(db)
     )
-
-    if current_user:
-        # Authenticated user - check allocation permissions, show all sensors
-        if not check_allocation_permission(current_user, campaign_id):
-            raise HTTPException(status_code=404, detail="Allocation is incorrect")
-        items, total_count = sensor_service.get_sensors_by_station_id(
-            station_id=station_id,
-            page=page,
-            limit=limit,
-            variable_name=variable_name,
-            units=units,
-            alias=alias,
-            description_contains=description_contains,
-            postprocess=postprocess,
-            sort_by=sort_by,
-            sort_order=sort_order,
-            published_only=False
-        )
-    else:
-        # Unauthenticated user - show only published sensors in published stations/campaigns
-        items, total_count = sensor_service.get_sensors_by_station_id(
-            station_id=station_id,
-            page=page,
-            limit=limit,
-            variable_name=variable_name,
-            units=units,
-            alias=alias,
-            description_contains=description_contains,
-            postprocess=postprocess,
-            sort_by=sort_by,
-            sort_order=sort_order,
-            published_only=True
-        )
-
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    items, total_count = sensor_service.get_sensors_by_station_id(
+        station_id=station_id,
+        page=page,
+        limit=limit,
+        variable_name=variable_name,
+        units=units,
+        alias=alias,
+        description_contains=description_contains,
+        postprocess=postprocess,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        published_only=False
+    )
     return ListSensorsResponsePagination(
         items=items,
         total=total_count,
         page=page,
         size=limit,
-        pages=(total_count + limit - 1) // limit,
+        pages=(total_count + limit - 1) // limit if limit > 0 else 0,
     )
 
 @router.get("/sensors/{sensor_id}")
@@ -88,22 +71,20 @@ async def get_sensor(
     station_id: int,
     sensor_id: int,
     campaign_id: int,
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> GetSensorResponse:
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     sensor_service = SensorService(
         sensor_repository=SensorRepository(db),
         measurement_repository=MeasurementRepository(db)
     )
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
 
-    if current_user:
-        # Authenticated user - check allocation permissions, show all sensors
-        if not check_allocation_permission(current_user, campaign_id):
-            raise HTTPException(status_code=404, detail="Sensor not found")
-        response = sensor_service.get_sensor(sensor_id, published_only=False)
-    else:
-        # Unauthenticated user - show only if published and parent entities are published
-        response = sensor_service.get_sensor(sensor_id, published_only=True)
+    response = sensor_service.get_sensor(sensor_id, published_only=False)
 
     if response is None:
         raise HTTPException(status_code=404, detail="Sensor not found")

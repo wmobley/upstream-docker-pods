@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from typing import Any
 
 from app.api.dependencies.auth import get_current_user
 from app.db.session import get_db
@@ -14,7 +15,7 @@ def get_campaign_permissions(
     campaign_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> dict:
+) -> dict[str, Any]:
     """
     Get user permissions for a specific campaign.
     Returns what actions the current user can perform on the campaign.

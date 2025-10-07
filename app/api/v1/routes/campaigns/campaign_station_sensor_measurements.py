@@ -44,7 +44,7 @@ async def get_sensor_measurements(
     end_date: datetime | None = None,
     min_measurement_value: float | None = None,
     max_measurement_value: float | None = None,
-    current_user: User | None = Depends(get_current_user_optional),
+    current_user: User = Depends(get_current_user),
     limit: int = 1000,
     page: int = 1,
     downsample_threshold: int | None = None,
@@ -53,14 +53,9 @@ async def get_sensor_measurements(
     measurement_repository = MeasurementRepository(db)
     measurement_service = MeasurementService(measurement_repository)
 
-    if current_user:
-        # Authenticated user - check allocation permissions, show all measurements
-        if not check_allocation_permission(current_user, campaign_id):
-            raise HTTPException(status_code=404, detail="Allocation is incorrect")
-        return measurement_service.list_measurements(sensor_id=sensor_id, start_date=start_date, end_date=end_date, min_value=min_measurement_value, max_value=max_measurement_value, page=page, limit=limit, downsample_threshold=downsample_threshold, published_only=False)
-    else:
-        # Unauthenticated user - show only published measurements
-        return measurement_service.list_measurements(sensor_id=sensor_id, start_date=start_date, end_date=end_date, min_value=min_measurement_value, max_value=max_measurement_value, page=page, limit=limit, downsample_threshold=downsample_threshold, published_only=True)
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    return measurement_service.list_measurements(sensor_id=sensor_id, start_date=start_date, end_date=end_date, min_value=min_measurement_value, max_value=max_measurement_value, page=page, limit=limit, downsample_threshold=downsample_threshold, published_only=False)
 
 @router.get("/measurements/confidence-intervals", response_model=list[AggregatedMeasurement])
 async def get_measurements_with_confidence_intervals(
