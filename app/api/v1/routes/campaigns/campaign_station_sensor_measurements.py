@@ -3,15 +3,17 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
-from app.api.dependencies.auth import get_current_user
+from app.api.dependencies.auth import get_current_user_unified, get_current_user_unified_optional
 from app.api.dependencies.pytas import check_allocation_permission
 from app.api.v1.schemas.user import User
 from app.api.v1.schemas.measurement import AggregatedMeasurement, ListMeasurementsResponsePagination, MeasurementCreateResponse, MeasurementUpdate, MeasurementIn
+from app.api.v1.schemas.campaign import PublishRequest, PublishResponse
 from app.db.repositories.measurement_repository import MeasurementRepository
 from app.db.repositories.sensor_repository import SensorRepository
 from app.db.session import get_db
 from app.services.measurement_service import MeasurementService
 from app.services.sensor_service import SensorService
+from app.services.publishing_service import PublishingService
 
 router = APIRouter(
     prefix="/campaigns/{campaign_id}/stations/{station_id}/sensors/{sensor_id}",
@@ -24,7 +26,7 @@ async def create_measurement(measurement: MeasurementIn,
                          station_id: int,
                          sensor_id: int,
                           campaign_id: int,
-                         current_user: User = Depends(get_current_user),
+                         current_user: User = Depends(get_current_user_unified),
                            db: Session = Depends(get_db)) -> MeasurementCreateResponse:
     if not check_allocation_permission(current_user, campaign_id):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
@@ -42,17 +44,18 @@ async def get_sensor_measurements(
     end_date: datetime | None = None,
     min_measurement_value: float | None = None,
     max_measurement_value: float | None = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_unified),
     limit: int = 1000,
     page: int = 1,
     downsample_threshold: int | None = None,
     db: Session = Depends(get_db),
 ) -> ListMeasurementsResponsePagination:
-    if not check_allocation_permission(current_user, campaign_id):
-        raise HTTPException(status_code=404, detail="Allocation is incorrect")
     measurement_repository = MeasurementRepository(db)
     measurement_service = MeasurementService(measurement_repository)
-    return measurement_service.list_measurements(sensor_id=sensor_id, start_date=start_date, end_date=end_date, min_value=min_measurement_value, max_value=max_measurement_value, page=page, limit=limit, downsample_threshold=downsample_threshold)
+
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    return measurement_service.list_measurements(sensor_id=sensor_id, start_date=start_date, end_date=end_date, min_value=min_measurement_value, max_value=max_measurement_value, page=page, limit=limit, downsample_threshold=downsample_threshold, published_only=False)
 
 @router.get("/measurements/confidence-intervals", response_model=list[AggregatedMeasurement])
 async def get_measurements_with_confidence_intervals(
@@ -78,7 +81,7 @@ def delete_sensor_measurements(
     station_id: int,
     sensor_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_unified),
 ) -> Response:
     if not check_allocation_permission(current_user, campaign_id):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
@@ -97,7 +100,7 @@ def update_sensor(
     campaign_id: int,
     measurement: MeasurementUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_unified),
     ) -> MeasurementCreateResponse:
     if not check_allocation_permission(current_user, campaign_id):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
@@ -117,7 +120,7 @@ def partial_update_sensor(
     measurement_id:  int,
     measurement: MeasurementUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_unified),
 ) -> MeasurementCreateResponse:
     if not check_allocation_permission(current_user, campaign_id):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
@@ -128,3 +131,43 @@ def partial_update_sensor(
     if not updated_measurement:
         raise HTTPException(status_code=404, detail="Measurement not found")
     return updated_measurement
+
+
+@router.post("/measurements/{measurement_id}/publish", response_model=PublishResponse)
+def publish_measurement(
+    campaign_id: int,
+    station_id: int,
+    sensor_id: int,
+    measurement_id: int,
+    publish_request: PublishRequest = PublishRequest(),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_unified),
+) -> PublishResponse:
+    """Publish a measurement."""
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+
+    publishing_service = PublishingService(db)
+    result = publishing_service.publish_measurement(
+        measurement_id,
+        force=publish_request.force
+    )
+    return PublishResponse(**result)
+
+
+@router.post("/measurements/{measurement_id}/unpublish", response_model=PublishResponse)
+def unpublish_measurement(
+    campaign_id: int,
+    station_id: int,
+    sensor_id: int,
+    measurement_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_unified),
+) -> PublishResponse:
+    """Unpublish a measurement."""
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+
+    publishing_service = PublishingService(db)
+    result = publishing_service.unpublish_measurement(measurement_id)
+    return PublishResponse(**result)

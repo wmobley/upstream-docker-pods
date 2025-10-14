@@ -38,12 +38,16 @@ class CampaignService:
         sensor_variables: list[str] | None = None,
         page: int = 1,
         limit: int = 20,
+        published_only: bool = False,
     ) -> tuple[list[ListCampaignsResponseItem], int]:
         rows, total_count = self.campaign_repository.get_campaigns_and_summary(
             allocations, bbox, start_date, end_date, sensor_variables, page, limit
         )
         items: list[ListCampaignsResponseItem] = []
         for row in rows:
+            # Filter by published status if requested
+            if published_only and hasattr(row[0], 'published') and not row[0].published:
+                continue
             sensor_types : list[str | None] = row[3]
             variable_names : list[str | None] = row[4]
             item = ListCampaignsResponseItem(
@@ -70,9 +74,13 @@ class CampaignService:
             items.append(item)
         return items, total_count
 
-    def get_campaign_with_summary(self, campaign_id: int) -> GetCampaignResponse | None:
+    def get_campaign_with_summary(self, campaign_id: int, published_only: bool = False) -> GetCampaignResponse | None:
         campaign = self.campaign_repository.get_campaign(campaign_id)
         if not campaign:
+            return None
+
+        # Filter by published status if requested
+        if published_only and hasattr(campaign, 'published') and not campaign.published:
             return None
         stations = [StationsListResponseItem(
             id=station.stationid,

@@ -7,7 +7,7 @@ from starlette.formparsers import MultiPartParser
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_user
+from app.api.dependencies.auth import get_current_user_unified
 from app.api.v1.schemas.user import User
 from app.api.v1.schemas.error import Error
 from app.db.models.upload_file_event import UploadFileEvent
@@ -39,7 +39,7 @@ def post_sensor_and_measurement(
     upload_file_sensors: Annotated[UploadFile, File(description="File with sensors.")],
     upload_file_measurements: Annotated[UploadFile, File(description="File with measurements.")],
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_unified),
 ) -> Dict[str, Any]:
     """Process sensor and measurement files and store data in the database."""
     start_time = time.time()

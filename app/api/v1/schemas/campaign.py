@@ -77,3 +77,23 @@ class CampaignUpdate(BaseModel):
     allocation: Optional[str] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
+
+
+class PublishRequest(BaseModel):
+    """Request schema for publishing campaigns, stations, or sensors."""
+    cascade: bool = Field(
+        default=False,
+        description="If true, cascade publish to child resources (e.g., sensors when publishing station)"
+    )
+    force: bool = Field(
+        default=False,
+        description="If true, force publish even if already published"
+    )
+
+
+class PublishResponse(BaseModel):
+    """Response schema for publish/unpublish operations."""
+    success: bool
+    message: str
+    published_count: int = Field(default=0, description="Number of items published/unpublished")
+    errors: List[str] = Field(default_factory=list, description="Any errors encountered")

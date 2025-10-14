@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.main import api_router
+from app.middleware import DevTapisHeadersMiddleware
 
 
 app = FastAPI(
@@ -14,6 +15,9 @@ app = FastAPI(
     },
 
 )
+
+# Add development Tapis headers middleware (only active in dev mode)
+app.add_middleware(DevTapisHeadersMiddleware)
 
 # Add CORS middleware
 app.add_middleware(
