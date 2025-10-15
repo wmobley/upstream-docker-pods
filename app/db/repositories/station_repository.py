@@ -32,21 +32,25 @@ class StationRepository:
 
     def get_station(self, station_id: int) -> Station | None:
         # Query the station with its sensors and convert geometry to GeoJSON
-        result = self.db.query(
-            Station,
-            func.ST_AsGeoJSON(Station.geometry).label('geometry_str')
-        ).options(
-            joinedload(Station.sensors),
-            joinedload(Station.campaign),
-        ).filter(
-            Station.stationid == station_id
-        ).first()
+        result: tuple[Station, str | None] | None = (
+            self.db.query(
+                Station,
+                func.ST_AsGeoJSON(Station.geometry).label("geometry_str"),
+            )
+            .options(
+                joinedload(Station.sensors),
+                joinedload(Station.campaign),
+            )
+            .filter(Station.stationid == station_id)
+            .first()
+        )
 
-        if result:
-            station, geometry_str = result
-            setattr(station, "geometry_geojson", geometry_str)
-            return station
-        return None
+        if result is None:
+            return None
+
+        station, geometry_str = result
+        setattr(station, "geometry_geojson", geometry_str)
+        return station
 
     def get_stations_by_campaign_id(self, campaign_id: int, page: int = 1, limit: int = 20, published_only: bool = False) -> list[Station]:
         query = self.db.query(Station).filter(Station.campaignid == campaign_id)

@@ -1,5 +1,4 @@
-from pydantic_settings import BaseSettings
-from pydantic import ConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     POSTGRES_PASSWORD: str
@@ -12,7 +11,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str
     ALG: str
 
-    model_config = ConfigDict(
+    model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
@@ -20,4 +19,5 @@ class Settings(BaseSettings):
     )
 
 def get_settings() -> Settings:
+    # BaseSettings pulls values from environment; mypy doesn't understand this constructor
     return Settings()  # type: ignore[call-arg]

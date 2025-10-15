@@ -9,11 +9,15 @@ Usage:
     Configure test headers via environment variables or use defaults
 """
 
-from fastapi import Request
-from starlette.middleware.base import BaseHTTPMiddleware
-from app.core.config import get_settings
 import os
 
+from fastapi import Request
+from starlette.datastructures import MutableHeaders
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
+from starlette.types import ASGIApp
+
+from app.core.config import get_settings
 
 class DevTapisHeadersMiddleware(BaseHTTPMiddleware):
     """
@@ -26,7 +30,7 @@ class DevTapisHeadersMiddleware(BaseHTTPMiddleware):
     Injects headers if they're not already present in the request.
     """
 
-    def __init__(self, app):
+    def __init__(self, app: ASGIApp) -> None:
         super().__init__(app)
         self.settings = get_settings()
 
@@ -45,12 +49,10 @@ class DevTapisHeadersMiddleware(BaseHTTPMiddleware):
             f"{self.test_username}.{self.test_tenant}.{self.test_site}"
         )
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if self.enabled:
-            # Create a mutable headers object
-            headers = dict(request.headers)
+            headers = MutableHeaders(scope=request.scope)
 
-            # Only inject if not already present (allows manual override)
             if "x-tapis-username" not in headers:
                 headers["x-tapis-username"] = self.test_username
 
@@ -62,12 +64,6 @@ class DevTapisHeadersMiddleware(BaseHTTPMiddleware):
 
             if "internal" not in headers:
                 headers["internal"] = self.test_internal
-
-            # Update request headers
-            request._headers = headers
-            request.scope["headers"] = [
-                (k.lower().encode(), v.encode()) for k, v in headers.items()
-            ]
 
         response = await call_next(request)
         return response

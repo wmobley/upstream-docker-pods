@@ -59,7 +59,8 @@ class SensorService:
         page: int = 1,
         limit: int = 20,
         sort_by: Optional[SortField] = None,
-        sort_order: str = "asc"
+        sort_order: str = "asc",
+        published_only: bool = False,
     ) -> Tuple[List[SensorItem], int]:
         rows, total_count = self.sensor_repository.get_sensors(
             station_id=station_id,
@@ -68,7 +69,8 @@ class SensorService:
             page=page,
             limit=limit,
             sort_by=sort_by,
-            sort_order=sort_order
+            sort_order=sort_order,
+            published_only=published_only,
         )
 
         items: List[SensorItem] = []

@@ -4,9 +4,14 @@ from unittest.mock import Mock, patch
 from sqlalchemy.orm import Session
 
 from app.main import app
+from app.api.dependencies import auth as auth_dependencies
 from app.api.v1.schemas.station import StationCreate, StationUpdate, StationCreateResponse, GetStationResponse, StationItemWithSummary
 from app.api.v1.schemas.user import User
-from app.api.dependencies.auth import get_current_user
+from app.api.dependencies.auth import (
+    get_current_user,
+    get_current_user_unified,
+    get_current_user_unified_optional,
+)
 from app.db.session import get_db
 
 # Mock data for testing
@@ -52,7 +57,9 @@ MOCK_GET_STATION_RESPONSE = {
     "active": True,
     "start_date": "2024-01-15T10:00:00Z", # Assuming timezone info might be added
     "geometry": {},
-    "sensors": []
+    "sensors": [],
+    "is_published": True,
+    "published_at": None,
 }
 
 MOCK_STATION_ITEM_SUMMARY = {
@@ -62,7 +69,9 @@ MOCK_STATION_ITEM_SUMMARY = {
     "geometry": {},
     "sensor_types": ["temperature"],
     "sensor_variables": ["temp_celsius"],
-    "sensor_count": 1
+    "sensor_count": 1,
+    "is_published": True,
+    "published_at": None,
 }
 
 
@@ -80,11 +89,25 @@ def client_with_auth():
         'DATABASE_URL': 'sqlite:///:memory:', # Ensure tests run in a controlled env
         'SECRET_KEY': 'test-secret-key',
     }):
+        original_secret = getattr(auth_dependencies.settings, "JWT_SECRET", None)
+        original_alg = getattr(auth_dependencies.settings, "ALG", None)
+        original_env = getattr(auth_dependencies.settings, "ENV", None)
+        auth_dependencies.settings.JWT_SECRET = "test-secret-key"
+        auth_dependencies.settings.ALG = "HS256"
+        auth_dependencies.settings.ENV = "dev"
         app.dependency_overrides[get_current_user] = override_get_current_user
+        app.dependency_overrides[get_current_user_unified] = override_get_current_user
+        app.dependency_overrides[get_current_user_unified_optional] = override_get_current_user
         app.dependency_overrides[get_db] = override_get_db
         client = TestClient(app)
         yield client
         app.dependency_overrides.clear()
+        if original_secret is not None:
+            auth_dependencies.settings.JWT_SECRET = original_secret
+        if original_alg is not None:
+            auth_dependencies.settings.ALG = original_alg
+        if original_env is not None:
+            auth_dependencies.settings.ENV = original_env
 
 
 @pytest.fixture
@@ -93,9 +116,21 @@ def client_no_auth():
         'DATABASE_URL': 'sqlite:///:memory:',
         'SECRET_KEY': 'test-secret-key',
     }):
+        original_secret = getattr(auth_dependencies.settings, "JWT_SECRET", None)
+        original_alg = getattr(auth_dependencies.settings, "ALG", None)
+        original_env = getattr(auth_dependencies.settings, "ENV", None)
+        auth_dependencies.settings.JWT_SECRET = "test-secret-key"
+        auth_dependencies.settings.ALG = "HS256"
+        auth_dependencies.settings.ENV = "dev"
         client = TestClient(app)
         yield client
         app.dependency_overrides.clear()
+        if original_secret is not None:
+            auth_dependencies.settings.JWT_SECRET = original_secret
+        if original_alg is not None:
+            auth_dependencies.settings.ALG = original_alg
+        if original_env is not None:
+            auth_dependencies.settings.ENV = original_env
 
 
 class TestCampaignStationRoutes:
@@ -138,7 +173,7 @@ class TestCampaignStationRoutes:
             assert data["total"] == 1
             assert len(data["items"]) == 1
             assert data["items"][0]["id"] == MOCK_STATION_ITEM_SUMMARY["id"]
-            mock_list.assert_called_once_with(self.campaign_id, 1, 20)
+            mock_list.assert_called_once_with(self.campaign_id, 1, 20, published_only=False)
 
     def test_list_stations_permission_denied(self, client_with_auth):
         with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=False):
@@ -154,7 +189,7 @@ class TestCampaignStationRoutes:
             response = client_with_auth.get(f"/api/v1/campaigns/{self.campaign_id}/stations/{self.station_id}")
             assert response.status_code == 200
             assert response.json()["id"] == self.station_id
-            mock_get.assert_called_once_with(self.station_id)
+            mock_get.assert_called_once_with(self.station_id, published_only=False)
 
     def test_get_station_not_found(self, client_with_auth):
         with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=True), \
@@ -162,7 +197,7 @@ class TestCampaignStationRoutes:
             response = client_with_auth.get(f"/api/v1/campaigns/{self.campaign_id}/stations/{self.station_id}")
             assert response.status_code == 404
             assert response.json()["detail"] == "Station not found"
-            mock_get.assert_called_once_with(self.station_id)
+            mock_get.assert_called_once_with(self.station_id, published_only=False)
 
     # DELETE /campaigns/{campaign_id}/stations
     # Note: The route function is named delete_sensor, but it deletes campaign stations.

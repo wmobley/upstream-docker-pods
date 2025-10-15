@@ -33,6 +33,8 @@ async def create_measurement(measurement: MeasurementIn,
     # if not check_allocation_permission(current_user, campaign_id):
 
     #     raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
     measurement_service = MeasurementService(MeasurementRepository(db))
     return measurement_service.create_measurement(measurement, sensor_id) 
 
@@ -63,6 +65,8 @@ async def get_sensor_measurements(
 
 
     #     raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
     return measurement_service.list_measurements(sensor_id=sensor_id, start_date=start_date, end_date=end_date, min_value=min_measurement_value, max_value=max_measurement_value, page=page, limit=limit, downsample_threshold=downsample_threshold, published_only=False)
 
 @router.get("/measurements/confidence-intervals", response_model=list[AggregatedMeasurement])
@@ -96,6 +100,8 @@ def delete_sensor_measurements(
     # if not check_allocation_permission(current_user, campaign_id):
 
     #     raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
     sensor_repository = SensorRepository(db)
     measurement_repository = MeasurementRepository(db)
     sensor_service = SensorService(sensor_repository=sensor_repository, measurement_repository=measurement_repository)
@@ -118,6 +124,8 @@ def update_sensor(
     # if not check_allocation_permission(current_user, campaign_id):
 
     #     raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
     measurement_service = MeasurementService(
                                            measurement_repository=MeasurementRepository(db)
 )
@@ -141,6 +149,8 @@ def partial_update_sensor(
     # if not check_allocation_permission(current_user, campaign_id):
 
     #     raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
     measurement_service = MeasurementService(
                                            measurement_repository=MeasurementRepository(db)
 )
@@ -166,11 +176,13 @@ def publish_measurement(
     # if not check_allocation_permission(current_user, campaign_id):
 
     #     raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
 
     publishing_service = PublishingService(db)
-    result = publishing_service.publish_measurement(
-        measurement_id,
-        force=publish_request.force
+    result = publishing_service.publish_measurements(
+        [measurement_id],
+        force=publish_request.force,
     )
     return PublishResponse(**result)
 
@@ -190,7 +202,9 @@ def unpublish_measurement(
     # if not check_allocation_permission(current_user, campaign_id):
 
     #     raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
 
     publishing_service = PublishingService(db)
-    result = publishing_service.unpublish_measurement(measurement_id)
+    result = publishing_service.unpublish_measurements([measurement_id])
     return PublishResponse(**result)

@@ -7,6 +7,7 @@ from unittest.mock import ANY
 import jwt
 
 from app.main import app
+from app.api.dependencies import auth as auth_dependencies
 from app.db.models.measurement import Measurement as MeasurementModel
 from app.api.v1.schemas.measurement import MeasurementItem, AggregatedMeasurement, MeasurementCreateResponse # Assuming MeasurementCreateResponse exists
 from app.db.repositories.measurement_repository import MeasurementRepository
@@ -18,7 +19,20 @@ TEST_JWT_ALGORITHM = "HS256"
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(app)
+    original_secret = getattr(auth_dependencies.settings, "JWT_SECRET", None)
+    original_alg = getattr(auth_dependencies.settings, "ALG", None)
+    original_env = getattr(auth_dependencies.settings, "ENV", None)
+    auth_dependencies.settings.JWT_SECRET = TEST_JWT_SECRET
+    auth_dependencies.settings.ALG = TEST_JWT_ALGORITHM
+    auth_dependencies.settings.ENV = "dev"
+    test_client = TestClient(app)
+    yield test_client
+    if original_secret is not None:
+        auth_dependencies.settings.JWT_SECRET = original_secret
+    if original_alg is not None:
+        auth_dependencies.settings.ALG = original_alg
+    if original_env is not None:
+        auth_dependencies.settings.ENV = original_env
 
 @pytest.fixture
 def auth_headers() -> dict[str, str]:
@@ -45,6 +59,10 @@ def sample_measurement_model_data() -> List[Tuple[MeasurementModel, str]]:
         measurementvalue=26.0, variabletype="float", description="temp reading 2"
     )
     m2_geojson = '{"type": "Point", "coordinates": [10.1, 20.1]}'
+    m1.published = True
+    m1.published_at = None
+    m2.published = False
+    m2.published_at = None
     return [(m1, m1_geojson), (m2, m2_geojson)]
 
 @pytest.fixture
@@ -77,8 +95,14 @@ def mock_measurement_repo(
     repository = MagicMock(spec=MeasurementRepository)
 
     def list_measurements_mock(
-        sensor_id: int, page: int, limit: int, start_date: Any, end_date: Any,
-        min_value: Any, max_value: Any, # variable_name is not a param in route
+        sensor_id: int,
+        page: int,
+        limit: int,
+        start_date: Any,
+        end_date: Any,
+        min_value: Any,
+        max_value: Any,  # variable_name is not a param in route
+        published_only: bool = False,
         # downsample_threshold is handled by service, repo just returns data
     ) -> Tuple[List[Tuple[MeasurementModel, str]], int, float | None, float | None, float | None]:
         # Simulate filtering and pagination based on inputs if needed for more complex tests
@@ -101,6 +125,8 @@ def mock_measurement_repo(
                 description=request.description if request.description else "Updated measurement"
                 # geometry would also be handled here
             )
+            updated_model.published = True
+            updated_model.published_at = None
             return updated_model
         return None
     repository.update_measurement.side_effect = update_measurement_mock

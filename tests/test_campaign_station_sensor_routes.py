@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 from sqlalchemy.orm import Session
 
 from app.main import app
+from app.api.dependencies import auth as auth_dependencies
 from app.api.v1.schemas.sensor import (
     SensorUpdate,
     SensorCreateResponse,
@@ -13,7 +14,11 @@ from app.api.v1.schemas.sensor import (
     ListSensorsResponsePagination
 )
 from app.api.v1.schemas.user import User
-from app.api.dependencies.auth import get_current_user
+from app.api.dependencies.auth import (
+    get_current_user,
+    get_current_user_unified,
+    get_current_user_unified_optional,
+)
 from app.db.session import get_db
 from app.db.repositories.sensor_repository import SortField
 
@@ -48,7 +53,9 @@ MOCK_GET_SENSOR_RESPONSE_DATA = {
     "postprocess": False,
     "postprocessscript": None,
     "units": "Celsius",
-    "statistics": None
+    "statistics": None,
+    "is_published": True,
+    "published_at": None,
 }
 
 MOCK_SENSOR_ITEM_DATA = {
@@ -59,7 +66,9 @@ MOCK_SENSOR_ITEM_DATA = {
     "postprocess": False,
     "postprocessscript": None,
     "units": "Celsius",
-    "statistics": None
+    "statistics": None,
+    "is_published": True,
+    "published_at": None,
 }
 
 
@@ -77,11 +86,25 @@ def client_with_auth():
         'DATABASE_URL': 'sqlite:///:memory:',
         'SECRET_KEY': 'test-secret-key',
     }):
+        original_secret = getattr(auth_dependencies.settings, "JWT_SECRET", None)
+        original_alg = getattr(auth_dependencies.settings, "ALG", None)
+        original_env = getattr(auth_dependencies.settings, "ENV", None)
+        auth_dependencies.settings.JWT_SECRET = "test_secret"
+        auth_dependencies.settings.ALG = "HS256"
+        auth_dependencies.settings.ENV = "dev"
         app.dependency_overrides[get_current_user] = override_get_current_user
+        app.dependency_overrides[get_current_user_unified] = override_get_current_user
+        app.dependency_overrides[get_current_user_unified_optional] = override_get_current_user
         app.dependency_overrides[get_db] = override_get_db
         client = TestClient(app)
         yield client
         app.dependency_overrides.clear()
+        if original_secret is not None:
+            auth_dependencies.settings.JWT_SECRET = original_secret
+        if original_alg is not None:
+            auth_dependencies.settings.ALG = original_alg
+        if original_env is not None:
+            auth_dependencies.settings.ENV = original_env
 
 
 @pytest.fixture
@@ -90,9 +113,21 @@ def client_no_auth():
         'DATABASE_URL': 'sqlite:///:memory:',
         'SECRET_KEY': 'test-secret-key',
     }):
+        original_secret = getattr(auth_dependencies.settings, "JWT_SECRET", None)
+        original_alg = getattr(auth_dependencies.settings, "ALG", None)
+        original_env = getattr(auth_dependencies.settings, "ENV", None)
+        auth_dependencies.settings.JWT_SECRET = "test_secret"
+        auth_dependencies.settings.ALG = "HS256"
+        auth_dependencies.settings.ENV = "dev"
         client = TestClient(app)
         yield client
         app.dependency_overrides.clear()
+        if original_secret is not None:
+            auth_dependencies.settings.JWT_SECRET = original_secret
+        if original_alg is not None:
+            auth_dependencies.settings.ALG = original_alg
+        if original_env is not None:
+            auth_dependencies.settings.ENV = original_env
 
 
 class TestCampaignStationSensorRoutes:
@@ -124,7 +159,8 @@ class TestCampaignStationSensorRoutes:
                 description_contains=None,
                 postprocess=None,
                 sort_by=SortField.ALIAS,
-                sort_order="desc"
+                sort_order="desc",
+                published_only=False,
             )
 
     def test_list_sensors_permission_denied(self, client_with_auth):
@@ -147,7 +183,7 @@ class TestCampaignStationSensorRoutes:
             )
             assert response.status_code == 200
             assert response.json()["id"] == self.sensor_id
-            mock_get.assert_called_once_with(self.sensor_id)
+            mock_get.assert_called_once_with(self.sensor_id, published_only=False)
 
     def test_get_sensor_not_found(self, client_with_auth):
         with patch('app.api.v1.routes.campaigns.campaign_station_sensors.check_allocation_permission', return_value=True), \
@@ -157,7 +193,7 @@ class TestCampaignStationSensorRoutes:
             )
             assert response.status_code == 404
             assert response.json()["detail"] == "Sensor not found"
-            mock_get.assert_called_once_with(self.sensor_id)
+            mock_get.assert_called_once_with(self.sensor_id, published_only=False)
 
     # DELETE /campaigns/{campaign_id}/stations/{station_id}/sensors
     # Note: The route function is named delete_sensor, but it deletes all sensors for a station.
