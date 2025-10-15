@@ -9,8 +9,8 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
-import psycopg2
-from psycopg2 import OperationalError
+import psycopg  # type: ignore[import-not-found]
+from psycopg import OperationalError
 
 
 def wait_for_database() -> None:
@@ -33,9 +33,15 @@ def wait_for_database() -> None:
 
     print(f"[wait_for_db] Target: {safe_target}")
 
+    # psycopg expects a standard postgresql:// DSN; strip any SQLAlchemy driver hint
+    dsn = database_url
+    driver_hint = "postgresql+psycopg://"
+    if dsn.startswith(driver_hint):
+        dsn = "postgresql://" + dsn[len(driver_hint) :]
+
     for attempt in range(1, max_attempts + 1):
         try:
-            conn: Any = psycopg2.connect(database_url, connect_timeout=connect_timeout)
+            conn: Any = psycopg.connect(dsn, connect_timeout=connect_timeout)
             conn.close()
             print("[wait_for_db] Database connection established.")
             return

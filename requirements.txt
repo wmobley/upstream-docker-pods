@@ -7,7 +7,7 @@ sqlalchemy==2.0.39
 pydantic-settings
 fastapi[standard]<1.0.0,>=0.114.2
 geoalchemy2
-psycopg2-binary
+psycopg[binary]==3.2.3
 geojson-pydantic>=1.2.0
 python-dateutil
 types-requests
