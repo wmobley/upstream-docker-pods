@@ -43,8 +43,6 @@ class SensorItem(BaseModel):
     units: str | None = None
     variablename: str | None = None
     statistics: SensorStatistics | None = None
-    is_published: bool = False
-    published_at: datetime | None = None
 
 class ListSensorsResponse(SensorItem):
     pass

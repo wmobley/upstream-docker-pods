@@ -48,14 +48,6 @@ A RESTful API service for managing environmental sensor data and campaigns.
    fastapi dev app/main.py
    ```
 
-## Kubernetes Deployment Notes
-
-- The container entrypoint waits for `DATABASE_URL` to become reachable and automatically runs `alembic upgrade head` before starting `uvicorn`. Ensure the variable points to the Postgres service exposed by your cluster (for example `postgresql://user:password@postgres-service:5432/database`).
-- Provide the remaining secrets (`POSTGRES_PASSWORD`, `TAS_USER`, `TAS_SECRET`, `JWT_SECRET`, `ALG`, `TAS_URL`, `ENVIRONMENT`, `ENV`) via Kubernetes `Secret` or `ConfigMap` resources so they are available as environment variables inside the pod.
-- Optional tuning knobs: `DB_CONNECT_TIMEOUT` (seconds per attempt), `DB_MAX_ATTEMPTS`, and `DB_RETRY_DELAY` (seconds between attempts) can be set to align with your cluster startup timing.
-- Startup logs (prefixed with `[upstream-entrypoint]` / `[wait_for_db]`) detail the deployment steps, target database host, and migration status. These appear in container stdout/stderr so you can confirm the rollout.
-- If the remote database requires TLS, append the required parameters to `DATABASE_URL`, for example `...?sslmode=require`.
-
 ## On-premise Environment
 
 ### Setting up environments

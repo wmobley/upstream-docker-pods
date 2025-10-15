@@ -38,16 +38,12 @@ class CampaignService:
         sensor_variables: list[str] | None = None,
         page: int = 1,
         limit: int = 20,
-        published_only: bool = False,
     ) -> tuple[list[ListCampaignsResponseItem], int]:
         rows, total_count = self.campaign_repository.get_campaigns_and_summary(
-            allocations, bbox, start_date, end_date, sensor_variables, page, limit, published_only=published_only
+            allocations, bbox, start_date, end_date, sensor_variables, page, limit
         )
         items: list[ListCampaignsResponseItem] = []
         for row in rows:
-            # Filter by published status if requested
-            if published_only and not row[0].published:
-                continue
             sensor_types : list[str | None] = row[3]
             variable_names : list[str | None] = row[4]
             item = ListCampaignsResponseItem(
@@ -68,62 +64,31 @@ class CampaignService:
                 geometry=json.loads(row[5]) if row[5] else {},
                 summary=SummaryListCampaigns(
                     sensor_types=[x for x in sensor_types if x is not None],
-                    variable_names=[x for x in variable_names if x is not None],
-                    is_published=row[0].published,
-                    published_at=row[0].published_at,
-                ),
-                is_published=row[0].published,
-                published_at=row[0].published_at,
+                    variable_names=[x for x in variable_names if x is not None]
+                )
             )
             items.append(item)
         return items, total_count
 
-    def get_campaign_with_summary(self, campaign_id: int, published_only: bool = False) -> GetCampaignResponse | None:
+    def get_campaign_with_summary(self, campaign_id: int) -> GetCampaignResponse | None:
         campaign = self.campaign_repository.get_campaign(campaign_id)
         if not campaign:
             return None
-
-        # Filter by published status if requested
-        if published_only and not campaign.published:
-            return None
-        sensor_types_set: set[str] = set()
-        sensor_variables_set: set[str] = set()
-        stations = []
-        for station in campaign.stations:
-            if published_only and not getattr(station, "published", False):
-                continue
-            filtered_sensors = [
-                sensor
-                for sensor in station.sensors
-                if not published_only or getattr(sensor, "published", False)
-            ]
-            for sensor in filtered_sensors:
-                if sensor.alias:
-                    sensor_types_set.add(sensor.alias)
-                if sensor.variablename:
-                    sensor_variables_set.add(sensor.variablename)
-            stations.append(
-                StationsListResponseItem(
-                    id=station.stationid,
-                    name=station.stationname,
-                    description=station.description,
-                    contact_name=station.contactname,
-                    contact_email=station.contactemail,
-                    active=station.active,
-                    start_date=station.startdate,
-                    geometry=json.loads(station.geometry) if station.geometry else {},
-                    is_published=bool(getattr(station, "published", False)),
-                    published_at=getattr(station, "published_at", None),
-                    sensors=[
-                        SensorSummaryForStations(
-                            id=sensor.sensorid,
-                            variable_name=sensor.variablename,
-                            measurement_unit=sensor.units,
-                        )
-                        for sensor in filtered_sensors
-                    ],
-                )
-            )
+        stations = [StationsListResponseItem(
+            id=station.stationid,
+            name=station.stationname,
+            description=station.description,
+            contact_name=station.contactname,
+            contact_email=station.contactemail,
+            active=station.active,
+            start_date=station.startdate,
+            geometry=json.loads(station.geometry) if station.geometry else {},
+            sensors=[SensorSummaryForStations(
+                id=sensor.sensorid,
+                variable_name=sensor.variablename,
+                measurement_unit=sensor.units,
+            ) for sensor in station.sensors]
+        ) for station in campaign.stations]
         return GetCampaignResponse(
             id=campaign.campaignid,
             name=campaign.campaignname,
@@ -142,21 +107,11 @@ class CampaignService:
             geometry=json.loads(campaign.geometry) if campaign.geometry else {},  # type: ignore[arg-type]
             stations=stations,
             summary=SummaryGetCampaign(
-                station_count=len(stations)
-                if published_only
-                else self.campaign_repository.count_stations(campaign_id),
-                sensor_count=sum(len(station.sensors) for station in stations)
-                if published_only
-                else self.campaign_repository.count_sensors(campaign_id),
-                sensor_types=list(sensor_types_set)
-                if published_only
-                else self.campaign_repository.get_sensor_types(campaign_id),
-                sensor_variables=list(sensor_variables_set)
-                if published_only
-                else self.campaign_repository.get_sensor_variables(campaign_id),
+                station_count=self.campaign_repository.count_stations(campaign_id),
+                sensor_count=self.campaign_repository.count_sensors(campaign_id),
+                sensor_types=self.campaign_repository.get_sensor_types(campaign_id),
+                sensor_variables=self.campaign_repository.get_sensor_variables(campaign_id),
             ),
-            is_published=campaign.published,
-            published_at=campaign.published_at,
         )
 
     def delete_campaign_station(self, campaign_id: int) ->bool:

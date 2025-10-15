@@ -48,8 +48,8 @@ class SensorService:
         return SensorCreateResponse(
             id=response.sensorid,
         )
-    def get_sensor(self, sensor_id: int, published_only: bool = False) -> GetSensorResponse | None:
-        return self.sensor_repository.get_sensor(sensor_id, published_only=published_only)
+    def get_sensor(self, sensor_id: int) -> GetSensorResponse | None:
+        return self.sensor_repository.get_sensor(sensor_id)
 
     def get_sensors(
         self,
@@ -59,8 +59,7 @@ class SensorService:
         page: int = 1,
         limit: int = 20,
         sort_by: Optional[SortField] = None,
-        sort_order: str = "asc",
-        published_only: bool = False,
+        sort_order: str = "asc"
     ) -> Tuple[List[SensorItem], int]:
         rows, total_count = self.sensor_repository.get_sensors(
             station_id=station_id,
@@ -69,15 +68,12 @@ class SensorService:
             page=page,
             limit=limit,
             sort_by=sort_by,
-            sort_order=sort_order,
-            published_only=published_only,
+            sort_order=sort_order
         )
 
         items: List[SensorItem] = []
         for row in rows:
             sensor, statistics = row
-            if published_only and not getattr(sensor, "published", False):
-                continue
             item = SensorItem(
                 id=sensor.sensorid,
                 alias=sensor.alias,
@@ -116,8 +112,7 @@ class SensorService:
         description_contains: str | None = None,
         postprocess: bool | None = None,
         sort_by: Optional[SortField] = None,
-        sort_order: str = "asc",
-        published_only: bool = False
+        sort_order: str = "asc"
     ) -> Tuple[List[SensorItem], int]:
         rows, total_count = self.sensor_repository.get_sensors_by_station_id(
             station_id=station_id,
@@ -129,15 +124,12 @@ class SensorService:
             description_contains=description_contains,
             postprocess=postprocess,
             sort_by=sort_by,
-            sort_order=sort_order,
-            published_only=published_only,
+            sort_order=sort_order
         )
 
         items: List[SensorItem] = []
         for row in rows:
             sensor, statistics = row
-            if published_only and not getattr(sensor, "published", False):
-                continue
             item = SensorItem(
                 id=sensor.sensorid,
                 alias=sensor.alias,
@@ -146,8 +138,6 @@ class SensorService:
                 postprocessscript=sensor.postprocessscript,
                 units=sensor.units,
                 variablename=sensor.variablename,
-                is_published=getattr(sensor, "published", False),
-                published_at=getattr(sensor, "published_at", None),
                 statistics=SensorStatistics(
                     max_value=statistics.max_value if statistics else None,
                     min_value=statistics.min_value if statistics else None,

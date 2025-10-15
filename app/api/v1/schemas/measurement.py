@@ -32,8 +32,6 @@ class MeasurementItem(BaseModel):
     variablename: str | None = None  # modified
     variabletype: str | None = None
     description: str | None = None
-    is_published: bool = False
-    published_at: datetime | None = None
 
 class ListMeasurementsResponsePagination(BaseModel):
     items: list[MeasurementItem]

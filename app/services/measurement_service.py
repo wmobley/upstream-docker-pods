@@ -9,15 +9,13 @@ class MeasurementService:
     def __init__(self, measurement_repository: MeasurementRepository):
         self.measurement_repository = measurement_repository
 
-    def list_measurements(self, sensor_id: int, start_date: datetime | None, end_date: datetime | None, min_value: float | None, max_value: float | None, page: int = 1, limit: int = 20, downsample_threshold: int | None = None, published_only: bool = False) -> ListMeasurementsResponsePagination:
-        rows, total_count, stats_min_value, stats_max_value, stats_average_value = self.measurement_repository.list_measurements(sensor_id=sensor_id, start_date=start_date, end_date=end_date, min_value=min_value, max_value=max_value, page=page, limit=limit, published_only=published_only)
+    def list_measurements(self, sensor_id: int, start_date: datetime | None, end_date: datetime | None, min_value: float | None, max_value: float | None, page: int = 1, limit: int = 20, downsample_threshold: int | None = None) -> ListMeasurementsResponsePagination:
+        rows, total_count, stats_min_value, stats_max_value, stats_average_value = self.measurement_repository.list_measurements(sensor_id=sensor_id, start_date=start_date, end_date=end_date, min_value=min_value, max_value=max_value, page=page, limit=limit)
 
         # Convert rows to MeasurementItem objects
         measurements : list[MeasurementItem] = []
         for row in rows:
             if row[1] is not None:
-                if published_only and not getattr(row[0], "published", False):
-                    continue
                 measurements.append(MeasurementItem(
                     id=row[0].measurementid,
                     value=row[0].measurementvalue,
@@ -26,9 +24,7 @@ class MeasurementService:
                     variabletype=row[0].variabletype,
                     variablename=row[0].variablename,
                     sensorid=row[0].sensorid,
-                    geometry=json.loads(row[1]),
-                    is_published=getattr(row[0], "published", False),
-                    published_at=getattr(row[0], "published_at", None)
+                    geometry=json.loads(row[1])
                 ))
             else:
                 print(f"Measurement {row[0].measurementid} has no geometry {row[1]}")

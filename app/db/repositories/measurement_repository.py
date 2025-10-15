@@ -48,7 +48,6 @@ class MeasurementRepository:
         variable_name: str | None = None,
         page: int = 1,
         limit: int = 20,
-        published_only: bool = False,
     ) -> tuple[
         list[tuple[Measurement, str]], int, float | None, float | None, float | None
     ]:
@@ -72,8 +71,6 @@ class MeasurementRepository:
             query = query.filter(Measurement.measurementvalue <= max_value)
         if variable_name:
             query = query.filter(Measurement.variablename == variable_name)
-        if published_only:
-            query = query.filter(Measurement.published.is_(True))
 
         # Order by collection time for time series data
         query = query.order_by(Measurement.collectiontime.desc())
@@ -100,8 +97,6 @@ class MeasurementRepository:
             stats_query = stats_query.filter(Measurement.measurementvalue <= max_value)
         if variable_name:
             stats_query = stats_query.filter(Measurement.variablename == variable_name)
-        if published_only:
-            stats_query = stats_query.filter(Measurement.published.is_(True))
 
         stats_min_value = stats_query.with_entities(
             func.min(Measurement.measurementvalue)

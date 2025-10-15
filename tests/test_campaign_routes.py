@@ -8,12 +8,7 @@ from app.main import app
 from app.api.v1.schemas.campaign import CampaignsIn, CampaignUpdate, CampaignCreateResponse
 from app.api.v1.schemas.user import User
 from app.db.models.campaign import Campaign
-from app.api.dependencies.auth import (
-    get_current_user,
-    get_current_user_unified,
-    get_current_user_unified_optional,
-)
-from app.api.dependencies import auth as auth_dependencies
+from app.api.dependencies.auth import get_current_user
 from app.db.session import get_db
 
 # Mock data for testing
@@ -66,15 +61,7 @@ def client_with_auth():
         'DATABASE_URL': 'sqlite:///:memory:',
         'SECRET_KEY': 'test-secret-key',
     }):
-        original_secret = getattr(auth_dependencies.settings, "JWT_SECRET", None)
-        original_alg = getattr(auth_dependencies.settings, "ALG", None)
-        original_env = getattr(auth_dependencies.settings, "ENV", None)
-        auth_dependencies.settings.JWT_SECRET = "test-secret-key"
-        auth_dependencies.settings.ALG = "HS256"
-        auth_dependencies.settings.ENV = "dev"
         app.dependency_overrides[get_current_user] = override_get_current_user
-        app.dependency_overrides[get_current_user_unified] = override_get_current_user
-        app.dependency_overrides[get_current_user_unified_optional] = override_get_current_user
         app.dependency_overrides[get_db] = override_get_db
         
         client = TestClient(app)
@@ -82,12 +69,6 @@ def client_with_auth():
         
         # Clean up
         app.dependency_overrides.clear()
-        if original_secret is not None:
-            auth_dependencies.settings.JWT_SECRET = original_secret
-        if original_alg is not None:
-            auth_dependencies.settings.ALG = original_alg
-        if original_env is not None:
-            auth_dependencies.settings.ENV = original_env
 
 
 @pytest.fixture
@@ -97,20 +78,8 @@ def client_no_auth():
         'DATABASE_URL': 'sqlite:///:memory:',
         'SECRET_KEY': 'test-secret-key',
     }):
-        original_secret = getattr(auth_dependencies.settings, "JWT_SECRET", None)
-        original_alg = getattr(auth_dependencies.settings, "ALG", None)
-        original_env = getattr(auth_dependencies.settings, "ENV", None)
-        auth_dependencies.settings.JWT_SECRET = "test-secret-key"
-        auth_dependencies.settings.ALG = "HS256"
-        auth_dependencies.settings.ENV = "dev"
         client = TestClient(app)
         yield client
-        if original_secret is not None:
-            auth_dependencies.settings.JWT_SECRET = original_secret
-        if original_alg is not None:
-            auth_dependencies.settings.ALG = original_alg
-        if original_env is not None:
-            auth_dependencies.settings.ENV = original_env
 
 
 class TestCampaignPutRoute:
