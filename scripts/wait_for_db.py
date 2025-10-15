@@ -9,7 +9,7 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
-import psycopg  # type: ignore[import-not-found]
+import psycopg
 from psycopg import OperationalError
 
 
