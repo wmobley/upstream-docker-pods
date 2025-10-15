@@ -32,45 +32,41 @@ class StationRepository:
 
     def get_station(self, station_id: int) -> Station | None:
         # Query the station with its sensors and convert geometry to GeoJSON
-        result = self.db.query(
-            Station,
-            func.ST_AsGeoJSON(Station.geometry).label('geometry_str')
-        ).options(
-            joinedload(Station.sensors)
-        ).filter(
-            Station.stationid == station_id
-        ).first()
+        result: tuple[Station, str | None] | None = (
+            self.db.query(
+                Station,
+                func.ST_AsGeoJSON(Station.geometry).label("geometry_str"),
+            )
+            .options(
+                joinedload(Station.sensors),
+                joinedload(Station.campaign),
+            )
+            .filter(Station.stationid == station_id)
+            .first()
+        )
 
-        if result:
-            station, geometry_str = result
-            # Create a new Station instance with the GeoJSON geometry
-            station_dict = {
-                'stationid': station.stationid,
-                'campaignid': station.campaignid,
-                'stationname': station.stationname,
-                'projectid': station.projectid,
-                'description': station.description,
-                'contactname': station.contactname,
-                'contactemail': station.contactemail,
-                'active': station.active,
-                'startdate': station.startdate,
-                'station_type': station.station_type,
-                'geometry': geometry_str,
-                'sensors': station.sensors
-            }
-            return Station(**station_dict)
-        return None
+        if result is None:
+            return None
 
-    def get_stations_by_campaign_id(self, campaign_id: int, page: int = 1, limit: int = 20) -> list[Station]:
-        return self.db.query(Station).filter(Station.campaignid == campaign_id).offset((page - 1) * limit).limit(limit).all()
+        station, geometry_str = result
+        setattr(station, "geometry_geojson", geometry_str)
+        return station
 
-    def list_stations_and_summary(self, campaign_id: int, page: int = 1, limit: int = 20) -> tuple[list[tuple[Station, int, list[str | None], list[str | None], str | None]], int]:
+    def get_stations_by_campaign_id(self, campaign_id: int, page: int = 1, limit: int = 20, published_only: bool = False) -> list[Station]:
+        query = self.db.query(Station).filter(Station.campaignid == campaign_id)
+        if published_only:
+            query = query.filter(Station.published.is_(True))
+        return query.offset((page - 1) * limit).limit(limit).all()
+
+    def list_stations_and_summary(self, campaign_id: int, page: int = 1, limit: int = 20, published_only: bool = False) -> tuple[list[tuple[Station, int, list[str | None], list[str | None], str | None]], int]:
         query = self.db.query(Station,
             func.count(Sensor.sensorid.distinct()).label('sensor_count'),
             func.array_agg(func.distinct(Sensor.alias)).label('sensor_types'),
             func.array_agg(func.distinct(Sensor.variablename)).label('sensor_variables'),
             func.ST_AsGeoJSON(Station.geometry).label('geometry')
         ).select_from(Station).outerjoin(Sensor).filter(Station.campaignid == campaign_id).group_by(Station.stationid)
+        if published_only:
+            query = query.filter(Station.published.is_(True))
 
         total_count = query.count()
         return query.offset((page - 1) * limit).limit(limit).all(), total_count
@@ -82,6 +78,7 @@ class StationRepository:
         start_date: Optional[datetime] = None,
         page: int = 1,
         limit: int = 20,
+        published_only: bool = False,
     ) -> tuple[list[Station], int]:
         query = self.db.query(Station)
         if campaign_id:
@@ -90,12 +87,18 @@ class StationRepository:
             query = query.filter(Station.active == active)
         if start_date:
             query = query.filter(Station.startdate >= start_date)
+        if published_only:
+            query = query.filter(Station.published.is_(True))
 
         total_count = query.count()
         return query.offset((page - 1) * limit).limit(limit).all(), total_count
 
     def delete_station(self, station_id: int) -> bool:
-        db_station = self.get_station(station_id)
+        db_station = (
+            self.db.query(Station)
+            .filter(Station.stationid == station_id)
+            .first()
+        )
         if db_station:
             self.db.delete(db_station)
             self.db.commit()

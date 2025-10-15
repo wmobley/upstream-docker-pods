@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from geoalchemy2 import Geometry
-from sqlalchemy import ForeignKey
+from sqlalchemy import Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -20,6 +20,8 @@ class Measurement(Base):
     variablename: Mapped[Optional[str]] = mapped_column()
     variabletype: Mapped[Optional[str]] = mapped_column()
     description: Mapped[Optional[str]] = mapped_column()
+    published: Mapped[bool] = mapped_column("is_published", Boolean, nullable=False, default=False)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     # relationships
     sensor: Mapped["Sensor"] = relationship(
         back_populates="measurements", lazy="joined"
@@ -28,5 +30,3 @@ class Measurement(Base):
         ForeignKey("upload_file_events.id", ondelete="CASCADE")
     )
     upload_file_event: Mapped["UploadFileEvent"] = relationship(lazy="joined") #  back_populates="measurements"
-
-

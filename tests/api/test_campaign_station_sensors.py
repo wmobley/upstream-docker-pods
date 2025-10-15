@@ -5,6 +5,7 @@ import pytest
 import jwt
 from fastapi.testclient import TestClient
 from app.main import app
+from app.api.dependencies import auth as auth_dependencies
 from app.db.models.sensor import Sensor
 from app.db.repositories.sensor_repository import SensorRepository, SortField
 from app.db.models.sensor_statistics import SensorStatistics
@@ -15,7 +16,20 @@ TEST_JWT_ALGORITHM = "HS256"
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(app)
+    original_secret = getattr(auth_dependencies.settings, "JWT_SECRET", None)
+    original_alg = getattr(auth_dependencies.settings, "ALG", None)
+    original_env = getattr(auth_dependencies.settings, "ENV", None)
+    auth_dependencies.settings.JWT_SECRET = TEST_JWT_SECRET
+    auth_dependencies.settings.ALG = TEST_JWT_ALGORITHM
+    auth_dependencies.settings.ENV = "dev"
+    test_client = TestClient(app)
+    yield test_client
+    if original_secret is not None:
+        auth_dependencies.settings.JWT_SECRET = original_secret
+    if original_alg is not None:
+        auth_dependencies.settings.ALG = original_alg
+    if original_env is not None:
+        auth_dependencies.settings.ENV = original_env
 
 @pytest.fixture
 def auth_headers() -> dict[str, str]:
@@ -31,7 +45,7 @@ def auth_headers() -> dict[str, str]:
 
 @pytest.fixture
 def sample_sensors() -> list[Sensor]:
-    return [
+    sensors = [
         Sensor(
             sensorid=1,
             stationid=1,
@@ -63,6 +77,10 @@ def sample_sensors() -> list[Sensor]:
             variablename="pressure"
         )
     ]
+    for index, sensor in enumerate(sensors):
+        sensor.published = index % 2 == 0
+        sensor.published_at = None
+    return sensors
 
 @pytest.fixture
 def sample_statistics() -> list[SensorStatistics]:
@@ -124,7 +142,8 @@ def mock_sensor_repository(sample_sensors: list[Sensor], sample_statistics: list
         description_contains: str | None = None,
         postprocess: bool | None = None,
         sort_by: SortField | None = None,
-        sort_order: str = "asc"
+        sort_order: str = "asc",
+        published_only: bool = False,
     ) -> Tuple[List[Tuple[Sensor, SensorStatistics]], int]:
         # Filter sensors based on parameters
         filtered_sensors = sample_sensors.copy()

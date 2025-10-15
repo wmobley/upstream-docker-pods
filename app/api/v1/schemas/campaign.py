@@ -13,7 +13,7 @@ class CampaignsIn(BaseModel):
     description: str | None = None
     start_date: datetime | None = None
     end_date: datetime | None = None
-    allocation: str
+    allocation: str | None = None
 
 class CampaignCreateResponse(BaseModel):
     id: int
@@ -27,6 +27,8 @@ class Location(BaseModel):
 class SummaryListCampaigns(BaseModel):
     sensor_types: List[str] | None = None
     variable_names: List[str] | None = None
+    is_published: bool | None = None
+    published_at: datetime | None = None
 
 class ListCampaignsResponseItem(BaseModel):
     id: int
@@ -40,6 +42,8 @@ class ListCampaignsResponseItem(BaseModel):
     allocation: str | None = None
     summary: SummaryListCampaigns
     geometry: dict = Field(default_factory=dict, nullable=True)  # type: ignore[call-overload,type-arg]
+    is_published: bool = False
+    published_at: datetime | None = None
 
 class ListCampaignsResponsePagination(BaseModel):
     items: list[ListCampaignsResponseItem]
@@ -62,11 +66,13 @@ class GetCampaignResponse(BaseModel):
     contact_email: str | None = None
     start_date: datetime | None = None
     end_date: datetime | None = None
-    allocation: str
+    allocation: str | None = None
     location: Location | None = None
     summary: SummaryGetCampaign
     geometry: dict = Field(default_factory=dict, nullable=True)  # type: ignore[call-overload,type-arg]
     stations: list[StationsListResponseItem] = []
+    is_published: bool = False
+    published_at: datetime | None = None
 
 
 class CampaignUpdate(BaseModel):
@@ -77,3 +83,28 @@ class CampaignUpdate(BaseModel):
     allocation: Optional[str] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
+
+
+class PublishRequest(BaseModel):
+    """Request schema for publishing campaigns, stations, or sensors."""
+    cascade: bool = Field(
+        default=False,
+        description="If true, cascade publish to child resources (e.g., sensors when publishing station)"
+    )
+    force: bool = Field(
+        default=False,
+        description="If true, force publish even if already published"
+    )
+
+
+class PublishResponse(BaseModel):
+    """Response schema for publish/unpublish operations."""
+    success: bool
+    message: str
+    published_count: int = Field(default=0, description="Number of items published/unpublished")
+    errors: List[str] = Field(default_factory=list, description="Any errors encountered")
+    id: int | None = None
+    type: str | None = None
+    is_published: bool | None = None
+    published_at: datetime | None = None
+    cascaded_items: List[str] | None = None

@@ -65,6 +65,7 @@ class CampaignRepository:
         sensor_variables: list[str] | None,
         page: int = 1,
         limit: int = 20,
+        published_only: bool = False,
     ) -> tuple[list[tuple[Campaign, int, int, list[str | None], list[str | None], str | None]], int]:
         # Base campaign query
         query = self.db.query(
@@ -109,6 +110,8 @@ class CampaignRepository:
             )
         if sensor_variables:
             query = query.filter(Sensor.variablename.in_(sensor_variables))
+        if published_only:
+            query = query.filter(Campaign.published.is_(True))
 
         total_count = query.count()
 
