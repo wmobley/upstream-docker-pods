@@ -1,15 +1,16 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    POSTGRES_PASSWORD: str
-    TAS_USER: str
-    TAS_SECRET: str
-    JWT_SECRET: str
-    TAS_URL: str
-    DATABASE_URL: str
-    ENV: str
-    ENVIRONMENT: str
-    ALG: str
+    POSTGRES_PASSWORD: str = Field(default="test_password")
+    TAS_USER: str = Field(default="test_user")
+    TAS_SECRET: str = Field(default="test_secret")
+    JWT_SECRET: str = Field(default="test_secret")
+    TAS_URL: str = Field(default="https://example.com")
+    DATABASE_URL: str = Field(default="sqlite:///:memory:")
+    ENV: str = Field(default="test")
+    ENVIRONMENT: str = Field(default="test")
+    ALG: str = Field(default="HS256")
 
     model_config = SettingsConfigDict(
         env_file=".env",
