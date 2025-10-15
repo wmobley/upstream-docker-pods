@@ -21,4 +21,4 @@ class Settings(BaseSettings):
 
 def get_settings() -> Settings:
     # BaseSettings pulls values from environment; mypy doesn't understand this constructor
-    return Settings()  # type: ignore[call-arg]
+    return Settings()
