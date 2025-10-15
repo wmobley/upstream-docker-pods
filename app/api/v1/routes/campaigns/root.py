@@ -61,10 +61,9 @@ async def list_campaigns(
     campaign_service = CampaignService(CampaignRepository(db))
 
     if current_user:
-        # Authenticated user - show all campaigns they have access to
-        allocations = get_allocations(current_user.username)
+        # Authenticated user - show all campaigns (no allocation filtering)
         results, total_count = campaign_service.get_campaigns_with_summary(
-            allocations, bbox, start_date, end_date, sensor_variables, page, limit, published_only=False
+            None, bbox, start_date, end_date, sensor_variables, page, limit, published_only=False
         )
     else:
         # Unauthenticated user - show only published campaigns

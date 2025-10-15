@@ -20,24 +20,18 @@ def get_campaign_permissions(
     Get user permissions for a specific campaign.
     Returns what actions the current user can perform on the campaign.
     """
-    # Check if user has access to this campaign
-    has_access = check_allocation_permission(current_user, campaign_id)
-
-    # In the current system, if you have access, you can delete
-    # This can be extended in the future for more granular permissions
-    can_delete = has_access
-    can_edit = has_access
-    can_view = has_access
+    # Since allocations are removed, all authenticated users have full access
+    has_access = True
 
     return {
         "campaign_id": campaign_id,
         "permissions": {
-            "can_view": can_view,
-            "can_edit": can_edit,
-            "can_delete": can_delete,
+            "can_view": has_access,
+            "can_edit": has_access,
+            "can_delete": has_access,
             "can_create_stations": has_access,
-            "can_delete_stations": can_delete,
+            "can_delete_stations": has_access,
             "can_create_sensors": has_access,
-            "can_delete_sensors": can_delete,
+            "can_delete_sensors": has_access,
         }
     }

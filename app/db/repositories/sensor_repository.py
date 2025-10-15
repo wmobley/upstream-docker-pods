@@ -64,12 +64,14 @@ class SensorRepository:
         self.db.commit()
         return sensors
 
-    def get_sensor(self, sensor_id: int) -> GetSensorResponse | None:
+    def get_sensor(self, sensor_id: int, published_only: bool = False) -> GetSensorResponse | None:
         stmt = (
             select(Sensor, SensorStatistics)
             .outerjoin(SensorStatistics, Sensor.sensorid == SensorStatistics.sensorid)
             .where(Sensor.sensorid == sensor_id)
         )
+        if published_only:
+            stmt = stmt.where(Sensor.published.is_(True))
 
         result = self.db.execute(stmt).first()
 
@@ -86,6 +88,8 @@ class SensorRepository:
             postprocess=sensor.postprocess,
             postprocessscript=sensor.postprocessscript,
             units=sensor.units,
+            is_published=sensor.published,
+            published_at=sensor.published_at,
             statistics=SensorStatisticsSchema(
                 max_value=statistics.max_value if statistics else None,
                 min_value=statistics.min_value if statistics else None,
@@ -171,6 +175,7 @@ class SensorRepository:
         postprocess: bool | None = None,
         sort_by: Optional[SortField] = None,
         sort_order: str = "asc",
+        published_only: bool = False,
     ) -> Tuple[list[Row[Tuple[Sensor, SensorStatistics]]], int]:
         count_stmt = (
             select(func.count())
@@ -181,6 +186,9 @@ class SensorRepository:
             SensorStatistics, Sensor.sensorid == SensorStatistics.sensorid
         )
         stmt = stmt.where(Sensor.stationid == station_id)
+        if published_only:
+            stmt = stmt.where(Sensor.published.is_(True))
+            count_stmt = count_stmt.where(Sensor.published.is_(True))
 
         if variable_name:
             stmt = stmt.where(Sensor.variablename.ilike(f"%{variable_name}%"))
@@ -225,6 +233,7 @@ class SensorRepository:
         limit: int = 20,
         sort_by: Optional[SortField] = None,
         sort_order: str = "asc",
+        published_only: bool = False,
     ) -> tuple[list[Row[Tuple[Sensor, SensorStatistics]]], int]:
         stmt = select(Sensor, SensorStatistics).outerjoin(
             SensorStatistics, Sensor.sensorid == SensorStatistics.sensorid
@@ -240,6 +249,9 @@ class SensorRepository:
         if postprocess is not None:
             stmt = stmt.where(Sensor.postprocess == postprocess)
             count_stmt = count_stmt.where(Sensor.postprocess == postprocess)
+        if published_only:
+            stmt = stmt.where(Sensor.published.is_(True))
+            count_stmt = count_stmt.where(Sensor.published.is_(True))
 
         # Handle sorting
         if sort_by:

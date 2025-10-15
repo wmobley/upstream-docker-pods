@@ -1,15 +1,15 @@
-"""
-Service for publishing and unpublishing campaigns, stations, sensors, and measurements.
-Publishing makes data publicly accessible.
-"""
+"""Service for publishing and unpublishing campaigns, stations, sensors, and measurements."""
 
+from datetime import datetime
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 
+from app.db.models.measurement import Measurement
+from app.db.models.sensor import Sensor
 from app.db.repositories.campaign_repository import CampaignRepository
-from app.db.repositories.station_repository import StationRepository
-from app.db.repositories.sensor_repository import SensorRepository
 from app.db.repositories.measurement_repository import MeasurementRepository
+from app.db.repositories.sensor_repository import SensorRepository
+from app.db.repositories.station_repository import StationRepository
 
 
 class PublishingService:
@@ -37,7 +37,7 @@ class PublishingService:
         Returns:
             Dict with success status, message, and count of published items
         """
-        campaign = self.campaign_repo.get_campaign_by_id(campaign_id)
+        campaign = self.campaign_repo.get_campaign(campaign_id)
         if not campaign:
             return {
                 "success": False,
@@ -48,6 +48,7 @@ class PublishingService:
 
         published_count = 0
         errors: List[str] = []
+        cascaded_items: List[str] = []
 
         # Check if already published
         if hasattr(campaign, "published") and campaign.published and not force:
@@ -61,6 +62,8 @@ class PublishingService:
         # Publish the campaign
         if hasattr(campaign, "published"):
             campaign.published = True
+            if hasattr(campaign, "published_at"):
+                campaign.published_at = datetime.utcnow()
             self.db.commit()
             published_count += 1
 
@@ -68,18 +71,31 @@ class PublishingService:
         if cascade:
             stations = self.station_repo.get_stations_by_campaign_id(campaign_id)
             for station in stations:
+                station_identifier = getattr(station, "id", None) or getattr(
+                    station, "stationid", None
+                )
+                if station_identifier is None:
+                    errors.append("Encountered station without identifiable ID during publish cascade.")
+                    continue
                 try:
-                    result = self.publish_station(station.id, cascade=True, force=force)
+                    result = self.publish_station(station_identifier, cascade=True, force=force)
                     published_count += result["published_count"]
                     errors.extend(result.get("errors", []))
+                    cascaded_items.extend(result.get("cascaded_items", []))
+                    cascaded_items.append(f"station:{station_identifier}")
                 except Exception as e:
-                    errors.append(f"Error publishing station {station.id}: {str(e)}")
+                    errors.append(f"Error publishing station {station_identifier}: {str(e)}")
 
         return {
             "success": True,
             "message": f"Campaign {campaign_id} published successfully" + (" with cascading" if cascade else ""),
             "published_count": published_count,
             "errors": errors,
+            "id": campaign_id,
+            "type": "campaign",
+            "is_published": True,
+            "published_at": getattr(campaign, "published_at", None),
+            "cascaded_items": cascaded_items,
         }
 
     def unpublish_campaign(self, campaign_id: int) -> Dict[str, Any]:
@@ -92,7 +108,7 @@ class PublishingService:
         Returns:
             Dict with success status and message
         """
-        campaign = self.campaign_repo.get_campaign_by_id(campaign_id)
+        campaign = self.campaign_repo.get_campaign(campaign_id)
         if not campaign:
             return {
                 "success": False,
@@ -103,6 +119,8 @@ class PublishingService:
 
         if hasattr(campaign, "published"):
             campaign.published = False
+            if hasattr(campaign, "published_at"):
+                campaign.published_at = None
             self.db.commit()
 
         return {
@@ -110,6 +128,11 @@ class PublishingService:
             "message": f"Campaign {campaign_id} unpublished successfully",
             "published_count": 1,
             "errors": [],
+            "id": campaign_id,
+            "type": "campaign",
+            "is_published": False,
+            "published_at": None,
+            "cascaded_items": [],
         }
 
     # Station Publishing
@@ -127,7 +150,7 @@ class PublishingService:
         Returns:
             Dict with success status, message, and count of published items
         """
-        station = self.station_repo.get_station_by_id(station_id)
+        station = self.station_repo.get_station(station_id)
         if not station:
             return {
                 "success": False,
@@ -138,6 +161,7 @@ class PublishingService:
 
         published_count = 0
         errors: List[str] = []
+        cascaded_items: List[str] = []
 
         # Check if already published
         if hasattr(station, "published") and station.published and not force:
@@ -151,25 +175,39 @@ class PublishingService:
         # Publish the station
         if hasattr(station, "published"):
             station.published = True
+            if hasattr(station, "published_at"):
+                station.published_at = datetime.utcnow()
             self.db.commit()
             published_count += 1
 
         # Cascade to sensors if requested
         if cascade:
-            sensors, _ = self.sensor_repo.get_sensors_by_station_id(station_id)
-            for sensor in sensors:
+            sensor_entities = (
+                self.db.query(Sensor)
+                .filter(Sensor.stationid == station_id)
+                .all()
+            )
+            for sensor in sensor_entities:
+                sensor_identifier = sensor.sensorid
                 try:
-                    result = self.publish_sensor(sensor.id, cascade=True, force=force)
+                    result = self.publish_sensor(sensor_identifier, cascade=True, force=force)
                     published_count += result["published_count"]
                     errors.extend(result.get("errors", []))
+                    cascaded_items.extend(result.get("cascaded_items", []))
+                    cascaded_items.append(f"sensor:{sensor_identifier}")
                 except Exception as e:
-                    errors.append(f"Error publishing sensor {sensor.id}: {str(e)}")
+                    errors.append(f"Error publishing sensor {sensor_identifier}: {str(e)}")
 
         return {
             "success": True,
             "message": f"Station {station_id} published successfully" + (" with cascading" if cascade else ""),
             "published_count": published_count,
             "errors": errors,
+            "id": station_id,
+            "type": "station",
+            "is_published": True,
+            "published_at": getattr(station, "published_at", None),
+            "cascaded_items": cascaded_items,
         }
 
     def unpublish_station(self, station_id: int) -> Dict[str, Any]:
@@ -182,7 +220,7 @@ class PublishingService:
         Returns:
             Dict with success status and message
         """
-        station = self.station_repo.get_station_by_id(station_id)
+        station = self.station_repo.get_station(station_id)
         if not station:
             return {
                 "success": False,
@@ -193,6 +231,8 @@ class PublishingService:
 
         if hasattr(station, "published"):
             station.published = False
+            if hasattr(station, "published_at"):
+                station.published_at = None
             self.db.commit()
 
         return {
@@ -200,6 +240,11 @@ class PublishingService:
             "message": f"Station {station_id} unpublished successfully",
             "published_count": 1,
             "errors": [],
+            "id": station_id,
+            "type": "station",
+            "is_published": False,
+            "published_at": None,
+            "cascaded_items": [],
         }
 
     # Sensor Publishing
@@ -217,7 +262,11 @@ class PublishingService:
         Returns:
             Dict with success status, message, and count of published items
         """
-        sensor = self.sensor_repo.get_sensor_by_id(sensor_id)
+        sensor = (
+            self.db.query(Sensor)
+            .filter(Sensor.sensorid == sensor_id)
+            .first()
+        )
         if not sensor:
             return {
                 "success": False,
@@ -228,6 +277,7 @@ class PublishingService:
 
         published_count = 0
         errors: List[str] = []
+        cascaded_items: List[str] = []
 
         # Check if already published
         if hasattr(sensor, "published") and sensor.published and not force:
@@ -241,20 +291,41 @@ class PublishingService:
         # Publish the sensor
         if hasattr(sensor, "published"):
             sensor.published = True
+            if hasattr(sensor, "published_at"):
+                sensor.published_at = datetime.utcnow()
             self.db.commit()
             published_count += 1
 
         # Cascade to measurements if requested
         if cascade:
-            # Note: You may need to implement bulk measurement publishing
-            # For now, we'll just mark it as successful
-            pass
+            measurements = (
+                self.db.query(Measurement)
+                .filter(Measurement.sensorid == sensor_id)
+                .all()
+            )
+            for measurement in measurements:
+                try:
+                    if getattr(measurement, "published", False) and not force:
+                        continue
+                    measurement.published = True
+                    if hasattr(measurement, "published_at"):
+                        measurement.published_at = datetime.utcnow()
+                    published_count += 1
+                    cascaded_items.append(f"measurement:{measurement.measurementid}")
+                except Exception as exc:  # pragma: no cover - defensive
+                    errors.append(f"Error publishing measurement {measurement.measurementid}: {exc}")
+            self.db.commit()
 
         return {
             "success": True,
             "message": f"Sensor {sensor_id} published successfully" + (" with cascading" if cascade else ""),
             "published_count": published_count,
             "errors": errors,
+            "id": sensor_id,
+            "type": "sensor",
+            "is_published": True,
+            "published_at": getattr(sensor, "published_at", None),
+            "cascaded_items": cascaded_items,
         }
 
     def unpublish_sensor(self, sensor_id: int) -> Dict[str, Any]:
@@ -267,7 +338,11 @@ class PublishingService:
         Returns:
             Dict with success status and message
         """
-        sensor = self.sensor_repo.get_sensor_by_id(sensor_id)
+        sensor = (
+            self.db.query(Sensor)
+            .filter(Sensor.sensorid == sensor_id)
+            .first()
+        )
         if not sensor:
             return {
                 "success": False,
@@ -278,6 +353,8 @@ class PublishingService:
 
         if hasattr(sensor, "published"):
             sensor.published = False
+            if hasattr(sensor, "published_at"):
+                sensor.published_at = None
             self.db.commit()
 
         return {
@@ -285,6 +362,11 @@ class PublishingService:
             "message": f"Sensor {sensor_id} unpublished successfully",
             "published_count": 1,
             "errors": [],
+            "id": sensor_id,
+            "type": "sensor",
+            "is_published": False,
+            "published_at": None,
+            "cascaded_items": [],
         }
 
     # Measurement Publishing
@@ -304,9 +386,15 @@ class PublishingService:
         published_count = 0
         errors: List[str] = []
 
+        cascaded_items: List[str] = []
+
         for measurement_id in measurement_ids:
             try:
-                measurement = self.measurement_repo.get_measurement_by_id(measurement_id)
+                measurement = (
+                    self.db.query(Measurement)
+                    .filter(Measurement.measurementid == measurement_id)
+                    .first()
+                )
                 if not measurement:
                     errors.append(f"Measurement {measurement_id} not found")
                     continue
@@ -314,7 +402,10 @@ class PublishingService:
                 if hasattr(measurement, "published"):
                     if not measurement.published or force:
                         measurement.published = True
+                        if hasattr(measurement, "published_at"):
+                            measurement.published_at = datetime.utcnow()
                         published_count += 1
+                        cascaded_items.append(f"measurement:{measurement_id}")
             except Exception as e:
                 errors.append(f"Error publishing measurement {measurement_id}: {str(e)}")
 
@@ -325,6 +416,11 @@ class PublishingService:
             "message": f"Published {published_count} measurements",
             "published_count": published_count,
             "errors": errors,
+            "id": None,
+            "type": "measurement",
+            "is_published": True if published_count > 0 else None,
+            "published_at": datetime.utcnow() if published_count > 0 else None,
+            "cascaded_items": cascaded_items,
         }
 
     def unpublish_measurements(self, measurement_ids: List[int]) -> Dict[str, Any]:
@@ -340,16 +436,25 @@ class PublishingService:
         unpublished_count = 0
         errors: List[str] = []
 
+        cascaded_items: List[str] = []
+
         for measurement_id in measurement_ids:
             try:
-                measurement = self.measurement_repo.get_measurement_by_id(measurement_id)
+                measurement = (
+                    self.db.query(Measurement)
+                    .filter(Measurement.measurementid == measurement_id)
+                    .first()
+                )
                 if not measurement:
                     errors.append(f"Measurement {measurement_id} not found")
                     continue
 
                 if hasattr(measurement, "published"):
                     measurement.published = False
+                    if hasattr(measurement, "published_at"):
+                        measurement.published_at = None
                     unpublished_count += 1
+                    cascaded_items.append(f"measurement:{measurement_id}")
             except Exception as e:
                 errors.append(f"Error unpublishing measurement {measurement_id}: {str(e)}")
 
@@ -360,4 +465,9 @@ class PublishingService:
             "message": f"Unpublished {unpublished_count} measurements",
             "published_count": unpublished_count,
             "errors": errors,
+            "id": None,
+            "type": "measurement",
+            "is_published": False if unpublished_count > 0 else None,
+            "published_at": None,
+            "cascaded_items": cascaded_items,
         }

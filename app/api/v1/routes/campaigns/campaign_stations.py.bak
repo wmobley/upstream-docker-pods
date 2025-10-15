@@ -50,7 +50,6 @@ async def list_stations(
     db: Session = Depends(get_db),
 ) -> ListStationsResponsePagination:
     station_service = StationService(StationRepository(db))
-    campaign_service = CampaignService(CampaignRepository(db))
 
     if current_user:
         # Authenticated user - show all stations (no allocation check)
@@ -58,8 +57,6 @@ async def list_stations(
             campaign_id, page, limit, published_only=False
         )
     else:
-        if not campaign_service.get_campaign_with_summary(campaign_id, published_only=True):
-            raise HTTPException(status_code=404, detail="Campaign not found")
         # Unauthenticated user - show only published stations in published campaigns
         stations, total_count = station_service.get_stations_with_summary(
             campaign_id, page, limit, published_only=True
@@ -85,10 +82,12 @@ async def get_station(
     station_service = StationService(StationRepository(db))
 
     if current_user:
-        # Authenticated user - show all stations
+        # Authenticated user - check allocation permissions, show all stations
+        if not check_allocation_permission(current_user, campaign_id):
+            raise HTTPException(status_code=404, detail="Station not found")
         station = station_service.get_station(station_id, published_only=False)
     else:
-        # Unauthenticated user - show only published stations
+        # Unauthenticated user - show only if published and campaign is published
         station = station_service.get_station(station_id, published_only=True)
 
     if not station:
@@ -102,11 +101,8 @@ def delete_sensor(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_unified),
 ) -> Response:
-    # Removed allocation check - all authenticated users allowed
-
-    # if not check_allocation_permission(current_user, campaign_id):
-
-    #     raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
     campaign_repository = CampaignRepository(db)
     campaign_service = CampaignService(campaign_repository=campaign_repository)
     campaign_service.delete_campaign_station(campaign_id=campaign_id)
@@ -120,11 +116,8 @@ def delete_station(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_unified),
 ) -> Response:
-    # Removed allocation check - all authenticated users allowed
-
-    # if not check_allocation_permission(current_user, campaign_id):
-
-    #     raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
 
     # Use station service to delete individual station
     station_service = StationService(StationRepository(db))
@@ -146,11 +139,8 @@ def update_station(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_unified),
 ) -> StationCreateResponse:
-    # Removed allocation check - all authenticated users allowed
-
-    # if not check_allocation_permission(current_user, campaign_id):
-
-    #     raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
     station_service = StationService(StationRepository(db))
     updated_station = station_service.update_station(station_id, station)
     if not updated_station:
@@ -166,11 +156,8 @@ def partial_update_station(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_unified),
 ) -> StationCreateResponse:
-    # Removed allocation check - all authenticated users allowed
-
-    # if not check_allocation_permission(current_user, campaign_id):
-
-    #     raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
     station_service = StationService(StationRepository(db))
     update_station = station_service.partial_update_station(station_id, station)
     if not update_station:
@@ -249,11 +236,8 @@ def publish_station(
     current_user: User = Depends(get_current_user_unified),
 ) -> PublishResponse:
     """Publish a station with optional cascading to sensors and measurements."""
-    # Removed allocation check - all authenticated users allowed
-
-    # if not check_allocation_permission(current_user, campaign_id):
-
-    #     raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
 
     publishing_service = PublishingService(db)
     result = publishing_service.publish_station(
@@ -272,11 +256,8 @@ def unpublish_station(
     current_user: User = Depends(get_current_user_unified),
 ) -> PublishResponse:
     """Unpublish a station."""
-    # Removed allocation check - all authenticated users allowed
-
-    # if not check_allocation_permission(current_user, campaign_id):
-
-    #     raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    if not check_allocation_permission(current_user, campaign_id):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
 
     publishing_service = PublishingService(db)
     result = publishing_service.unpublish_station(station_id)
