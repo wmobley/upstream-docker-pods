@@ -13,38 +13,40 @@ A RESTful API service for managing environmental sensor data and campaigns.
    pip install -r requirements.txt
    pip install -r requirements-dev.txt
    ```
-4. Create a `.env` file and set the environment variables:
+4. Create a `.env` file and set the environment variables. The sample defaults point the API to the Pods Postgres instance (`disasterpostgres.pods.tacc.tapis.io` on port `443` with credentials from your Tapis secret); adjust any of the `PODS_DB_*` values if they change:
    ```bash
    cp .env.sample .env
    ```
-5. Start containers:
+5. Build and run with Docker (recommended for local development):
 
    ```bash
+   # Build the API image defined by Dockerfile (installs requirements into the container)
+   docker compose build
+
+   # Start API + database using the default stack
    docker compose up -d
+
+   # Use an existing Postgres instance instead of the bundled db container
+   # (ensure DATABASE_URL/PODS_* in .env point at the remote service)
+   docker compose up -d --no-deps web
    ```
 
-   or
+   The `web` service entrypoint automatically waits for Postgres, runs `alembic upgrade head`, and then launches Uvicorn on port 8000.
+
+   For the slimmer dev stack in `docker-compose.dev.yml`, which targets the remote Pods Postgres instance, set `PODS_DATABASE_URL` in your `.env` (or rely on the default) and start the service:
 
    ```bash
-   docker compose -f docker-compose.dev.yml  up -d
+   # Example pods connection string
+   # Launch only the API container; it will connect to the remote database defined in .env
+   docker compose -f docker-compose.dev.yml up -d
    ```
 
-   or just the database:
+   > Tip: the dev file no longer provisions a local Postgres container. Use the default `docker compose up -d` if you need an isolated local database for testing.
+
+6. Optional: Run the API directly (without Docker) after installing dependencies:
 
    ```bash
-   docker compose -f docker-compose.dev.yml up -d db
-   ```
-
-6. Initialize the database:
-
-   ```bash
-   # Run database migrations
    alembic upgrade head
-   ```
-
-7. Run the application for development:
-
-   ```bash
    fastapi dev app/main.py
    ```
 

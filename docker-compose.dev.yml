@@ -3,7 +3,7 @@ services:
   web:
     platform: linux/amd64
     build: .
-    command: bash -c 'while !</dev/tcp/db/5432; do sleep 1; done; uvicorn app.main:app --reload --host 0.0.0.0'
+    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
     volumes:
       - .:/app
     env_file:
@@ -11,22 +11,4 @@ services:
     ports:
       - 8000:8000
     environment:
-      - DATABASE_URL=postgresql+psycopg://fastapi_traefik:fastapi_traefik@db:5432/fastapi_traefik
-    depends_on:
-      - db
-  db:
-    platform: linux/amd64
-    image: postgis/postgis
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/
-    expose:
-      - 5432
-    environment:
-      - POSTGRES_USER=fastapi_traefik
-      - POSTGRES_PASSWORD=fastapi_traefik
-      - POSTGRES_DB=fastapi_traefik
-    ports:
-      - 5432:5432
-
-volumes:
-  postgres_data:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://fastapi_traefik:fastapi_traefik@disasterpostgres.pods.tacc.tapis.io:443/fastapi_traefik?sslmode=require}
