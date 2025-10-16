@@ -55,4 +55,4 @@ def test_settings_with_env_sample(monkeypatch):
     assert settings.TAS_URL == "https://tas-dev.tacc.utexas.edu/api-test"
     assert settings.ENVIRONMENT == "dev"
     assert settings.ENV == "dev"
-    assert settings.DATABASE_URL == "postgresql+psycopg://fastapi_traefik:fastapi_traefik@disasterpostgres.pods.tacc.tapis.io:443/fastapi_traefik?sslmode=require"
+    assert settings.DATABASE_URL == "postgresql+psycopg://fastapi_traefik@localhost:5432/fastapi_traefik"
