@@ -2,5 +2,5 @@
 
 set -euo pipefail
 
-alembic upgrade heads
+# alembic upgrade heads
 exec uvicorn app.main:app "$@"
