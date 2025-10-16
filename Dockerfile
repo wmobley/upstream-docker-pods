@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir -r requirements-dev.txt
 
 # copy project
 COPY . /upstream
-RUN chmod +x /upstream/scripts/docker-entrypoint.sh
+RUN chmod +x /upstream/scripts/docker-entrypoint.sh /upstream/scripts/run.sh
 
 ENTRYPOINT ["/upstream/scripts/docker-entrypoint.sh"]
-CMD ["bash", "-lc", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["/upstream/scripts/run.sh", "--host", "0.0.0.0", "--port", "8000"]

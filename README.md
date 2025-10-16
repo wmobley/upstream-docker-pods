@@ -31,7 +31,7 @@ A RESTful API service for managing environmental sensor data and campaigns.
    docker compose up -d --no-deps web
    ```
 
-   The `web` service entrypoint waits for Postgres, then executes the default command—which runs `alembic upgrade head` followed by Uvicorn on port 8000.
+   The `web` service entrypoint waits for Postgres, then executes the default command—which runs `alembic upgrade heads` followed by Uvicorn on port 8000.
 
    For the slimmer dev stack in `docker-compose.dev.yml`, which targets whichever database `DATABASE_URL` references (Pods or local), start the service:
 
@@ -45,7 +45,7 @@ A RESTful API service for managing environmental sensor data and campaigns.
 6. Optional: Run the API directly (without Docker) after installing dependencies:
 
    ```bash
-   alembic upgrade head
+   alembic upgrade heads
    fastapi dev app/main.py
    ```
 
@@ -99,8 +99,8 @@ The project uses Alembic for database migrations. Key commands:
 # Create a new migration
 alembic revision --autogenerate -m "description"
 
-# Apply migrations
-alembic upgrade head
+# Apply migrations (run all heads)
+alembic upgrade heads
 
 # Rollback last migration
 alembic downgrade -1
