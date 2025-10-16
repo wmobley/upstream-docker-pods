@@ -11,8 +11,6 @@ log() {
 log "Starting container for environment=${ENVIRONMENT:-unknown} (env=${ENV:-unknown})."
 log "Waiting for database availability..."
 python /upstream/scripts/wait_for_db.py
-log "Database reachable; applying migrations."
-alembic upgrade head
-log "Migrations complete. Launching application command: $*"
+log "Database reachable. Launching application command: $*"
 
 exec "$@"

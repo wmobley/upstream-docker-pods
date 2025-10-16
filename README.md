@@ -13,7 +13,7 @@ A RESTful API service for managing environmental sensor data and campaigns.
    pip install -r requirements.txt
    pip install -r requirements-dev.txt
    ```
-4. Create a `.env` file and set the environment variables. The sample defaults point the API to the Pods Postgres instance (`disasterpostgres.pods.tacc.tapis.io` on port `443` with credentials from your Tapis secret); if the host, port, or credentials change, update the `PODS_DB_*` block as well as the derived `PODS_DATABASE_URL`/`DATABASE_URL` values:
+4. Create a `.env` file and set the environment variables. The sample defaults target a local Postgres instance (`localhost:5432`). If you want to connect to the Pods database instead, uncomment and populate the `PODS_DB_*` block in `.env.sample` (which also overrides `DATABASE_URL`):
    ```bash
    cp .env.sample .env
    ```
@@ -27,17 +27,16 @@ A RESTful API service for managing environmental sensor data and campaigns.
    docker compose up -d
 
    # Use an existing Postgres instance instead of the bundled db container
-   # (ensure DATABASE_URL/PODS_* in .env point at the remote service)
+   # (ensure DATABASE_URL in .env points at the remote service)
    docker compose up -d --no-deps web
    ```
 
-   The `web` service entrypoint automatically waits for Postgres, runs `alembic upgrade head`, and then launches Uvicorn on port 8000.
+   The `web` service entrypoint waits for Postgres, then executes the default command—which runs `alembic upgrade head` followed by Uvicorn on port 8000.
 
-   For the slimmer dev stack in `docker-compose.dev.yml`, which targets the remote Pods Postgres instance, set `PODS_DATABASE_URL` in your `.env` (or rely on the default) and start the service:
+   For the slimmer dev stack in `docker-compose.dev.yml`, which targets whichever database `DATABASE_URL` references (Pods or local), start the service:
 
    ```bash
-   # Example pods connection string
-   # Launch only the API container; it will connect to the remote database defined in .env
+   # Launch only the API container; it will connect using DATABASE_URL from .env
    docker compose -f docker-compose.dev.yml up -d
    ```
 
