@@ -13,7 +13,7 @@ A RESTful API service for managing environmental sensor data and campaigns.
    pip install -r requirements.txt
    pip install -r requirements-dev.txt
    ```
-4. Create a `.env` file and set the environment variables. The sample defaults point the API to the Pods Postgres instance (`disasterpostgres.pods.tacc.tapis.io` on port `443` with credentials from your Tapis secret); adjust any of the `PODS_DB_*` values if they change:
+4. Create a `.env` file and set the environment variables. The sample defaults point the API to the Pods Postgres instance (`disasterpostgres.pods.tacc.tapis.io` on port `443` with credentials from your Tapis secret); if the host, port, or credentials change, update the `PODS_DB_*` block as well as the derived `PODS_DATABASE_URL`/`DATABASE_URL` values:
    ```bash
    cp .env.sample .env
    ```
