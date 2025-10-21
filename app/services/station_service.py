@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from app.api.v1.schemas.sensor import SensorItem
 from app.api.v1.schemas.station import GetStationResponse,  StationItemWithSummary, StationCreate, StationCreateResponse, StationUpdate
 from app.db.repositories.station_repository import StationRepository
@@ -39,7 +40,9 @@ class StationService:
                 geometry=geometry,
                 sensor_types=[x for x in sensor_types if x is not None],
                 sensor_variables=[x for x in sensor_variables if x is not None],
-                sensor_count=row[1]
+                sensor_count=row[1],
+                is_published=bool(getattr(row[0], "published", False)),
+                published_at=getattr(row[0], "published_at", None),
             )
             stations.append(station)
         return stations, total_count
@@ -49,11 +52,12 @@ class StationService:
         row = self.station_repository.get_station(station_id)
         geometry = {}
         if row:
-            try:
-                geometry = json.loads(row.geometry) # type: ignore[arg-type]
-            except Exception as e:
-                print(e)
-
+            geometry_raw = getattr(row, "geometry_geojson", None)
+            if geometry_raw:
+                try:
+                    geometry = json.loads(geometry_raw)
+                except Exception:  # pragma: no cover - defensive fallback
+                    geometry = {}
 
         if not row:
             return None
@@ -66,13 +70,33 @@ class StationService:
             active=row.active,
             start_date=row.startdate,
             geometry=geometry,
-            sensors=[SensorItem(
-                id=sensor.sensorid,
-                alias=sensor.alias,
-                description=sensor.description,
-                postprocess=sensor.postprocess,
-                variablename=sensor.variablename,
-            ) for sensor in row.sensors]
+            is_published=bool(getattr(row, "published", False)),
+            published_at=getattr(row, "published_at", None),
+            sensors=[
+                SensorItem(
+                    id=sensor.sensorid,
+                    alias=sensor.alias,
+                    description=sensor.description,
+                    postprocess=sensor.postprocess,
+                    postprocessscript=sensor.postprocessscript,
+                    units=sensor.units,
+                    variablename=sensor.variablename,
+                    is_published=bool(getattr(sensor, "published", False)),
+                    published_at=getattr(sensor, "published_at", None),
+                )
+                for sensor in row.sensors
+            ]
         )
     def delete_station_sensors(self, station_id: int) ->bool:
         return self.station_repository.delete_station_sensors(station_id)
+
+    def delete_station(self, station_id: int) -> bool:
+        return self.station_repository.delete_station(station_id)
+
+    def set_publish_state(self, station_id: int, *, published: bool, published_at: datetime | None) -> bool:
+        result = self.station_repository.set_publish_state(
+            station_id,
+            published=published,
+            published_at=published_at,
+        )
+        return result is not None

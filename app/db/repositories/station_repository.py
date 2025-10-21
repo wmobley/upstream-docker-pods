@@ -52,6 +52,14 @@ class StationRepository:
         setattr(station, "geometry_geojson", geometry_str)
         return station
 
+    def station_belongs_to_campaign(self, station_id: int, campaign_id: int) -> bool:
+        return (
+            self.db.query(Station)
+            .filter(Station.stationid == station_id, Station.campaignid == campaign_id)
+            .first()
+            is not None
+        )
+
     def get_stations_by_campaign_id(self, campaign_id: int, page: int = 1, limit: int = 20, published_only: bool = False) -> list[Station]:
         query = self.db.query(Station).filter(Station.campaignid == campaign_id)
         if published_only:
@@ -163,6 +171,16 @@ class StationRepository:
             db_station.active = active
             db_station.startdate = start_date
 
+        self.db.commit()
+        self.db.refresh(db_station)
+        return db_station
+
+    def set_publish_state(self, station_id: int, *, published: bool, published_at: Optional[datetime]) -> Station | None:
+        db_station = self.db.query(Station).filter(Station.stationid == station_id).first()
+        if not db_station:
+            return None
+        db_station.published = published
+        db_station.published_at = published_at
         self.db.commit()
         self.db.refresh(db_station)
         return db_station

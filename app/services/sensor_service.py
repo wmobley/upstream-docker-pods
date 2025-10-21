@@ -32,6 +32,8 @@ class SensorService:
             postprocessscript=response.postprocessscript,
             units=response.units,
             variablename=response.variablename,
+            is_published=bool(getattr(response, "published", False)),
+            published_at=getattr(response, "published_at", None),
             statistics=None
         )
     def update_sensor(self, sensor_id: int, sensor: SensorUpdate) -> SensorCreateResponse | None:
@@ -82,6 +84,8 @@ class SensorService:
                 postprocessscript=sensor.postprocessscript,
                 units=sensor.units,
                 variablename=sensor.variablename,
+                is_published=bool(getattr(sensor, "published", False)),
+                published_at=getattr(sensor, "published_at", None),
                 statistics=SensorStatistics(
                     max_value=statistics.max_value if statistics else None,
                     min_value=statistics.min_value if statistics else None,
@@ -138,6 +142,8 @@ class SensorService:
                 postprocessscript=sensor.postprocessscript,
                 units=sensor.units,
                 variablename=sensor.variablename,
+                is_published=bool(getattr(sensor, "published", False)),
+                published_at=getattr(sensor, "published_at", None),
                 statistics=SensorStatistics(
                     max_value=statistics.max_value if statistics else None,
                     min_value=statistics.min_value if statistics else None,
@@ -178,6 +184,14 @@ class SensorService:
     def get_latest_measurement(self, sensor_id: int) -> Optional[datetime]:
         measurement = self.measurement_repository.get_latest_measurement_by_sensor_id(sensor_id)
         return measurement.collectiontime if measurement else None
+
+    def set_publish_state(self, sensor_id: int, *, published: bool, published_at: Optional[datetime]) -> bool:
+        result = self.sensor_repository.set_publish_state(
+            sensor_id,
+            published=published,
+            published_at=published_at,
+        )
+        return result is not None
 
     def force_update_station_sensor_statistics(self, station_id: int) -> ForceUpdateSensorStatisticsResponse:
         """Force update statistics for all sensors in a station."""

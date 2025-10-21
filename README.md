@@ -49,6 +49,23 @@ A RESTful API service for managing environmental sensor data and campaigns.
    fastapi dev app/main.py
    ```
 
+## CKAN Integration
+
+As of this release CKAN registration is handled entirely in the Upstream UI. The API retains the publish/unpublish endpoints only to persist station metadata (`is_published` and `published_at`) after the UI finishes updating CKAN directly. No CKAN-specific configuration is required on the API service.
+
+## Core API Endpoints
+
+The service is mounted at `/api/v1`. Common read operations:
+
+- `GET /api/v1/campaigns` — paginate campaigns, supports filters via query parameters
+- `GET /api/v1/campaigns/{campaign_id}` — fetch campaign details including station summary
+- `GET /api/v1/campaigns/{campaign_id}/stations` — list stations for a campaign
+- `GET /api/v1/campaigns/{campaign_id}/stations/{station_id}` — station metadata plus sensor list
+- `GET /api/v1/campaigns/{campaign_id}/stations/{station_id}/sensors` — enumerate sensors (filtering and sorting available)
+- `GET /api/v1/campaigns/{campaign_id}/stations/{station_id}/sensors/{sensor_id}/measurements` — retrieve measurements for a sensor
+
+An interactive schema browser is available at `https://<host>/docs` (for example `https://infordisaster.pods.tacc.tapis.io/docs`).
+
 ## On-premise Environment
 
 ### Setting up environments
@@ -108,6 +125,25 @@ alembic downgrade -1
 # View migration history
 alembic history
 ```
+
+## Seeding Development Data via API
+
+The Alembic migrations insert sample campaigns, stations, sensors, and hourly measurements directly into the database. For workflows that need to exercise the API instead, use the helper script `scripts/seed_api_data.py`:
+
+```bash
+# Activate your virtualenv and ensure the API is running (defaults to http://localhost:8000).
+python scripts/seed_api_data.py \
+  --base-url http://localhost:8000/api/v1 \
+  --token dev-token
+```
+
+The script:
+
+- Creates the two sample campaigns and their associated stations if they are missing.
+- Uploads sensors and 24 hours of hourly measurements for each station via the CSV upload endpoint.
+- Accepts `--hours` to control the measurement window, `--dry-run` to preview actions, and `--skip-measurements` to load only metadata.
+
+By default an Authorization header (`Bearer dev-token`) is sent; set `API_BEARER_TOKEN` or pass `--token` to supply a different credential, and `TAPIS_TOKEN` if you need the script to forward a real Tapis token.
 
 ## Database Schema
 

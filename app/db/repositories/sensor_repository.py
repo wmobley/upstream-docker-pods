@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional, List, Tuple, Any
 import typing
 from sqlalchemy.orm import Session
@@ -86,6 +87,8 @@ class SensorRepository:
             postprocess=sensor.postprocess,
             postprocessscript=sensor.postprocessscript,
             units=sensor.units,
+            is_published=bool(getattr(sensor, "published", False)),
+            published_at=getattr(sensor, "published_at", None),
             statistics=SensorStatisticsSchema(
                 max_value=statistics.max_value if statistics else None,
                 min_value=statistics.min_value if statistics else None,
@@ -335,6 +338,28 @@ class SensorRepository:
         self.db.commit()
         self.db.refresh(db_station)
         return db_station
+
+    def get_sensor_entity(self, sensor_id: int, station_id: Optional[int] = None) -> Sensor | None:
+        query = self.db.query(Sensor).filter(Sensor.sensorid == sensor_id)
+        if station_id is not None:
+            query = query.filter(Sensor.stationid == station_id)
+        return query.first()
+
+    def set_publish_state(
+        self,
+        sensor_id: int,
+        *,
+        published: bool,
+        published_at: Optional[datetime],
+    ) -> Sensor | None:
+        db_sensor = self.db.query(Sensor).filter(Sensor.sensorid == sensor_id).first()
+        if not db_sensor:
+            return None
+        db_sensor.published = published
+        db_sensor.published_at = published_at
+        self.db.commit()
+        self.db.refresh(db_sensor)
+        return db_sensor
 
     def get_sensors_by_campaign_chunked(
         self, campaign_id: int, chunk_size: int = 1000

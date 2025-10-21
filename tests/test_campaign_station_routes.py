@@ -1,13 +1,24 @@
 import pytest
+from datetime import datetime
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch
 from sqlalchemy.orm import Session
 
 from app.main import app
-from app.api.v1.schemas.station import StationCreate, StationUpdate, StationCreateResponse, GetStationResponse, StationItemWithSummary
+from app.api.v1.schemas.station import (
+    StationCreate,
+    StationUpdate,
+    StationCreateResponse,
+    GetStationResponse,
+    StationItemWithSummary,
+    StationsListResponseItem,
+)
+from app.api.v1.schemas.campaign import GetCampaignResponse, SummaryGetCampaign
 from app.api.v1.schemas.user import User
 from app.api.dependencies.auth import get_current_user
+from app.api.dependencies.pytas import get_user_allocations
 from app.db.session import get_db
+from app.services.ckan_service import _slugify
 
 # Mock data for testing
 MOCK_USER = User(
@@ -81,6 +92,7 @@ def client_with_auth():
         'SECRET_KEY': 'test-secret-key',
     }):
         app.dependency_overrides[get_current_user] = override_get_current_user
+        app.dependency_overrides[get_user_allocations] = lambda: ["test-allocation"]
         app.dependency_overrides[get_db] = override_get_db
         client = TestClient(app)
         yield client
@@ -179,6 +191,100 @@ class TestCampaignStationRoutes:
             response = client_with_auth.delete(f"/api/v1/campaigns/{self.campaign_id}/stations")
             assert response.status_code == 404
             assert response.json()["detail"] == "Allocation is incorrect"
+
+    def test_delete_station_success(self, client_with_auth):
+        campaign_response = GetCampaignResponse(
+            id=self.campaign_id,
+            name="Test Campaign",
+            summary=SummaryGetCampaign(
+                station_count=1,
+                sensor_count=0,
+                sensor_types=[],
+                sensor_variables=[],
+            ),
+            stations=[
+                StationsListResponseItem(
+                    id=self.station_id,
+                    name="Test Station Alpha",
+                    description="Test description",
+                    start_date=datetime.utcnow(),
+                )
+            ],
+        )
+        station_response = GetStationResponse(
+            id=self.station_id,
+            name="Test Station Alpha",
+            description="Test description",
+            start_date=datetime.utcnow(),
+            geometry={},
+            sensors=[],
+        )
+
+        mock_settings = Mock()
+        mock_settings.CKAN_URL = "https://ckan.example.com"
+
+        with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=True), \
+             patch('app.services.campaign_service.CampaignService.get_campaign_with_summary', return_value=campaign_response) as mock_get_campaign, \
+             patch('app.services.station_service.StationService.get_station', return_value=station_response) as mock_get_station, \
+             patch('app.services.station_service.StationService.delete_station_sensors') as mock_delete_sensors, \
+             patch('app.services.station_service.StationService.delete_station', return_value=True) as mock_delete_station, \
+             patch('app.api.v1.routes.campaigns.campaign_stations.get_ckan_service') as mock_get_ckan_service, \
+             patch('app.api.v1.routes.campaigns.campaign_stations.get_settings', return_value=mock_settings):
+            mock_ckan_client = Mock()
+            mock_get_ckan_service.return_value = mock_ckan_client
+
+            response = client_with_auth.delete(
+                f"/api/v1/campaigns/{self.campaign_id}/stations/{self.station_id}",
+                headers={"X-TAPIS-TOKEN": "fake-token"},
+            )
+
+            assert response.status_code == 204
+            mock_get_campaign.assert_called_once_with(self.campaign_id)
+            mock_get_station.assert_called_once_with(self.station_id)
+            mock_delete_sensors.assert_called_once_with(station_id=self.station_id)
+            mock_delete_station.assert_called_once_with(self.station_id)
+
+            expected_slug = _slugify("Test Campaign-Test Station Alpha")
+            mock_ckan_client.delete_dataset.assert_called_once_with(
+                token="fake-token",
+                name_or_id=expected_slug,
+            )
+
+    def test_delete_station_not_in_campaign(self, client_with_auth):
+        campaign_response = GetCampaignResponse(
+            id=self.campaign_id,
+            name="Test Campaign",
+            summary=SummaryGetCampaign(
+                station_count=0,
+                sensor_count=0,
+                sensor_types=[],
+                sensor_variables=[],
+            ),
+            stations=[],
+        )
+        station_response = GetStationResponse(
+            id=self.station_id,
+            name="Orphan Station",
+            description="Test description",
+            start_date=datetime.utcnow(),
+            geometry={},
+            sensors=[],
+        )
+
+        with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=True), \
+             patch('app.services.campaign_service.CampaignService.get_campaign_with_summary', return_value=campaign_response), \
+             patch('app.services.station_service.StationService.get_station', return_value=station_response), \
+             patch('app.services.station_service.StationService.delete_station_sensors') as mock_delete_sensors, \
+             patch('app.services.station_service.StationService.delete_station') as mock_delete_station:
+            response = client_with_auth.delete(
+                f"/api/v1/campaigns/{self.campaign_id}/stations/{self.station_id}",
+                headers={"X-TAPIS-TOKEN": "fake-token"},
+            )
+
+            assert response.status_code == 404
+            assert response.json()["detail"] == "Station not found"
+            mock_delete_sensors.assert_not_called()
+            mock_delete_station.assert_not_called()
 
     # PUT /campaigns/{campaign_id}/stations/{station_id}
     def test_update_station_success(self, client_with_auth):

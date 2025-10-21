@@ -42,6 +42,8 @@ class SensorItem(BaseModel):
     postprocessscript: str | None = None
     units: str | None = None
     variablename: str | None = None
+    is_published: bool = False
+    published_at: datetime | None = None
     statistics: SensorStatistics | None = None
 
 class ListSensorsResponse(SensorItem):

@@ -3,21 +3,29 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
-from app.api.dependencies.pytas import check_allocation_permission
+from app.api.dependencies.pytas import check_allocation_permission, get_user_allocations
 
-from app.api.dependencies.auth import get_current_user
-from app.api.dependencies.pytas import get_allocations
+from app.api.dependencies.auth import (
+    get_current_user,
+    get_oauth_token_optional,
+    get_tapis_token_header,
+    get_tapis_token_header_optional,
+)
 from app.api.v1.schemas.campaign import (
     CampaignCreateResponse,
     GetCampaignResponse,
     ListCampaignsResponsePagination,
     CampaignsIn,
     CampaignUpdate,
+    PublishRequest,
+    PublishResponse,
 )
 from app.api.v1.schemas.user import User
 from app.db.repositories.campaign_repository import CampaignRepository
+from app.db.repositories.station_repository import StationRepository
 from app.db.session import get_db
 from app.services.campaign_service import CampaignService
+from pydantic import BaseModel
 
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
@@ -53,9 +61,9 @@ async def list_campaigns(
         list[str] | None, Query(description="List of sensor variables to filter by")
     ] = None,
     current_user: User = Depends(get_current_user),
+    allocations: list[str] = Depends(get_user_allocations),
     db: Session = Depends(get_db),
 ) -> ListCampaignsResponsePagination:
-    allocations = get_allocations(current_user.username)
     campaign_service = CampaignService(CampaignRepository(db))
     results, total_count = campaign_service.get_campaigns_with_summary(
         allocations, bbox, start_date, end_date, sensor_variables, page, limit
@@ -88,8 +96,9 @@ def delete_sensor(
     campaign_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    allocations: list[str] = Depends(get_user_allocations),
 ) -> Response:
-    if not check_allocation_permission(current_user, campaign_id):
+    if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
     campaign_repository = CampaignRepository(db)
     campaign_service = CampaignService(campaign_repository=campaign_repository)
@@ -103,8 +112,9 @@ def update_campaign(
     campaign: CampaignsIn,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    allocations: list[str] = Depends(get_user_allocations),
 ) -> CampaignCreateResponse:
-    if not check_allocation_permission(current_user, campaign_id):
+    if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
     campaign_service = CampaignService(CampaignRepository(db))
     updated_campaign = campaign_service.update_campaign(campaign_id, campaign)
@@ -119,11 +129,166 @@ def partial_update_campaign(
     campaign: CampaignUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    allocations: list[str] = Depends(get_user_allocations),
 ) -> CampaignCreateResponse:
-    if not check_allocation_permission(current_user, campaign_id):
+    if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
     campaign_service = CampaignService(CampaignRepository(db))
     updated_campaign = campaign_service.partial_update_campaign(campaign_id, campaign)
     if not updated_campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
     return updated_campaign
+
+
+class PermissionResponse(BaseModel):
+    can_edit: bool
+    can_delete: bool
+    is_owner: bool
+
+
+@router.get("/{campaign_id}/permissions", response_model=PermissionResponse)
+async def get_campaign_permissions(
+    campaign_id: int,
+    current_user: User = Depends(get_current_user),
+    allocations: list[str] = Depends(get_user_allocations),
+    db: Session = Depends(get_db),
+) -> PermissionResponse:
+    has_allocation = check_allocation_permission(current_user, campaign_id, allocations)
+    return PermissionResponse(
+        can_edit=has_allocation,
+        can_delete=has_allocation,
+        is_owner=has_allocation,
+    )
+
+
+@router.post("/{campaign_id}/publish", response_model=PublishResponse)
+async def publish_campaign(
+    campaign_id: int,
+    publish_request: PublishRequest | None = None,
+    current_user: User = Depends(get_current_user),
+    _token: str | None = Depends(get_oauth_token_optional),
+    tapis_token: str | None = Depends(get_tapis_token_header_optional),
+    allocations: list[str] = Depends(get_user_allocations),
+    db: Session = Depends(get_db),
+) -> PublishResponse:
+    publish_request = publish_request or PublishRequest(cascade=True)
+
+    if not check_allocation_permission(current_user, campaign_id, allocations):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+
+    campaign_service = CampaignService(CampaignRepository(db))
+    campaign = campaign_service.get_campaign_with_summary(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    cascaded_items: list[str] = []
+    errors: list[str] = []
+
+    if publish_request.cascade:
+        from app.api.v1.routes.campaigns.campaign_stations import publish_station
+
+        station_repo = StationRepository(db)
+        stations = station_repo.get_stations_by_campaign_id(campaign_id, page=1, limit=1000)
+
+        for station in stations:
+            try:
+                result = await publish_station(
+                    campaign_id=campaign_id,
+                    station_id=station.stationid,
+                    publish_request=PublishRequest(
+                        cascade=publish_request.cascade,
+                        force=publish_request.force,
+                    ),
+                    current_user=current_user,
+                    _token=_token,
+                    tapis_token=tapis_token,
+                    allocations=allocations,
+                    db=db,
+                )
+                cascaded_items.append(f"station:{station.stationid}")
+                if result.cascaded_items:
+                    cascaded_items.extend(
+                        [f"station:{station.stationid}:{item}" for item in result.cascaded_items]
+                    )
+            except HTTPException as exc:
+                error_detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+                errors.append(f"station {station.stationid}: {error_detail}")
+
+    published_at = datetime.utcnow()
+    success = len(errors) == 0
+
+    return PublishResponse(
+        success=success,
+        message="Campaign marked as published" if success else "Campaign published with some errors",
+        published_count=1 + len(cascaded_items),
+        errors=errors,
+        id=campaign_id,
+        type="campaign",
+        is_published=True,
+        published_at=published_at,
+        cascaded_items=cascaded_items,
+    )
+
+
+@router.post("/{campaign_id}/unpublish", response_model=PublishResponse)
+async def unpublish_campaign(
+    campaign_id: int,
+    publish_request: PublishRequest | None = None,
+    current_user: User = Depends(get_current_user),
+    allocations: list[str] = Depends(get_user_allocations),
+    _token: str | None = Depends(get_oauth_token_optional),
+    tapis_token: str | None = Depends(get_tapis_token_header_optional),
+    db: Session = Depends(get_db),
+) -> PublishResponse:
+    publish_request = publish_request or PublishRequest(cascade=True)
+
+    if not check_allocation_permission(current_user, campaign_id, allocations):
+        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+
+    campaign_service = CampaignService(CampaignRepository(db))
+    campaign = campaign_service.get_campaign_with_summary(campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    cascaded_items: list[str] = []
+    errors: list[str] = []
+
+    if publish_request.cascade:
+        from app.api.v1.routes.campaigns.campaign_stations import unpublish_station
+
+        station_repo = StationRepository(db)
+        stations = station_repo.get_stations_by_campaign_id(campaign_id, page=1, limit=1000)
+
+        for station in stations:
+            try:
+                result = await unpublish_station(
+                    campaign_id=campaign_id,
+                    station_id=station.stationid,
+                    allocations=allocations,
+                    current_user=current_user,
+                    _token=_token,
+                    tapis_token=tapis_token,
+                    db=db,
+                )
+                cascaded_items.append(f"station:{station.stationid}")
+                if result.cascaded_items:
+                    cascaded_items.extend(
+                        [f"station:{station.stationid}:{item}" for item in result.cascaded_items]
+                    )
+            except HTTPException as exc:
+                error_detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+                errors.append(f"station {station.stationid}: {error_detail}")
+
+    success = len(errors) == 0
+
+    return PublishResponse(
+        success=success,
+        message="Campaign marked as private" if success else "Campaign private with some errors",
+        published_count=0,
+        errors=errors,
+        id=campaign_id,
+        type="campaign",
+        is_published=False,
+        published_at=None,
+        cascaded_items=cascaded_items,
+    )

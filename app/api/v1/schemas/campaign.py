@@ -95,6 +95,10 @@ class PublishRequest(BaseModel):
         default=False,
         description="If true, force publish even if already published"
     )
+    organization: str | None = Field(
+        default=None,
+        description="Optional CKAN organization to publish into when the campaign has none",
+    )
 
 
 class PublishResponse(BaseModel):

@@ -194,7 +194,7 @@ class TestCampaignPutRoute:
         # Create a spy function that tracks calls but still returns True
         permission_calls = []
         
-        def permission_spy(user, campaign_id_param):
+        def permission_spy(user, campaign_id_param, allocations=None):
             permission_calls.append((user, campaign_id_param))
             return True
         
@@ -343,7 +343,7 @@ class TestCampaignPatchRoute:
         # Create a spy function that tracks calls but still returns True
         permission_calls = []
         
-        def permission_spy(user, campaign_id_param):
+        def permission_spy(user, campaign_id_param, allocations=None):
             permission_calls.append((user, campaign_id_param))
             return True
         

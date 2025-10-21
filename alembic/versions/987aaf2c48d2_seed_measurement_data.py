@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 import random
 from geoalchemy2.elements import WKTElement
 import math
+import geoalchemy2
 
 # revision identifiers, used by Alembic.
 revision: str = '987aaf2c48d2'
@@ -91,7 +92,7 @@ def upgrade() -> None:
         column('variabletype', sa.String),
         column('description', sa.String),
         column('measurementvalue', sa.Float),
-        column('geometry', sa.String)
+        column('geometry', geoalchemy2.types.Geometry(geometry_type='POINT', srid=4326))
     )
 
     # Base values for different locations (representing climate differences)
@@ -117,7 +118,7 @@ def upgrade() -> None:
         for station_id, base_values_dict in base_values.items():
             # Get station location
             lon, lat = STATION_LOCATIONS[station_id]
-            geometry = f'SRID=4326;POINT({lon} {lat})'
+            geometry = WKTElement(f'POINT({lon} {lat})', srid=4326)
 
             # Get sensor IDs for this station
             if station_id <= 5:  # Weather Network stations
