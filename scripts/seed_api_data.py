@@ -19,7 +19,7 @@ import os
 import random
 import sys
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Tuple, TypedDict
 
 import requests
 
@@ -27,7 +27,39 @@ import requests
 DEFAULT_BASE_URL = "http://localhost:8000/api/v1"
 DEFAULT_TOKEN = "dev-token"
 
-SEED_CAMPAIGNS: List[Dict[str, object]] = [
+
+class CampaignSeed(TypedDict):
+    name: str
+    description: str
+    contact_name: str
+    contact_email: str
+    start_date: str
+    end_date: str
+    allocation: str
+
+
+class StationSeed(TypedDict):
+    campaign_name: str
+    name: str
+    project_id: str
+    description: str
+    contact_name: str
+    contact_email: str
+    active: bool
+    start_date: str
+    station_type: str
+
+
+class SensorSeed(TypedDict):
+    alias: str
+    description: str
+    variablename: str
+    units: str
+    postprocess: bool
+    postprocessscript: str | None
+
+
+SEED_CAMPAIGNS: List[CampaignSeed] = [
     {
         "name": "Test Campaign 2024",
         "description": "A test campaign for development purposes",
@@ -57,7 +89,7 @@ STATION_LOCATIONS: Dict[str, Tuple[float, float]] = {
     "Test Station Alpha": (-97.5000, 30.5000),
 }
 
-WEATHER_SENSORS: List[Dict[str, object]] = [
+WEATHER_SENSORS: List[SensorSeed] = [
     {
         "alias": "TEMP",
         "description": "Air temperature sensor",
@@ -116,7 +148,7 @@ WEATHER_SENSORS: List[Dict[str, object]] = [
     },
 ]
 
-TEST_STATION_SENSORS: List[Dict[str, object]] = [
+TEST_STATION_SENSORS: List[SensorSeed] = [
     {
         "alias": "TEST-TEMP",
         "description": "Test temperature sensor",
@@ -192,7 +224,7 @@ BASE_VALUES: Dict[str, Dict[str, float]] = {
     },
 }
 
-STATION_SEEDS: List[Dict[str, object]] = [
+STATION_SEEDS: List[StationSeed] = [
     {
         "campaign_name": "Weather Station Network",
         "name": "Austin Downtown",
@@ -303,7 +335,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def ensure_campaign(session: requests.Session, base_url: str, campaign: Dict[str, object], dry_run: bool) -> int:
+def ensure_campaign(session: requests.Session, base_url: str, campaign: CampaignSeed, dry_run: bool) -> int:
     existing_id = None
     if not dry_run:
         existing_id = find_campaign_id(session, base_url, campaign["name"])
@@ -326,7 +358,8 @@ def ensure_campaign(session: requests.Session, base_url: str, campaign: Dict[str
     response = session.post(f"{base_url}/campaigns", json=payload, timeout=30)
     if response.status_code != 200:
         raise RuntimeError(f"Failed to create campaign '{campaign['name']}': {response.status_code} {response.text}")
-    campaign_id = response.json()["id"]
+    campaign_data: Dict[str, Any] = response.json()
+    campaign_id = int(campaign_data["id"])
     log(f"Created campaign '{campaign['name']}' (id={campaign_id}).")
     return campaign_id
 
@@ -346,7 +379,7 @@ def ensure_station(
     base_url: str,
     campaign_id: int,
     campaign_name: str,
-    station: Dict[str, object],
+    station: StationSeed,
     dry_run: bool,
 ) -> int:
     existing_id = None
@@ -374,7 +407,8 @@ def ensure_station(
             f"Failed to create station '{station['name']}' "
             f"in campaign '{campaign_name}': {response.status_code} {response.text}"
         )
-    station_id = response.json()["id"]
+    station_data: Dict[str, Any] = response.json()
+    station_id = int(station_data["id"])
     log(f"Created station '{station['name']}' (id={station_id}) in campaign '{campaign_name}'.")
     return station_id
 
@@ -389,7 +423,7 @@ def find_station_id(session: requests.Session, base_url: str, campaign_id: int, 
     return None
 
 
-def build_sensors_csv(sensors: Iterable[Dict[str, object]]) -> bytes:
+def build_sensors_csv(sensors: Iterable[SensorSeed]) -> bytes:
     buffer = io.StringIO()
     fieldnames = ["alias", "variablename", "description", "units", "postprocess", "postprocessscript"]
     writer = csv.DictWriter(buffer, fieldnames=fieldnames)
@@ -437,7 +471,7 @@ def generate_measurement_value(variable: str, timestamp: datetime, base: float, 
 
 def build_measurements_csv(
     station_name: str,
-    sensors: Iterable[Dict[str, object]],
+    sensors: Iterable[SensorSeed],
     lon_lat: Tuple[float, float],
     hours: int,
     rng: random.Random,
@@ -456,7 +490,7 @@ def build_measurements_csv(
     current = start_time
 
     while current <= end_time:
-        row = {
+        row: Dict[str, str | float] = {
             "collectiontime": current.isoformat(),
             "Lon_deg": f"{lon_lat[0]:.5f}",
             "Lat_deg": f"{lon_lat[1]:.5f}",
@@ -474,7 +508,7 @@ def build_measurements_csv(
 
 
 def build_empty_measurements_csv(
-    sensors: Iterable[Dict[str, object]],
+    sensors: Iterable[SensorSeed],
     lon_lat: Tuple[float, float],
 ) -> bytes:
     buffer = io.StringIO()
@@ -539,7 +573,7 @@ def seed_sensors_and_measurements(
             f"Failed to upload sensors/measurements for station '{station_name}': "
             f"{response.status_code} {response.text}"
         )
-    detail = response.json()
+    detail: Dict[str, Any] = response.json()
     log(
         f"Uploaded sensors to '{station_name}'. "
         f"Measurements added: {detail.get('Total measurements added to database', 0)}."
