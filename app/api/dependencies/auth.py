@@ -8,6 +8,7 @@ from fastapi.security import OAuth2PasswordBearer
 
 from app.api.v1.schemas.user import User
 from app.core.config import get_settings, Settings
+from app.tapis import TapisAuthClient
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token")
 settings: Settings = get_settings()
@@ -20,6 +21,13 @@ if not logger.handlers:
 logger.setLevel(logging.INFO)
 logger.propagate = False
 
+tapis_auth_client: TapisAuthClient | None = None
+if settings.TAPIS_BASE_URL and settings.TAPIS_TENANT_ID:
+    tapis_auth_client = TapisAuthClient(
+        base_url=settings.TAPIS_BASE_URL,
+        tenant_id=settings.TAPIS_TENANT_ID,
+    )
+
 
 @dataclass(slots=True)
 class AuthResult:
@@ -29,19 +37,45 @@ class AuthResult:
 
 
 def authenticate_user(username: str, password: str) -> AuthResult:
-    if settings.ENV == "dev" and not settings.TAPIS_ENFORCE_AUTH_IN_DEV:
-        logger.debug(
-            "Skipping credential enforcement in dev mode for username=%s (enforce flag disabled)",
-            username,
-        )
-        return AuthResult(success=True)
-
     if not username or not password:
         logger.info("Login rejected: missing username/password")
         return AuthResult(success=False, error="Missing username or password")
 
+    enforce_tapis = not (settings.ENV == "dev" and not settings.TAPIS_ENFORCE_AUTH_IN_DEV)
+    if not enforce_tapis:
+        logger.debug(
+            "Skipping credential enforcement in dev mode for username=%s (enforce flag disabled)",
+            username,
+        )
+
+    tapis_tokens: Optional[Dict[str, Any]] = None
+    tapis_error: Optional[str] = None
+
+    if tapis_auth_client:
+        try:
+            outcome = tapis_auth_client.authenticate(username=username, password=password)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Tapis authentication request failed for %s", username)
+            tapis_error = "Unable to authenticate with Tapis."
+        else:
+            if outcome.tokens:
+                tapis_tokens = outcome.tokens
+            elif outcome.error:
+                tapis_error = outcome.error
+            else:
+                tapis_error = "Tapis authentication did not return tokens."
+    elif enforce_tapis:
+        tapis_error = "Tapis authentication client is not configured."
+
+    if enforce_tapis and tapis_error:
+        logger.info("Login rejected for %s: %s", username, tapis_error)
+        return AuthResult(success=False, error=tapis_error)
+
+    if not enforce_tapis and tapis_error:
+        logger.warning("Tapis authentication failed for %s in dev mode: %s", username, tapis_error)
+
     logger.info("Local auth successful for username=%s", username)
-    return AuthResult(success=True)
+    return AuthResult(success=True, tapis_tokens=tapis_tokens)
 
 
 # Async function to get the current user based on the provided OAuth2 token
