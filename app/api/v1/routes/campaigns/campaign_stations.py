@@ -139,11 +139,32 @@ def delete_sensor(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     allocations: list[str] = Depends(get_user_allocations),
+    tapis_token: str | None = Depends(get_tapis_token_header_optional),
 ) -> Response:
     if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
     campaign_repository = CampaignRepository(db)
     campaign_service = CampaignService(campaign_repository=campaign_repository)
+
+    # If CKAN integration is configured and a tapis token was provided, attempt
+    # to delete any associated CKAN datasets for stations before removing them
+    # from the database. We accept an optional tapis token header so callers
+    # can provide credentials for CKAN operations.
+    settings = get_settings()
+    ckan_client = get_ckan_service()
+    if ckan_client and settings.CKAN_URL and tapis_token:
+        # Enumerate stations so we can delete datasets per station
+        campaign = campaign_service.get_campaign_with_summary(campaign_id)
+        if campaign and getattr(campaign, "stations", None):
+            for station in campaign.stations:
+                dataset_name = _slugify(f"{campaign.name}-{station.name}")
+                try:
+                    ckan_client.delete_dataset(token=tapis_token, name_or_id=dataset_name)
+                except CKANError as exc:
+                    logger.warning("Failed to delete station %s dataset from CKAN: %s", station.id, exc)
+                except Exception:
+                    logger.exception("Unexpected error while deleting station %s dataset from CKAN", station.id)
+
     campaign_service.delete_campaign_station(campaign_id=campaign_id)
     return Response(status_code=204)
 
