@@ -52,12 +52,30 @@ def authenticate_user(username: str, password: str) -> AuthResult:
         return AuthResult(success=False, error="Missing username or password")
 
     # For local authentication we accept any non-empty username/password
-    # combination as a successful local login. The integration with an
-    # external Tapis client (if present) is intentionally not exercised in
-    # this method to keep local auth deterministic and test-friendly; if a
-    # real Tapis flow is required it should be invoked by the caller or via
-    # a different codepath.
+    # combination as a successful local login. If a TapisAuthClient is
+    # configured, attempt to authenticate against Tapis and include any
+    # returned tokens in the result so the login response can surface a
+    # tapis_access_token for pod environments.
     logger.info("Local auth successful for username=%s", username)
+
+    if tapis_auth_client is not None:
+        try:
+            outcome = tapis_auth_client.authenticate(username, password)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception("Unexpected error while calling TapisAuthClient: %s", exc)
+            # Fall back to local auth without tapis tokens
+            return AuthResult(success=True, tapis_tokens=None)
+
+        if outcome.tokens:
+            logger.info("Tapis authentication succeeded for username=%s", username)
+            return AuthResult(success=True, tapis_tokens=outcome.tokens)
+        else:
+            # Tapis did not return tokens (or authentication failed). Log and
+            # fall back to local success so that local development and other
+            # non-Tapis flows continue to work.
+            logger.info("Tapis authentication did not return tokens for %s: %s", username, outcome.error)
+            return AuthResult(success=True, tapis_tokens=None)
+
     return AuthResult(success=True, tapis_tokens=None)
 
 
