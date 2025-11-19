@@ -141,7 +141,10 @@ class CampaignRepository:
         return list(set(sensor.variablename for station in stations for sensor in station.sensors))
 
     def delete_campaign_stations(self, campaign_id: int) -> bool:
-        self.db.query(Station).filter(Station.campaignid == campaign_id).delete()
+        station_ids = [row[0] for row in self.db.query(Station.stationid).filter(Station.campaignid == campaign_id).all()]
+        if station_ids:
+            self.db.query(Sensor).filter(Sensor.stationid.in_(station_ids)).delete(synchronize_session=False)
+        self.db.query(Station).filter(Station.campaignid == campaign_id).delete(synchronize_session=False)
         self.db.commit()
         return True
 
