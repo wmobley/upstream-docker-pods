@@ -49,6 +49,11 @@ def _delete_station_dataset(
     station: Any,
 ) -> None:
     if not tapis_token:
+        logger.info(
+            "Skipping CKAN dataset deletion for station %s (campaign %s); no Tapis token provided.",
+            getattr(station, "id", "unknown"),
+            getattr(campaign, "id", "unknown"),
+        )
         return
     dataset_slug = _slugify(f"{campaign.name}-{station.name}")
     candidate_ids: List[str] = []
@@ -77,15 +82,35 @@ def _delete_station_dataset(
             continue
         seen.add(candidate)
         try:
-            ckan_client.delete_dataset(token=tapis_token, name_or_id=candidate)
-            logger.info("Deleted CKAN dataset %s for station %s", candidate, station.id)
+            response = ckan_client.delete_dataset(token=tapis_token, name_or_id=candidate)
+            logger.info("Deleted CKAN dataset %s for station %s (response=%s)", candidate, station.id, response)
             return
         except CKANError as exc:
             message = str(exc)
             if "not found" in message.lower():
+                logger.info(
+                    "CKAN dataset %s for station %s (campaign %s) already absent during delete.",
+                    candidate,
+                    station.id,
+                    campaign.id,
+                )
                 continue
-            logger.warning("Failed to delete CKAN dataset %s for station %s: %s", candidate, station.id, message)
-            raise
+            logger.error(
+                "CKAN error while deleting dataset %s for station %s (campaign %s): %s",
+                candidate,
+                station.id,
+                campaign.id,
+                message,
+            )
+            return
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception(
+                "Unexpected error while deleting CKAN dataset %s for station %s: %s",
+                candidate,
+                station.id,
+                exc,
+            )
+            return
     logger.info("No CKAN dataset found for station %s (campaign %s)", station.id, campaign.id)
 
 
@@ -207,18 +232,12 @@ def delete_sensor(
             campaign = campaign_service.get_campaign_with_summary(campaign_id)
             if campaign and getattr(campaign, "stations", None):
                 for station in campaign.stations:
-                    try:
-                        _delete_station_dataset(
-                            ckan_client=ckan_client,
-                            tapis_token=tapis_token,
-                            campaign=campaign,
-                            station=station,
-                        )
-                    except CKANError as exc:
-                        raise HTTPException(
-                            status_code=502,
-                            detail=f"CKAN error while deleting dataset for station {station.id}: {exc}",
-                        ) from exc
+                    _delete_station_dataset(
+                        ckan_client=ckan_client,
+                        tapis_token=tapis_token,
+                        campaign=campaign,
+                        station=station,
+                    )
 
     campaign_service.delete_campaign_station(campaign_id=campaign_id)
     return Response(status_code=204)
@@ -252,24 +271,12 @@ def delete_station(
     settings = get_settings()
     ckan_client = get_ckan_service()
     if ckan_client and settings.CKAN_URL and tapis_token:
-        try:
-            _delete_station_dataset(
-                ckan_client=ckan_client,
-                tapis_token=tapis_token,
-                campaign=campaign,
-                station=station,
-            )
-        except CKANError as exc:
-            raise HTTPException(
-                status_code=502,
-                detail=f"CKAN error while deleting dataset for station {station_id}: {exc}",
-            ) from exc
-        except Exception as exc:
-            logger.exception("Unexpected error while deleting station %s dataset from CKAN", station_id)
-            raise HTTPException(
-                status_code=502,
-                detail=f"Unexpected error while deleting dataset for station {station_id}.",
-            ) from exc
+        _delete_station_dataset(
+            ckan_client=ckan_client,
+            tapis_token=tapis_token,
+            campaign=campaign,
+            station=station,
+        )
 
     # Remove station sensors before deleting the station to avoid FK issues
     station_service.delete_station_sensors(station_id=station_id)

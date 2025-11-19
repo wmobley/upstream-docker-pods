@@ -60,7 +60,13 @@ class CKANService:
         try:
             response.raise_for_status()
         except requests.HTTPError as exc:
-            logger.error("CKAN request failed (%s %s): %s", method, url, response.text)
+            logger.error(
+                "CKAN request failed (%s %s) status=%s body=%s",
+                method,
+                url,
+                response.status_code,
+                response.text,
+            )
             raise CKANError(response.text) from exc
 
         payload: Dict[str, Any] = response.json()
@@ -162,6 +168,7 @@ class CKANService:
             json=payload,
         )
         if not isinstance(result, dict):
+            logger.error("Unexpected CKAN response format when deleting dataset %s: %s", name_or_id, result)
             raise CKANError("Unexpected CKAN response format when deleting dataset")
         return cast(Dict[str, Any], result)
 
