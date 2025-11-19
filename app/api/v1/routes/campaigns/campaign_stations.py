@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone
-from typing import Annotated, Any, Dict
+from typing import Annotated, Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
@@ -39,6 +39,48 @@ logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/campaigns/{campaign_id}", tags=["stations"])
+
+
+def _delete_station_dataset(
+    *,
+    ckan_client,
+    tapis_token: str,
+    campaign,
+    station,
+) -> None:
+    dataset_slug = _slugify(f"{campaign.name}-{station.name}")
+    candidate_ids: List[str] = []
+    if dataset_slug:
+        candidate_ids.append(dataset_slug)
+    try:
+        matches = ckan_client.find_datasets_by_extra(
+            token=tapis_token,
+            key="station_id",
+            value=str(station.id),
+        )
+    except CKANError as exc:  # pragma: no cover - best effort search
+        logger.warning("Failed to search CKAN datasets for station %s: %s", station.id, exc)
+        matches = []
+    for match in matches:
+        dataset_id = match.get("id") or match.get("name")
+        if dataset_id:
+            candidate_ids.append(str(dataset_id))
+    seen: set[str] = set()
+    for candidate in candidate_ids:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            ckan_client.delete_dataset(token=tapis_token, name_or_id=candidate)
+            logger.info("Deleted CKAN dataset %s for station %s", candidate, station.id)
+            return
+        except CKANError as exc:
+            message = str(exc)
+            if "not found" in message.lower():
+                continue
+            logger.warning("Failed to delete CKAN dataset %s for station %s: %s", candidate, station.id, message)
+            raise
+    logger.info("No CKAN dataset found for station %s (campaign %s)", station.id, campaign.id)
 
 
 @router.post("/stations")
@@ -175,20 +217,17 @@ def delete_sensor(
         campaign = campaign_service.get_campaign_with_summary(campaign_id)
         if campaign and getattr(campaign, "stations", None):
             for station in campaign.stations:
-                dataset_name = _slugify(f"{campaign.name}-{station.name}")
                 try:
-                    ckan_client.delete_dataset(token=tapis_token, name_or_id=dataset_name)
+                    _delete_station_dataset(
+                        ckan_client=ckan_client,
+                        tapis_token=tapis_token,
+                        campaign=campaign,
+                        station=station,
+                    )
                 except CKANError as exc:
-                    logger.warning("Failed to delete station %s dataset from CKAN: %s", station.id, exc)
                     raise HTTPException(
                         status_code=502,
                         detail=f"CKAN error while deleting dataset for station {station.id}: {exc}",
-                    ) from exc
-                except Exception as exc:  # pragma: no cover - defensive
-                    logger.exception("Unexpected error while deleting station %s dataset from CKAN", station.id)
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Unexpected error while deleting dataset for station {station.id}.",
                     ) from exc
 
     campaign_service.delete_campaign_station(campaign_id=campaign_id)
@@ -223,11 +262,14 @@ def delete_station(
     settings = get_settings()
     ckan_client = get_ckan_service()
     if ckan_client and settings.CKAN_URL and tapis_token:
-        dataset_name = _slugify(f"{campaign.name}-{station.name}")
         try:
-            ckan_client.delete_dataset(token=tapis_token, name_or_id=dataset_name)
+            _delete_station_dataset(
+                ckan_client=ckan_client,
+                tapis_token=tapis_token,
+                campaign=campaign,
+                station=station,
+            )
         except CKANError as exc:
-            logger.warning("Failed to delete station %s dataset from CKAN: %s", station_id, exc)
             raise HTTPException(
                 status_code=502,
                 detail=f"CKAN error while deleting dataset for station {station_id}: {exc}",

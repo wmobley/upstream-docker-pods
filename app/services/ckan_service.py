@@ -209,6 +209,21 @@ class CKANService:
         except CKANError:
             raise
 
+    def find_datasets_by_extra(self, *, token: str, key: str, value: str, rows: int = 20) -> List[Dict[str, Any]]:
+        fq_value = f'extras_{key}:"{value}"'
+        result = self._request(
+            method="GET",
+            path="/api/3/action/package_search",
+            token=token,
+            params={"fq": fq_value, "rows": rows},
+        )
+        if not isinstance(result, dict):
+            raise CKANError("Unexpected CKAN response format when searching datasets")
+        datasets = result.get("results", [])
+        if not isinstance(datasets, list):
+            raise CKANError("Unexpected CKAN response format when searching datasets")
+        return [cast(Dict[str, Any], dataset) for dataset in datasets if isinstance(dataset, dict)]
+
 
 def get_ckan_service() -> CKANService | None:
     settings = get_settings()
