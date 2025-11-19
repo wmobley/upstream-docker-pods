@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone
-from typing import Annotated, Any, Dict, List
+from typing import Annotated, Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
@@ -30,7 +30,7 @@ from app.db.repositories.measurement_repository import MeasurementRepository
 from app.services.station_service import StationService
 from app.services.export_service import ExportService
 from app.services.campaign_service import CampaignService
-from app.services.ckan_service import CKANError, get_ckan_service, _slugify
+from app.services.ckan_service import CKANError, CKANService, get_ckan_service, _slugify
 from app.services.ckan_publish import ensure_station_dataset, sync_sensor_resources
 from app.core.config import get_settings
 
@@ -43,24 +43,30 @@ router = APIRouter(prefix="/campaigns/{campaign_id}", tags=["stations"])
 
 def _delete_station_dataset(
     *,
-    ckan_client,
-    tapis_token: str,
-    campaign,
-    station,
+    ckan_client: CKANService,
+    tapis_token: Optional[str],
+    campaign: Any,
+    station: Any,
 ) -> None:
+    if not tapis_token:
+        return
     dataset_slug = _slugify(f"{campaign.name}-{station.name}")
     candidate_ids: List[str] = []
     if dataset_slug:
         candidate_ids.append(dataset_slug)
-    try:
-        matches = ckan_client.find_datasets_by_extra(
-            token=tapis_token,
-            key="station_id",
-            value=str(station.id),
-        )
-    except CKANError as exc:  # pragma: no cover - best effort search
-        logger.warning("Failed to search CKAN datasets for station %s: %s", station.id, exc)
-        matches = []
+    matches: List[Dict[str, Any]] = []
+    find_fn = getattr(ckan_client, "find_datasets_by_extra", None)
+    if callable(find_fn) and tapis_token:
+        try:
+            result = find_fn(
+                token=tapis_token,
+                key="station_id",
+                value=str(station.id),
+            )
+            if isinstance(result, list):
+                matches = [entry for entry in result if isinstance(entry, dict)]
+        except CKANError as exc:  # pragma: no cover - best effort search
+            logger.warning("Failed to search CKAN datasets for station %s: %s", station.id, exc)
     for match in matches:
         dataset_id = match.get("id") or match.get("name")
         if dataset_id:
@@ -100,40 +106,26 @@ async def create_station(
 
     settings = get_settings()
     ckan_client = get_ckan_service()
-    if ckan_client and settings.CKAN_URL:
-        if not tapis_token:
-            raise HTTPException(
-                status_code=400,
-                detail="Tapis token is required to create a station when CKAN integration is enabled.",
-            )
+    if ckan_client and settings.CKAN_URL and tapis_token:
         try:
             campaign = CampaignService(CampaignRepository(db)).get_campaign_with_summary(campaign_id)
             station_detail = station_service.get_station(response.id)
             if campaign and station_detail:
                 owner_org = (campaign.allocation or settings.CKAN_ORGANIZATION or "").strip() or None
-                if not owner_org:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Assign a CKAN organization to the campaign before creating stations.",
+                if owner_org:
+                    dataset, dataset_id, dataset_errors = ensure_station_dataset(
+                        settings=settings,
+                        ckan_client=ckan_client,
+                        tapis_token=tapis_token,
+                        campaign=campaign,
+                        station=station_detail,
+                        owner_org=owner_org,
+                        private=True,
                     )
-                dataset, dataset_id, dataset_errors = ensure_station_dataset(
-                    settings=settings,
-                    ckan_client=ckan_client,
-                    tapis_token=tapis_token,
-                    campaign=campaign,
-                    station=station_detail,
-                    owner_org=owner_org,
-                    private=True,
-                )
-                if not dataset_id:
-                    message = dataset_errors[0] if dataset_errors else "Failed to register station dataset in CKAN."
-                    raise HTTPException(status_code=502, detail=message)
+                    if not dataset_id and dataset_errors:
+                        logger.warning("CKAN dataset creation reported errors for station %s: %s", response.id, dataset_errors)
         except CKANError as exc:
             logger.warning("Failed to register station %s with CKAN: %s", response.id, exc)
-            raise HTTPException(
-                status_code=502,
-                detail=f"CKAN error while creating station dataset: {exc}",
-            ) from exc
         except Exception as exc:
             logger.exception("Unexpected error while registering station %s with CKAN", response.id)
             raise HTTPException(
@@ -209,26 +201,24 @@ def delete_sensor(
     if ckan_client and settings.CKAN_URL:
         tapis_token = tapis_token_optional
         if not tapis_token:
-            raise HTTPException(
-                status_code=400,
-                detail="Tapis token is required to delete stations when CKAN integration is enabled.",
-            )
-        # Enumerate stations so we can delete datasets per station
-        campaign = campaign_service.get_campaign_with_summary(campaign_id)
-        if campaign and getattr(campaign, "stations", None):
-            for station in campaign.stations:
-                try:
-                    _delete_station_dataset(
-                        ckan_client=ckan_client,
-                        tapis_token=tapis_token,
-                        campaign=campaign,
-                        station=station,
-                    )
-                except CKANError as exc:
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"CKAN error while deleting dataset for station {station.id}: {exc}",
-                    ) from exc
+            logger.info("CKAN integration enabled but no Tapis token provided for bulk station delete; skipping CKAN cleanup.")
+        else:
+            # Enumerate stations so we can delete datasets per station
+            campaign = campaign_service.get_campaign_with_summary(campaign_id)
+            if campaign and getattr(campaign, "stations", None):
+                for station in campaign.stations:
+                    try:
+                        _delete_station_dataset(
+                            ckan_client=ckan_client,
+                            tapis_token=tapis_token,
+                            campaign=campaign,
+                            station=station,
+                        )
+                    except CKANError as exc:
+                        raise HTTPException(
+                            status_code=502,
+                            detail=f"CKAN error while deleting dataset for station {station.id}: {exc}",
+                        ) from exc
 
     campaign_service.delete_campaign_station(campaign_id=campaign_id)
     return Response(status_code=204)

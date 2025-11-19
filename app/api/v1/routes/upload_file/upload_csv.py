@@ -86,28 +86,29 @@ def post_sensor_and_measurement(
             station = station_service.get_station(station_id)
             if campaign and station and alias_to_sensorid_map:
                 owner_org = (campaign.allocation or settings.CKAN_ORGANIZATION or "").strip() or None
-                dataset, dataset_id, dataset_errors = ensure_station_dataset(
-                    settings=settings,
-                    ckan_client=ckan_client,
-                    tapis_token=tapis_token,
-                    campaign=campaign,
-                    station=station,
-                    owner_org=owner_org,
-                    private=True,
-                )
-                ckan_sync_messages.extend(dataset_errors)
-                sensors = sensor_repository.get_sensors_by_ids(list(alias_to_sensorid_map.values()))
-                resource_errors = sync_sensor_resources(
-                    settings=settings,
-                    ckan_client=ckan_client,
-                    tapis_token=tapis_token,
-                    campaign=campaign,
-                    station=station,
-                    dataset=dataset,
-                    dataset_id=dataset_id,
-                    sensors=sensors,
-                )
-                ckan_sync_messages.extend(resource_errors)
+                if owner_org:
+                    dataset, dataset_id, dataset_errors = ensure_station_dataset(
+                        settings=settings,
+                        ckan_client=ckan_client,
+                        tapis_token=tapis_token,
+                        campaign=campaign,
+                        station=station,
+                        owner_org=owner_org,
+                        private=True,
+                    )
+                    ckan_sync_messages.extend(dataset_errors)
+                    sensors = sensor_repository.get_sensors_by_ids(list(alias_to_sensorid_map.values()))
+                    resource_errors = sync_sensor_resources(
+                        settings=settings,
+                        ckan_client=ckan_client,
+                        tapis_token=tapis_token,
+                        campaign=campaign,
+                        station=station,
+                        dataset=dataset,
+                        dataset_id=dataset_id,
+                        sensors=sensors,
+                    )
+                    ckan_sync_messages.extend(resource_errors)
         else:
             logger.info("Skipping CKAN sensor sync for station %s: CKAN integration not configured.", station_id)
     else:
