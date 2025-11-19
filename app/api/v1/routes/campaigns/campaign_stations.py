@@ -340,7 +340,7 @@ async def publish_station(
 
     settings = get_settings()
     ckan_client = get_ckan_service()
-    ckan_errors: list[str] = []
+    errors: list[str] = []
     if ckan_client and settings.CKAN_URL and tapis_token:
         requested_org = ""
         if publish_request and publish_request.organization:
@@ -354,7 +354,7 @@ async def publish_station(
             except CKANError as exc:
                 message = f"Failed to verify CKAN organization access: {exc}"
                 logger.warning("%s", message)
-                ckan_errors.append(message)
+                errors.append(message)
             else:
                 normalized_candidate = owner_org_slug.lower()
 
@@ -377,7 +377,7 @@ async def publish_station(
                         f"user {current_user.username} is not a member of organization '{owner_org_slug}'."
                     )
                     logger.warning("%s", message)
-                    ckan_errors.append(message)
+                    errors.append(message)
                     owner_org_slug = None
         else:
             message = (
@@ -386,7 +386,7 @@ async def publish_station(
                 "Provide an organization in the publish request to publish to CKAN."
             )
             logger.info("%s", message)
-            ckan_errors.append(message)
+            errors.append(message)
 
         try:
             if owner_org_slug:
@@ -444,26 +444,26 @@ async def publish_station(
                                 f"in CKAN: {exc}"
                             )
                             logger.warning("%s", message)
-                            ckan_errors.append(message)
+                            errors.append(message)
                         except Exception as exc:  # pragma: no cover - defensive
                             message = (
                                 f"Unexpected error while registering resource {name} for sensor "
                                 f"{sensor_identifier} in CKAN: {exc}"
                             )
                             logger.exception("%s", message)
-                            ckan_errors.append(message)
+                            errors.append(message)
 
                     sensors = station.sensors or []
-                    for sensor in sensors:
-                        sensor_label = sensor.alias or sensor.variablename or f"sensor-{sensor.id}"
-                        sensor_slug = _slugify(f"{station.name}-{sensor_label}") or f"sensor-{sensor.id}"
+                    for sensor_item in sensors:
+                        sensor_label = sensor_item.alias or sensor_item.variablename or f"sensor-{sensor_item.id}"
+                        sensor_slug = _slugify(f"{station.name}-{sensor_label}") or f"sensor-{sensor_item.id}"
 
                         sensor_ui_name = f"{sensor_slug}-ui"
-                        sensor_ui_url = f"{ui_base}/campaigns/{campaign.id}/stations/{station.id}/sensors/{sensor.id}"
+                        sensor_ui_url = f"{ui_base}/campaigns/{campaign.id}/stations/{station.id}/sensors/{sensor_item.id}"
                         sensor_ui_description = (
                             f"Interactive upstream view for sensor {sensor_label} at station {station.name}."
                         )
-                        _upsert_resource(sensor_ui_name, sensor_ui_url, sensor_ui_description, "HTML", str(sensor.id))
+                        _upsert_resource(sensor_ui_name, sensor_ui_url, sensor_ui_description, "HTML", str(sensor_item.id))
 
                         if not api_base:
                             continue
@@ -471,21 +471,27 @@ async def publish_station(
                         sensor_api_name = f"{sensor_slug}-measurements"
                         sensor_api_url = (
                             f"{api_base}/api/v1/campaigns/{campaign.id}/stations/"
-                            f"{station.id}/sensors/{sensor.id}/measurements"
+                            f"{station.id}/sensors/{sensor_item.id}/measurements"
                         )
                         sensor_api_description = (
                             f"Measurement API endpoint (GeoJSON) for sensor {sensor_label} "
                             f"at station {station.name}."
                         )
-                        _upsert_resource(sensor_api_name, sensor_api_url, sensor_api_description, "GeoJSON", str(sensor.id))
+                        _upsert_resource(
+                            sensor_api_name,
+                            sensor_api_url,
+                            sensor_api_description,
+                            "GeoJSON",
+                            str(sensor_item.id),
+                        )
         except CKANError as exc:
             message = f"Failed to publish station {station_id} in CKAN: {exc}"
             logger.warning("%s", message)
-            ckan_errors.append(message)
+            errors.append(message)
         except Exception as exc:
             message = f"Unexpected error while publishing station {station_id} in CKAN: {exc}"
             logger.exception("%s", message)
-            ckan_errors.append(message)
+            errors.append(message)
 
     published_at = datetime.now(timezone.utc)
     if not station_service.set_publish_state(
@@ -495,16 +501,37 @@ async def publish_station(
     ):
         raise HTTPException(status_code=500, detail="Failed to update station publish state")
 
+    cascaded_items: list[str] = []
+    if publish_request and publish_request.cascade:
+        sensor_repository = SensorRepository(db)
+        cascaded_sensor_ids: list[str] = []
+        for chunk in sensor_repository.get_sensors_by_station_chunked(station_id):
+            for sensor in chunk:
+                if getattr(sensor, "published", False) and not publish_request.force:
+                    continue
+                updated = sensor_repository.set_publish_state(
+                    sensor.sensorid,
+                    published=True,
+                    published_at=published_at,
+                )
+                if updated:
+                    cascaded_sensor_ids.append(str(sensor.sensorid))
+                else:
+                    errors.append(
+                        f"Failed to update sensor {sensor.sensorid} publish state while cascading station publish."
+                    )
+        cascaded_items.extend(f"sensor:{sensor_id}" for sensor_id in cascaded_sensor_ids)
+
     return PublishResponse(
         success=True,
         message=f"Station {station.name} marked as published",
         published_count=1,
-        errors=ckan_errors,
+        errors=errors,
         id=station_id,
         type="station",
         is_published=True,
         published_at=published_at,
-        cascaded_items=[],
+        cascaded_items=cascaded_items,
     )
 
 

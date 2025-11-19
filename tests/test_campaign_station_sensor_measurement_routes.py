@@ -190,13 +190,15 @@ def test_get_sensor_measurements_unauthorized(
 
 
 # --- Test GET /measurements/confidence-intervals ---
+@patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements._ensure_sensor_access', return_value=(MagicMock(), MagicMock(), True))
 @patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.MeasurementRepository')
 @patch('app.core.config.get_settings')
 # Note: The route being tested below currently lacks authentication and authorization checks (`get_current_user`, `check_allocation_permission`).
 # This might be a potential security oversight in the application code.
 def test_get_measurements_confidence_intervals_success(
-    mock_get_settings: MagicMock, # Still need for app load if auth is generally configured
+    mock_get_settings: MagicMock,  # Still need for app load if auth is generally configured
     mock_repo_class: MagicMock,
+    mock_ensure_access: MagicMock,
     client: TestClient,
     mock_measurement_repo: MagicMock,
     sample_aggregated_measurements_data: List[AggregatedMeasurement]
@@ -213,6 +215,7 @@ def test_get_measurements_confidence_intervals_success(
     assert len(data) == len(sample_aggregated_measurements_data)
     assert data[0]["value"] == sample_aggregated_measurements_data[0].value # Changed from avg_value to value
     mock_measurement_repo.get_measurements_with_confidence_intervals.assert_called_once()
+    mock_ensure_access.assert_called_once()
 
 # --- Test PUT /measurements/{measurement_id} ---
 MOCK_MEASUREMENT_UPDATE_PAYLOAD = {

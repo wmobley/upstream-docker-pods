@@ -170,9 +170,23 @@ async def get_measurements_with_confidence_intervals(
     end_date: datetime | None = Query(None, description="End date for filtering measurements"),
     min_value: float | None = Query(None, description="Minimum measurement value to include"),
     max_value: float | None = Query(None, description="Maximum measurement value to include"),
+    current_user: User | None = Depends(get_current_user_optional),
+    tapis_token: str | None = Depends(get_tapis_token_header_optional),
     db: Session = Depends(get_db)
 ) -> list[AggregatedMeasurement]:
     """Get sensor measurements with confidence intervals for visualization."""
+    station_repository = StationRepository(db)
+    sensor_repository = SensorRepository(db)
+    _ensure_sensor_access(
+        campaign_id,
+        station_id,
+        sensor_id,
+        current_user=current_user,
+        tapis_token=tapis_token,
+        station_repository=station_repository,
+        sensor_repository=sensor_repository,
+    )
+
     measurement_repository = MeasurementRepository(db)
     measurement_service = MeasurementService(measurement_repository)
     return measurement_service.get_measurements_with_confidence_intervals(sensor_id=sensor_id, interval=interval, interval_value=interval_value, start_date=start_date, end_date=end_date, min_value=min_value, max_value=max_value)
