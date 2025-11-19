@@ -65,6 +65,12 @@ class SensorRepository:
         self.db.commit()
         return sensors
 
+    def get_sensors_by_ids(self, sensor_ids: list[int]) -> list[Sensor]:
+        if not sensor_ids:
+            return []
+        stmt = select(Sensor).where(Sensor.sensorid.in_(sensor_ids))
+        return list(self.db.scalars(stmt).all())
+
     def get_sensor(self, sensor_id: int) -> GetSensorResponse | None:
         stmt = (
             select(Sensor, SensorStatistics)

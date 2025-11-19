@@ -31,6 +31,7 @@ from app.services.station_service import StationService
 from app.services.export_service import ExportService
 from app.services.campaign_service import CampaignService
 from app.services.ckan_service import CKANError, get_ckan_service, _slugify
+from app.services.ckan_publish import ensure_station_dataset, sync_sensor_resources
 from app.core.config import get_settings
 
 
@@ -62,24 +63,14 @@ async def create_station(
             campaign = CampaignService(CampaignRepository(db)).get_campaign_with_summary(campaign_id)
             station_detail = station_service.get_station(response.id)
             if campaign and station_detail:
-                dataset_name = _slugify(f"{campaign.name}-{station_detail.name}")
-                notes = station_detail.description or f"Station {station_detail.name} in campaign {campaign.name}"
-                owner_org = campaign.allocation or settings.CKAN_ORGANIZATION
-                tags = {"upstream", _slugify(campaign.name), _slugify(station_detail.name)}
-                extras = [
-                    {"key": "campaign_id", "value": str(campaign.id)},
-                    {"key": "campaign_name", "value": campaign.name},
-                    {"key": "station_id", "value": str(station_detail.id)},
-                    {"key": "station_name", "value": station_detail.name},
-                ]
-                ckan_client.create_or_update_dataset(
-                    token=tapis_token,
-                    name=dataset_name,
-                    title=f"{campaign.name} - {station_detail.name}",
+                owner_org = (campaign.allocation or settings.CKAN_ORGANIZATION or "").strip() or None
+                ensure_station_dataset(
+                    settings=settings,
+                    ckan_client=ckan_client,
+                    tapis_token=tapis_token,
+                    campaign=campaign,
+                    station=station_detail,
                     owner_org=owner_org,
-                    notes=notes,
-                    tags=tags,
-                    extras=extras,
                     private=True,
                 )
         except CKANError as exc:
@@ -390,100 +381,28 @@ async def publish_station(
 
         try:
             if owner_org_slug:
-                dataset_name = _slugify(f"{campaign.name}-{station.name}")
-                notes = station.description or f"Station {station.name} in campaign {campaign.name}"
-                tags = {"upstream", _slugify(campaign.name), _slugify(station.name)}
-                source_url = f"{settings.UI_BASE_URL.rstrip('/')}/campaigns/{campaign.id}/stations/{station.id}"
-                extras = [
-                    {"key": "campaign_id", "value": str(campaign.id)},
-                    {"key": "campaign_name", "value": campaign.name},
-                    {"key": "station_id", "value": str(station.id)},
-                    {"key": "station_name", "value": station.name},
-                    {"key": "source", "value": source_url},
-                ]
-                dataset = ckan_client.create_or_update_dataset(
-                    token=tapis_token,
-                    name=dataset_name,
-                    title=f"{campaign.name} - {station.name}",
+                dataset, dataset_id, dataset_errors = ensure_station_dataset(
+                    settings=settings,
+                    ckan_client=ckan_client,
+                    tapis_token=tapis_token,
+                    campaign=campaign,
+                    station=station,
                     owner_org=owner_org_slug,
-                    notes=notes,
-                    tags=tags,
-                    extras=extras,
                     private=False,
                 )
-                dataset_id = dataset.get("id") or dataset.get("name")
-                if dataset_id:
-                    ckan_client.ensure_dataset_visibility(token=tapis_token, dataset_id=str(dataset_id), private=False)
-                    ui_base = settings.UI_BASE_URL.rstrip("/")
-                    api_base = settings.API_BASE_URL.rstrip("/") if settings.API_BASE_URL else None
-
-                    existing_resources_by_name: dict[str, Dict[str, Any]] = {}
-                    for resource in dataset.get("resources", []) or []:
-                        if isinstance(resource, dict):
-                            name = resource.get("name")
-                            if isinstance(name, str):
-                                existing_resources_by_name[name] = resource
-
-                    def _upsert_resource(name: str, url: str, description: str, format_: str, sensor_identifier: str) -> None:
-                        existing = existing_resources_by_name.get(name)
-                        resource_id = str(existing.get("id")) if existing and existing.get("id") else None
-                        try:
-                            resource = ckan_client.ensure_resource(
-                                token=tapis_token,
-                                dataset_id=str(dataset_id),
-                                name=name,
-                                url=url,
-                                description=description,
-                                format_=format_,
-                                resource_id=resource_id,
-                            )
-                            existing_resources_by_name[name] = resource
-                        except CKANError as exc:
-                            message = (
-                                f"Failed to register resource {name} for sensor {sensor_identifier} "
-                                f"in CKAN: {exc}"
-                            )
-                            logger.warning("%s", message)
-                            errors.append(message)
-                        except Exception as exc:  # pragma: no cover - defensive
-                            message = (
-                                f"Unexpected error while registering resource {name} for sensor "
-                                f"{sensor_identifier} in CKAN: {exc}"
-                            )
-                            logger.exception("%s", message)
-                            errors.append(message)
-
-                    sensors = station.sensors or []
-                    for sensor_item in sensors:
-                        sensor_label = sensor_item.alias or sensor_item.variablename or f"sensor-{sensor_item.id}"
-                        sensor_slug = _slugify(f"{station.name}-{sensor_label}") or f"sensor-{sensor_item.id}"
-
-                        sensor_ui_name = f"{sensor_slug}-ui"
-                        sensor_ui_url = f"{ui_base}/campaigns/{campaign.id}/stations/{station.id}/sensors/{sensor_item.id}"
-                        sensor_ui_description = (
-                            f"Interactive upstream view for sensor {sensor_label} at station {station.name}."
-                        )
-                        _upsert_resource(sensor_ui_name, sensor_ui_url, sensor_ui_description, "HTML", str(sensor_item.id))
-
-                        if not api_base:
-                            continue
-
-                        sensor_api_name = f"{sensor_slug}-measurements"
-                        sensor_api_url = (
-                            f"{api_base}/api/v1/campaigns/{campaign.id}/stations/"
-                            f"{station.id}/sensors/{sensor_item.id}/measurements"
-                        )
-                        sensor_api_description = (
-                            f"Measurement API endpoint (GeoJSON) for sensor {sensor_label} "
-                            f"at station {station.name}."
-                        )
-                        _upsert_resource(
-                            sensor_api_name,
-                            sensor_api_url,
-                            sensor_api_description,
-                            "GeoJSON",
-                            str(sensor_item.id),
-                        )
+                errors.extend(dataset_errors)
+                sensors = station.sensors or []
+                resource_errors = sync_sensor_resources(
+                    settings=settings,
+                    ckan_client=ckan_client,
+                    tapis_token=tapis_token,
+                    campaign=campaign,
+                    station=station,
+                    dataset=dataset,
+                    dataset_id=dataset_id,
+                    sensors=sensors,
+                )
+                errors.extend(resource_errors)
         except CKANError as exc:
             message = f"Failed to publish station {station_id} in CKAN: {exc}"
             logger.warning("%s", message)
