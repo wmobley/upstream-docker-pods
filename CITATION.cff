@@ -1,13 +1,13 @@
-cff-version: 1.2
+cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 authors:
 - family-names: Mobley
   given-names: William
+  orcid: https://orcid.org/0000-0003-1783-0599
 - family-names: Osorio
   given-names: Maximiliano
 - family-names: Krendelev
   given-names: Vlad
-orcid: https://orcid.org/0000-0003-1783-0599
-title:wmobley/upstream-docker-pods: API to handle TAPIS Pods
+title: "wmobley/upstream-docker-pods: API to handle TAPIS Pods"
 version: v1.1.1
 date-released: 2025-11-20
