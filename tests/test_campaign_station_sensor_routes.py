@@ -13,7 +13,7 @@ from app.api.v1.schemas.sensor import (
     ListSensorsResponsePagination
 )
 from app.api.v1.schemas.user import User
-from app.api.dependencies.auth import get_current_user
+from app.api.dependencies.auth import get_current_user, get_edit_user
 from app.db.session import get_db
 from app.db.repositories.sensor_repository import SortField
 
@@ -22,7 +22,8 @@ MOCK_USER = User(
     id=1,
     username="testuser",
     email="test@example.com",
-    is_active=True
+    is_active=True,
+    role="ADMIN",
 )
 
 MOCK_SENSOR_UPDATE_PAYLOAD = {
@@ -78,6 +79,7 @@ def client_with_auth():
         'SECRET_KEY': 'test-secret-key',
     }):
         app.dependency_overrides[get_current_user] = override_get_current_user
+        app.dependency_overrides[get_edit_user] = override_get_current_user
         app.dependency_overrides[get_db] = override_get_db
         client = TestClient(app)
         yield client

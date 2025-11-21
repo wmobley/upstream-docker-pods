@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse
 
 from app.api.dependencies.auth import (
-    get_current_user,
     get_current_user_optional,
+    get_edit_user,
     get_tapis_token_header_optional,
 )
 from app.api.dependencies.pytas import (
@@ -117,7 +117,7 @@ async def create_measurement(measurement: MeasurementIn,
                          station_id: int,
                          sensor_id: int,
                          campaign_id: int,
-                         current_user: User = Depends(get_current_user),
+                         current_user: User = Depends(get_edit_user),
                           allocations: list[str] = Depends(get_user_allocations),
                           db: Session = Depends(get_db)) -> MeasurementCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
@@ -277,7 +277,7 @@ def delete_sensor_measurements(
     station_id: int,
     sensor_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
 ) -> Response:
     if not check_allocation_permission(current_user, campaign_id, allocations):
@@ -297,7 +297,7 @@ def update_sensor(
     campaign_id: int,
     measurement: MeasurementUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
     ) -> MeasurementCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
@@ -318,7 +318,7 @@ def partial_update_sensor(
     measurement_id:  int,
     measurement: MeasurementUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
 ) -> MeasurementCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import (
     get_current_user,
+    get_edit_user,
     get_oauth_token_optional,
     get_tapis_token_header,
     get_tapis_token_header_optional,
@@ -118,7 +119,7 @@ def _delete_station_dataset(
 async def create_station(
     station: StationCreate,
     campaign_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
     _token: str | None = Depends(get_oauth_token_optional),
     tapis_token: str | None = Depends(get_tapis_token_header_optional),
@@ -208,7 +209,7 @@ async def get_station(
 def delete_sensor(
     campaign_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
     tapis_token_optional: str | None = Depends(get_tapis_token_header_optional),
 ) -> Response:
@@ -248,7 +249,7 @@ def delete_station(
     station_id: int,
     campaign_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
     tapis_token: str = Depends(get_tapis_token_header),
 ) -> Response:
@@ -293,7 +294,7 @@ def update_station(
     campaign_id: int,
     station: StationUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
 ) -> StationCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
@@ -311,7 +312,7 @@ def partial_update_station(
     station_id: int,
     station: StationUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
 ) -> StationCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
@@ -392,7 +393,7 @@ async def publish_station(
     campaign_id: int,
     station_id: int,
     publish_request: PublishRequest | None = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
     _token: str | None = Depends(get_oauth_token_optional),
     tapis_token: str | None = Depends(get_tapis_token_header_optional),
@@ -540,7 +541,7 @@ async def publish_station(
 async def unpublish_station(
     campaign_id: int,
     station_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
     _token: str | None = Depends(get_oauth_token_optional),
     tapis_token: str | None = Depends(get_tapis_token_header_optional),

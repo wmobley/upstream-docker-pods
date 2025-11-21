@@ -41,7 +41,14 @@ def mock_authenticate_user():
         mock.return_value = AuthResult(success=True, tapis_tokens={"access_token": "tapis-token"})
         yield mock
 
-def test_login_success(mock_settings, mock_authenticate_user):
+
+@pytest.fixture
+def mock_resolve_user_role():
+    with patch("app.api.v1.routes.root.resolve_user_role") as mock:
+        mock.return_value = "USER"
+        yield mock
+
+def test_login_success(mock_settings, mock_authenticate_user, mock_resolve_user_role):
     response = client.post(
         "/api/v1/token",
         data={"username": TEST_USERNAME, "password": TEST_PASSWORD}
@@ -51,11 +58,14 @@ def test_login_success(mock_settings, mock_authenticate_user):
     assert "access_token" in body
     assert body["token_type"] == "bearer"
     assert body["tapis_access_token"] == "tapis-token"
+    assert body["role"] == "USER"
 
     # Verify the token is valid
     token = body["access_token"]
     decoded = jwt.decode(token, TEST_JWT_SECRET, algorithms=["HS256"])
     assert decoded["username"] == TEST_USERNAME
+    assert decoded["role"] == "USER"
+    mock_resolve_user_role.assert_called_once_with(TEST_USERNAME, "tapis-token")
 
 def test_login_failure(mock_settings):
     with patch("app.api.v1.routes.root.authenticate_user") as mock:

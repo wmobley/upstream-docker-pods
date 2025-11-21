@@ -9,8 +9,10 @@ import jwt
 from app.main import app
 from app.db.models.measurement import Measurement as MeasurementModel
 from app.api.v1.schemas.measurement import MeasurementItem, AggregatedMeasurement, MeasurementCreateResponse # Assuming MeasurementCreateResponse exists
+from app.api.v1.schemas.user import User
 from app.db.repositories.measurement_repository import MeasurementRepository
 from app.db.repositories.sensor_repository import SensorRepository # For delete operation
+from app.api.dependencies.auth import get_edit_user
 
 # Test JWT secret (same as in test_campaign_station_sensors.py)
 TEST_JWT_SECRET = "test_secret"
@@ -237,7 +239,7 @@ MOCK_FULL_MEASUREMENT_UPDATE_PAYLOAD = {
 @patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.MeasurementRepository')
 @patch('app.core.config.get_settings')
 @patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.check_allocation_permission', return_value=True)
-def test_update_measurement_success( 
+def test_update_measurement_success(
     mock_check_alloc: MagicMock,
     mock_get_settings: MagicMock,
     mock_repo_class: MagicMock,
@@ -249,11 +251,16 @@ def test_update_measurement_success(
     mock_settings = MagicMock(); mock_settings.JWT_SECRET = TEST_JWT_SECRET; mock_settings.ALG = TEST_JWT_ALGORITHM
     mock_get_settings.return_value = mock_settings
 
-    response = client.put(
-        f"/api/v1/campaigns/{CAMPAIGN_ID}/stations/{STATION_ID}/sensors/{SENSOR_ID}/measurements/{MEASUREMENT_ID}",
-        json=MOCK_FULL_MEASUREMENT_UPDATE_PAYLOAD,
-        headers=auth_headers
-    )
+    mock_user = User(username="tester", role="ADMIN")
+    app.dependency_overrides[get_edit_user] = lambda: mock_user
+    try:
+        response = client.put(
+            f"/api/v1/campaigns/{CAMPAIGN_ID}/stations/{STATION_ID}/sensors/{SENSOR_ID}/measurements/{MEASUREMENT_ID}",
+            json=MOCK_FULL_MEASUREMENT_UPDATE_PAYLOAD,
+            headers=auth_headers
+        )
+    finally:
+        app.dependency_overrides.pop(get_edit_user, None)
     assert response.status_code == 200
     data = response.json()
     # The service returns a MeasurementCreateResponse with the sensorid, not the measurementid.
@@ -282,11 +289,16 @@ def test_update_measurement_not_found(
     mock_get_settings.return_value = mock_settings
 
     non_existent_measurement_id = 999
-    response = client.put(
-        f"/api/v1/campaigns/{CAMPAIGN_ID}/stations/{STATION_ID}/sensors/{SENSOR_ID}/measurements/{non_existent_measurement_id}",
-        json=MOCK_FULL_MEASUREMENT_UPDATE_PAYLOAD,
-        headers=auth_headers
-    )
+    mock_user = User(username="tester", role="ADMIN")
+    app.dependency_overrides[get_edit_user] = lambda: mock_user
+    try:
+        response = client.put(
+            f"/api/v1/campaigns/{CAMPAIGN_ID}/stations/{STATION_ID}/sensors/{SENSOR_ID}/measurements/{non_existent_measurement_id}",
+            json=MOCK_FULL_MEASUREMENT_UPDATE_PAYLOAD,
+            headers=auth_headers
+        )
+    finally:
+        app.dependency_overrides.pop(get_edit_user, None)
     assert response.status_code == 404
     assert response.json()["detail"] == "Measurement not found"
 
@@ -299,7 +311,7 @@ MOCK_MEASUREMENT_PARTIAL_UPDATE_PAYLOAD = {
 @patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.MeasurementRepository')
 @patch('app.core.config.get_settings')
 @patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.check_allocation_permission', return_value=True)
-def test_partial_update_measurement_success( 
+def test_partial_update_measurement_success(
     mock_check_alloc: MagicMock,
     mock_get_settings: MagicMock,
     mock_repo_class: MagicMock,
@@ -311,11 +323,16 @@ def test_partial_update_measurement_success(
     mock_settings = MagicMock(); mock_settings.JWT_SECRET = TEST_JWT_SECRET; mock_settings.ALG = TEST_JWT_ALGORITHM
     mock_get_settings.return_value = mock_settings
 
-    response = client.patch(
-        f"/api/v1/campaigns/{CAMPAIGN_ID}/stations/{STATION_ID}/sensors/{SENSOR_ID}/measurements/{MEASUREMENT_ID}",
-        json=MOCK_MEASUREMENT_PARTIAL_UPDATE_PAYLOAD,
-        headers=auth_headers
-    )
+    mock_user = User(username="tester", role="ADMIN")
+    app.dependency_overrides[get_edit_user] = lambda: mock_user
+    try:
+        response = client.patch(
+            f"/api/v1/campaigns/{CAMPAIGN_ID}/stations/{STATION_ID}/sensors/{SENSOR_ID}/measurements/{MEASUREMENT_ID}",
+            json=MOCK_MEASUREMENT_PARTIAL_UPDATE_PAYLOAD,
+            headers=auth_headers
+        )
+    finally:
+        app.dependency_overrides.pop(get_edit_user, None)
 
     assert response.status_code == 200
     data = response.json()

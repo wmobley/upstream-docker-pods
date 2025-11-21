@@ -15,7 +15,7 @@ from app.api.v1.schemas.station import (
 )
 from app.api.v1.schemas.campaign import GetCampaignResponse, SummaryGetCampaign
 from app.api.v1.schemas.user import User
-from app.api.dependencies.auth import get_current_user
+from app.api.dependencies.auth import get_current_user, get_edit_user
 from app.api.dependencies.pytas import get_user_allocations
 from app.db.session import get_db
 from app.services.ckan_service import _slugify
@@ -25,7 +25,8 @@ MOCK_USER = User(
     id=1,
     username="testuser",
     email="test@example.com",
-    is_active=True
+    is_active=True,
+    role="ADMIN",
 )
 
 MOCK_STATION_CREATE_PAYLOAD = {
@@ -92,6 +93,7 @@ def client_with_auth():
         'SECRET_KEY': 'test-secret-key',
     }):
         app.dependency_overrides[get_current_user] = override_get_current_user
+        app.dependency_overrides[get_edit_user] = override_get_current_user
         app.dependency_overrides[get_user_allocations] = lambda: ["test-allocation"]
         app.dependency_overrides[get_db] = override_get_db
         client = TestClient(app)

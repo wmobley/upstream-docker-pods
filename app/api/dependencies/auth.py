@@ -9,6 +9,7 @@ from fastapi.security import OAuth2PasswordBearer
 from app.api.v1.schemas.user import User
 from app.core.config import get_settings, Settings
 from app.tapis import TapisAuthClient
+from app.tapis.pods_permissions import POD_ROLE_ORDER, determine_user_role_from_pods
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token")
 settings: Settings = get_settings()
@@ -79,11 +80,50 @@ def authenticate_user(username: str, password: str) -> AuthResult:
     return AuthResult(success=True, tapis_tokens=None)
 
 
+def _default_role() -> str:
+    env = (settings.ENV or "").lower()
+    if env in {"dev", "test"} and not settings.TAPIS_ENFORCE_AUTH_IN_DEV:
+        return "ADMIN"
+    return "READ"
+
+
+def normalize_role(role: str | None) -> str:
+    if not role:
+        return _default_role()
+    normalized = role.strip().upper()
+    if normalized == "VIEWER":
+        normalized = "READ"
+    return normalized if normalized in POD_ROLE_ORDER else _default_role()
+
+
+def resolve_user_role(username: str, tapis_access_token: str | None) -> str:
+    try:
+        outcome = determine_user_role_from_pods(
+            username=username,
+            access_token=tapis_access_token,
+            settings=settings,
+        )
+    except Exception:  # pragma: no cover - defensive fallback
+        logger.exception("Failed to resolve Pods permissions for %s", username)
+        return _default_role()
+
+    if outcome.role:
+        return normalize_role(outcome.role)
+    return _default_role()
+
+
+def _role_allows(role: str | None, minimum: str) -> bool:
+    current_rank = POD_ROLE_ORDER.get(normalize_role(role), -1)
+    required_rank = POD_ROLE_ORDER.get(minimum, -1)
+    return current_rank >= required_rank
+
+
 # Async function to get the current user based on the provided OAuth2 token
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
     if settings.ENV == "dev":
         return User(
             username="test",
+            role=_default_role(),
         )
 
     try:
@@ -105,6 +145,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
 
     return User(
         username=username,
+        role=normalize_role(user_dict.get("role")),
     )
 
 
@@ -164,3 +205,21 @@ def get_oauth_token_optional(request: Request) -> str | None:
     if auth_header and auth_header.lower().startswith("bearer "):
         return auth_header.split(" ", 1)[1]
     return None
+
+
+async def get_viewer_user(current_user: User = Depends(get_current_user)) -> User:
+    if not _role_allows(getattr(current_user, "role", None), "READ"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Viewer role required")
+    return current_user
+
+
+async def get_edit_user(current_user: User = Depends(get_current_user)) -> User:
+    if not _role_allows(getattr(current_user, "role", None), "USER"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Edit role required")
+    return current_user
+
+
+async def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    if not _role_allows(getattr(current_user, "role", None), "ADMIN"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required")
+    return current_user

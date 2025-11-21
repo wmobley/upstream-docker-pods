@@ -7,6 +7,7 @@ from app.api.dependencies.pytas import check_allocation_permission, get_user_all
 
 from app.api.dependencies.auth import (
     get_current_user,
+    get_edit_user,
     get_oauth_token_optional,
     get_tapis_token_header,
     get_tapis_token_header_optional,
@@ -34,7 +35,7 @@ router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 @router.post("")
 async def create_campaign(
     campaign: CampaignsIn,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     db: Session = Depends(get_db),
 ) -> CampaignCreateResponse:
     campaign_service = CampaignService(CampaignRepository(db))
@@ -95,7 +96,7 @@ async def get_campaign(
 def delete_sensor(
     campaign_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
 ) -> Response:
     if not check_allocation_permission(current_user, campaign_id, allocations):
@@ -111,7 +112,7 @@ def update_campaign(
     campaign_id: int,
     campaign: CampaignsIn,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
 ) -> CampaignCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
@@ -128,7 +129,7 @@ def partial_update_campaign(
     campaign_id: int,
     campaign: CampaignUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
 ) -> CampaignCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
@@ -165,7 +166,7 @@ async def get_campaign_permissions(
 async def publish_campaign(
     campaign_id: int,
     publish_request: PublishRequest | None = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     _token: str | None = Depends(get_oauth_token_optional),
     tapis_token: str | None = Depends(get_tapis_token_header_optional),
     allocations: list[str] = Depends(get_user_allocations),
@@ -234,7 +235,7 @@ async def publish_campaign(
 async def unpublish_campaign(
     campaign_id: int,
     publish_request: PublishRequest | None = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
     _token: str | None = Depends(get_oauth_token_optional),
     tapis_token: str | None = Depends(get_tapis_token_header_optional),

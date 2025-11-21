@@ -3,7 +3,7 @@
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from app.api.dependencies.auth import AuthResult, authenticate_user
+from app.api.dependencies.auth import AuthResult, authenticate_user, resolve_user_role
 from app.core.config import get_settings
 from pydantic import BaseModel
 
@@ -16,13 +16,17 @@ class LoginResponse(BaseModel):
     tapis_refresh_token: str | None = None
     tapis_expires_at: int | None = None
     username: str | None = None
+    role: str | None = None
 
 def get_jwt_secret() -> str:
     settings = get_settings()
     return settings.JWT_SECRET
 
-def create_token(username: str, jwt_secret: str) -> str:
-    return jwt.encode({"username": username}, jwt_secret, algorithm="HS256")
+def create_token(username: str, jwt_secret: str, role: str | None = None) -> str:
+    payload: dict[str, str] = {"username": username}
+    if role:
+        payload["role"] = role
+    return jwt.encode(payload, jwt_secret, algorithm="HS256")
 
 # Route for user authentication and token generation
 @router.post("/token", tags=["auth"])
@@ -39,11 +43,13 @@ async def login(
         )
     # Create jwt token
     tapis_tokens = auth_result.tapis_tokens or {}
+    role = resolve_user_role(form_data.username, tapis_tokens.get("access_token"))
     return LoginResponse(
-        access_token=create_token(form_data.username, jwt_secret),
+        access_token=create_token(form_data.username, jwt_secret, role),
         token_type="bearer",
         tapis_access_token=tapis_tokens.get("access_token"),
         tapis_refresh_token=tapis_tokens.get("refresh_token"),
         tapis_expires_at=tapis_tokens.get("expires_at"),
         username=form_data.username,
+        role=role,
     )

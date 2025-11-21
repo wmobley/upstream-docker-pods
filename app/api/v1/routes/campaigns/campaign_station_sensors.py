@@ -3,7 +3,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
-from app.api.dependencies.auth import get_current_user
+from app.api.dependencies.auth import get_current_user, get_edit_user
 from app.api.dependencies.pytas import check_allocation_permission, get_user_allocations
 from app.api.v1.schemas.sensor import SensorItem, GetSensorResponse, ListSensorsResponsePagination, SensorStatistics, SensorCreateResponse, SensorUpdate, ForceUpdateSensorStatisticsResponse, UpdateSensorStatisticsResponse
 from app.api.v1.schemas.campaign import PublishRequest, PublishResponse
@@ -95,7 +95,7 @@ def delete_sensor(
     campaign_id: int,
    station_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
 ) -> Response:
     if not check_allocation_permission(current_user, campaign_id, allocations):
@@ -114,7 +114,7 @@ def update_sensor(
     campaign_id: int,
     sensor: SensorUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
     ) -> SensorCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
@@ -134,7 +134,7 @@ def partial_update_sensor(
     sensor_id:  int,
     sensor: SensorUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
 ) -> SensorCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
@@ -155,7 +155,7 @@ def force_update_sensor_statistics(
     campaign_id: int,
     station_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
 ) -> ForceUpdateSensorStatisticsResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
@@ -177,7 +177,7 @@ def force_update_single_sensor_statistics(
     station_id: int,
     sensor_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
 ) -> UpdateSensorStatisticsResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
@@ -197,7 +197,7 @@ async def publish_sensor(
     station_id: int,
     sensor_id: int,
     publish_request: PublishRequest | None = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
     db: Session = Depends(get_db),
 ) -> PublishResponse:
@@ -250,7 +250,7 @@ async def unpublish_sensor(
     station_id: int,
     sensor_id: int,
     publish_request: PublishRequest | None = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
     db: Session = Depends(get_db),
 ) -> PublishResponse:
@@ -302,7 +302,7 @@ def delete_sensor_sensor_id(
     station_id: int,
     sensor_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_edit_user),
     allocations: list[str] = Depends(get_user_allocations),
 ) -> Response:
     if not check_allocation_permission(current_user, campaign_id, allocations):

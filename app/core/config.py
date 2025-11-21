@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     UI_BASE_URL: str = Field(default="http://127.0.0.1:5173")
     API_BASE_URL: str | None = Field(default="http://127.0.0.1:8000")
     ALLOWED_ALLOCATIONS: list[str] | None = Field(default=None)
+    TAPIS_PODS_BASE_URL: str | None = Field(default=None)
+    TAPIS_POD_ID: str | None = Field(default=None)
 
     model_config = SettingsConfigDict(
         env_file=".env",
