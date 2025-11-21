@@ -8,8 +8,10 @@ from fastapi.security import OAuth2PasswordBearer
 
 from app.api.v1.schemas.user import User
 from app.core.config import get_settings, Settings
+from app.core.roles import ROLE_RANK, UserRole as UserRoleEnum, normalize_role as normalize_role_value
+from app.db.repositories.user_role_repository import UserRoleRepository
+from app.db.session import SessionLocal
 from app.tapis import TapisAuthClient
-from app.tapis.pods_permissions import POD_ROLE_ORDER, determine_user_role_from_pods
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token")
 settings: Settings = get_settings()
@@ -83,38 +85,35 @@ def authenticate_user(username: str, password: str) -> AuthResult:
 def _default_role() -> str:
     env = (settings.ENV or "").lower()
     if env in {"dev", "test"} and not settings.TAPIS_ENFORCE_AUTH_IN_DEV:
-        return "ADMIN"
-    return "READ"
+        return UserRoleEnum.ADMIN.value
+    return UserRoleEnum.READ.value
 
 
-def normalize_role(role: str | None) -> str:
-    if not role:
+def resolve_user_role(username: str, _tapis_access_token: str | None) -> str:
+    normalized_username = (username or "").strip()
+    if not normalized_username:
         return _default_role()
-    normalized = role.strip().upper()
-    if normalized == "VIEWER":
-        normalized = "READ"
-    return normalized if normalized in POD_ROLE_ORDER else _default_role()
 
-
-def resolve_user_role(username: str, tapis_access_token: str | None) -> str:
     try:
-        outcome = determine_user_role_from_pods(
-            username=username,
-            access_token=tapis_access_token,
-            settings=settings,
-        )
+        with SessionLocal() as db:
+            repo = UserRoleRepository(db)
+            record = repo.get_by_username(normalized_username)
+            if record:
+                return normalize_role_value(record.role, default=UserRoleEnum.READ)
     except Exception:  # pragma: no cover - defensive fallback
-        logger.exception("Failed to resolve Pods permissions for %s", username)
-        return _default_role()
+        logger.exception("Failed to resolve role for %s", username)
 
-    if outcome.role:
-        return normalize_role(outcome.role)
+    default_admin_candidates = settings.DEFAULT_ADMIN_USERS or []
+    default_admins = {user.strip().lower() for user in default_admin_candidates if user}
+    if normalized_username.lower() in default_admins:
+        return UserRoleEnum.ADMIN.value
+
     return _default_role()
 
 
 def _role_allows(role: str | None, minimum: str) -> bool:
-    current_rank = POD_ROLE_ORDER.get(normalize_role(role), -1)
-    required_rank = POD_ROLE_ORDER.get(minimum, -1)
+    current_rank = ROLE_RANK.get(normalize_role_value(role, default=UserRoleEnum.READ), -1)
+    required_rank = ROLE_RANK.get(normalize_role_value(minimum, default=UserRoleEnum.READ), -1)
     return current_rank >= required_rank
 
 
@@ -145,7 +144,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
 
     return User(
         username=username,
-        role=normalize_role(user_dict.get("role")),
+        role=normalize_role_value(user_dict.get("role"), default=UserRoleEnum.READ),
     )
 
 
