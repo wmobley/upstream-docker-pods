@@ -1,4 +1,6 @@
 # Upstream API
+[![DOI](https://zenodo.org/badge/1076824318.svg)](https://doi.org/10.5281/zenodo.17664688)
+
 
 A RESTful API service for managing environmental sensor data and campaigns.
 
