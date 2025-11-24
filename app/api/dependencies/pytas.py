@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException
 
 from app.api.dependencies.auth import (
     get_current_user,
+    get_viewer_user,
     get_tapis_token_header,
     get_tapis_token_header_optional,
 )
@@ -57,7 +58,7 @@ def _fetch_user_organizations(*, token: str, username: str) -> List[str]:
 
 
 async def get_user_allocations(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_viewer_user),
     tapis_token: str | None = Depends(get_tapis_token_header_optional),
 ) -> List[str]:
     """

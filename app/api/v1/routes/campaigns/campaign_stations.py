@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import (
-    get_current_user,
+    get_viewer_user,
     get_edit_user,
     get_oauth_token_optional,
     get_tapis_token_header,
@@ -168,7 +168,7 @@ async def list_stations(
     campaign_id: int,
     page: int = 1,
     limit: int = 20,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_viewer_user),
     allocations: list[str] = Depends(get_user_allocations),
     db: Session = Depends(get_db),
 ) -> ListStationsResponsePagination:
@@ -192,7 +192,7 @@ async def list_stations(
 async def get_station(
     station_id: int,
     campaign_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_viewer_user),
     allocations: list[str] = Depends(get_user_allocations),
     db: Session = Depends(get_db),
 ) -> GetStationResponse:
@@ -328,7 +328,7 @@ def partial_update_station(
 async def export_sensors_csv(
     campaign_id: int,
     station_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_viewer_user),
     allocations: list[str] = Depends(get_user_allocations),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
@@ -362,7 +362,7 @@ async def export_measurements_csv(
         datetime | None, Query(description="Start date filter")
     ] = None,
     end_date: Annotated[datetime | None, Query(description="End date filter")] = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_viewer_user),
     allocations: list[str] = Depends(get_user_allocations),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:

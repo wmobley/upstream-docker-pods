@@ -12,7 +12,7 @@ from app.api.v1.schemas.measurement import MeasurementItem, AggregatedMeasuremen
 from app.api.v1.schemas.user import User
 from app.db.repositories.measurement_repository import MeasurementRepository
 from app.db.repositories.sensor_repository import SensorRepository # For delete operation
-from app.api.dependencies.auth import get_edit_user
+from app.api.dependencies.auth import get_edit_user, get_viewer_user
 
 # Test JWT secret (same as in test_campaign_station_sensors.py)
 TEST_JWT_SECRET = "test_secret"
@@ -21,6 +21,13 @@ TEST_JWT_ALGORITHM = "HS256"
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def override_viewer_user():
+    app.dependency_overrides[get_viewer_user] = lambda: User(username="tester", role="ADMIN")
+    yield
+    app.dependency_overrides.pop(get_viewer_user, None)
 
 @pytest.fixture
 def auth_headers() -> dict[str, str]:

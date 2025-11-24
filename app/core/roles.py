@@ -9,21 +9,25 @@ from typing import Iterable
 class UserRole(str, Enum):
     """Supported application roles."""
 
+    NONE = "NONE"
     READ = "READ"
     USER = "USER"
+    APPROVEDADMIN = "APPROVEDADMIN"
     ADMIN = "ADMIN"
 
 
 ROLE_RANK = {
+    UserRole.NONE.value: -1,
     UserRole.READ.value: 0,
     UserRole.USER.value: 1,
+    UserRole.APPROVEDADMIN.value: 2,
     UserRole.ADMIN.value: 2,
 }
 
 _VALID_ROLE_VALUES = set(ROLE_RANK.keys())
 
 
-def normalize_role(value: str | None, *, default: UserRole = UserRole.READ) -> str:
+def normalize_role(value: str | None, *, default: UserRole = UserRole.NONE) -> str:
     """Normalize arbitrary text into a supported role value."""
 
     if not value:

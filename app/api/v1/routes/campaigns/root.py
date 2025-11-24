@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.pytas import check_allocation_permission, get_user_allocations
 
 from app.api.dependencies.auth import (
-    get_current_user,
+    get_viewer_user,
     get_edit_user,
     get_oauth_token_optional,
     get_tapis_token_header,
@@ -61,7 +61,7 @@ async def list_campaigns(
     sensor_variables: Annotated[
         list[str] | None, Query(description="List of sensor variables to filter by")
     ] = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_viewer_user),
     allocations: list[str] = Depends(get_user_allocations),
     db: Session = Depends(get_db),
 ) -> ListCampaignsResponsePagination:
@@ -82,7 +82,7 @@ async def list_campaigns(
 @router.get("/{campaign_id}")
 async def get_campaign(
     campaign_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_viewer_user),
     db: Session = Depends(get_db),
 ) -> GetCampaignResponse:
     campaign_service = CampaignService(CampaignRepository(db))
@@ -150,7 +150,7 @@ class PermissionResponse(BaseModel):
 @router.get("/{campaign_id}/permissions", response_model=PermissionResponse)
 async def get_campaign_permissions(
     campaign_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_viewer_user),
     allocations: list[str] = Depends(get_user_allocations),
     db: Session = Depends(get_db),
 ) -> PermissionResponse:

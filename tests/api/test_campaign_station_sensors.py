@@ -8,6 +8,10 @@ from app.main import app
 from app.db.models.sensor import Sensor
 from app.db.repositories.sensor_repository import SensorRepository, SortField
 from app.db.models.sensor_statistics import SensorStatistics
+from app.api.dependencies.auth import get_viewer_user
+from app.api.v1.schemas.user import User
+from app.api.dependencies.auth import get_viewer_user
+from app.api.v1.schemas.user import User
 
 # Test JWT secret
 TEST_JWT_SECRET = "test_secret"
@@ -16,6 +20,16 @@ TEST_JWT_ALGORITHM = "HS256"
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def override_viewer_user(request):
+    if 'no_viewer_override' in request.keywords:
+        yield
+        return
+    app.dependency_overrides[get_viewer_user] = lambda: User(username="tester", role="ADMIN")
+    yield
+    app.dependency_overrides.pop(get_viewer_user, None)
 
 @pytest.fixture
 def auth_headers() -> dict[str, str]:
@@ -371,6 +385,7 @@ def test_list_sensors_combined_filters(mock_get_settings: MagicMock, mock_reposi
     assert data["items"][0]["units"] == "°F"
     assert data["items"][0]["postprocess"] is True
 
+@pytest.mark.no_viewer_override
 @patch('app.api.v1.routes.campaigns.campaign_station_sensors.SensorRepository')
 @patch('app.core.config.get_settings')
 def test_list_sensors_unauthorized(mock_get_settings: MagicMock, mock_repository_class: MagicMock, client: TestClient) -> None:

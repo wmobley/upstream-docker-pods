@@ -86,7 +86,7 @@ def _default_role() -> str:
     env = (settings.ENV or "").lower()
     if env in {"dev", "test"} and not settings.TAPIS_ENFORCE_AUTH_IN_DEV:
         return UserRoleEnum.ADMIN.value
-    return UserRoleEnum.READ.value
+    return UserRoleEnum.NONE.value
 
 
 def resolve_user_role(username: str, _tapis_access_token: str | None) -> str:
@@ -99,7 +99,7 @@ def resolve_user_role(username: str, _tapis_access_token: str | None) -> str:
             repo = UserRoleRepository(db)
             record = repo.get_by_username(normalized_username)
             if record:
-                return normalize_role_value(record.role, default=UserRoleEnum.READ)
+                return normalize_role_value(record.role, default=UserRoleEnum.NONE)
     except Exception:  # pragma: no cover - defensive fallback
         logger.exception("Failed to resolve role for %s", username)
 
@@ -112,8 +112,8 @@ def resolve_user_role(username: str, _tapis_access_token: str | None) -> str:
 
 
 def _role_allows(role: str | None, minimum: str) -> bool:
-    current_rank = ROLE_RANK.get(normalize_role_value(role, default=UserRoleEnum.READ), -1)
-    required_rank = ROLE_RANK.get(normalize_role_value(minimum, default=UserRoleEnum.READ), -1)
+    current_rank = ROLE_RANK.get(normalize_role_value(role, default=UserRoleEnum.NONE), -1)
+    required_rank = ROLE_RANK.get(normalize_role_value(minimum, default=UserRoleEnum.NONE), -1)
     return current_rank >= required_rank
 
 
@@ -144,7 +144,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
 
     return User(
         username=username,
-        role=normalize_role_value(user_dict.get("role"), default=UserRoleEnum.READ),
+        role=normalize_role_value(user_dict.get("role"), default=UserRoleEnum.NONE),
     )
 
 
