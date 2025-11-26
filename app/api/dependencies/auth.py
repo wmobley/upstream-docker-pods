@@ -40,45 +40,43 @@ class AuthResult:
 
 
 def authenticate_user(username: str, password: str) -> AuthResult:
-    # If running in dev and TAPIS enforcement is explicitly disabled, accept
-    # missing/empty credentials and short-circuit as a successful local auth.
-    if settings.ENV == "dev" and not settings.TAPIS_ENFORCE_AUTH_IN_DEV:
+    skip_enforcement = settings.ENV == "dev" and not settings.TAPIS_ENFORCE_AUTH_IN_DEV
+    if skip_enforcement:
         logger.debug(
-            "Skipping credential enforcement in dev mode for username=%s (enforce flag disabled)",
+            "Credential enforcement disabled in dev mode for username=%s (enforce flag disabled)",
             username,
         )
-        return AuthResult(success=True)
 
-    # Require username/password in non-dev (or when enforcement is enabled)
+    # Require username/password unless enforcement is explicitly disabled.
     if not username or not password:
+        if skip_enforcement:
+            return AuthResult(success=True)
         logger.info("Login rejected: missing username/password")
         return AuthResult(success=False, error="Missing username or password")
-
-    # For local authentication we accept any non-empty username/password
-    # combination as a successful local login. If a TapisAuthClient is
-    # configured, attempt to authenticate against Tapis and include any
-    # returned tokens in the result so the login response can surface a
-    # tapis_access_token for pod environments.
-    logger.info("Local auth successful for username=%s", username)
 
     if tapis_auth_client is not None:
         try:
             outcome = tapis_auth_client.authenticate(username, password)
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception("Unexpected error while calling TapisAuthClient: %s", exc)
-            # Fall back to local auth without tapis tokens
-            return AuthResult(success=True, tapis_tokens=None)
+            if skip_enforcement:
+                # Fall back to local auth without tapis tokens
+                return AuthResult(success=True, tapis_tokens=None)
+            return AuthResult(success=False, error="Tapis authentication failed. See logs for details.")
 
         if outcome.tokens:
             logger.info("Tapis authentication succeeded for username=%s", username)
             return AuthResult(success=True, tapis_tokens=outcome.tokens)
-        else:
-            # Tapis did not return tokens (or authentication failed). Log and
-            # fall back to local success so that local development and other
-            # non-Tapis flows continue to work.
-            logger.info("Tapis authentication did not return tokens for %s: %s", username, outcome.error)
+        # Tapis did not return tokens (authentication failed or tokens missing).
+        logger.info("Tapis authentication did not return tokens for %s: %s", username, outcome.error)
+        if skip_enforcement:
             return AuthResult(success=True, tapis_tokens=None)
+        failure_message = outcome.error or "Invalid username or password"
+        return AuthResult(success=False, error=failure_message)
 
+    # For local authentication (no Tapis client configured) we accept any non-empty username/password
+    # combination as a successful login. This keeps non-Tapis deployments working.
+    logger.info("Local auth successful for username=%s (no Tapis client configured)", username)
     return AuthResult(success=True, tapis_tokens=None)
 
 
