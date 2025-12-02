@@ -60,7 +60,7 @@ def authenticate_user(username: str, password: str) -> AuthResult:
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception("Unexpected error while calling TapisAuthClient: %s", exc)
             if skip_enforcement:
-                # Fall back to local auth without tapis tokens
+                # Fall back to local auth without tapis tokens when explicitly allowed.
                 return AuthResult(success=True, tapis_tokens=None)
             return AuthResult(success=False, error="Tapis authentication failed. See logs for details.")
 
@@ -69,8 +69,6 @@ def authenticate_user(username: str, password: str) -> AuthResult:
             return AuthResult(success=True, tapis_tokens=outcome.tokens)
         # Tapis did not return tokens (authentication failed or tokens missing).
         logger.info("Tapis authentication did not return tokens for %s: %s", username, outcome.error)
-        if skip_enforcement:
-            return AuthResult(success=True, tapis_tokens=None)
         failure_message = outcome.error or "Invalid username or password"
         return AuthResult(success=False, error=failure_message)
 

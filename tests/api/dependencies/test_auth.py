@@ -37,6 +37,26 @@ def test_authenticate_user_dev_env_attempts_tapis(monkeypatch):
     assert result.tapis_tokens == {"access_token": "token123"}
 
 
+def test_authenticate_user_dev_env_bad_credentials_fail(monkeypatch):
+    monkeypatch.setattr(auth.settings, "ENV", "dev")
+    monkeypatch.setattr(auth.settings, "TAPIS_ENFORCE_AUTH_IN_DEV", False)
+
+    class DummyOutcome:
+        def __init__(self):
+            self.tokens = None
+            self.error = "invalid"
+
+    class DummyClient:
+        def authenticate(self, username, password):
+            return DummyOutcome()
+
+    monkeypatch.setattr(auth, "tapis_auth_client", DummyClient())
+
+    result = auth.authenticate_user("user", "wrong")
+    assert result.success is False
+    assert result.error == "invalid"
+
+
 def test_authenticate_user_dev_env_enforced(monkeypatch):
     monkeypatch.setattr(auth.settings, "ENV", "dev")
     monkeypatch.setattr(auth.settings, "TAPIS_ENFORCE_AUTH_IN_DEV", True)
