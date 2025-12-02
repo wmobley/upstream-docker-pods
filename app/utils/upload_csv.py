@@ -118,7 +118,10 @@ def process_measurements_file(
     measurement_batch = []
     total_measurements = 0
     errors = []
-    df['geometry_str'] = 'Point (' + df['Lon_deg'] + ' ' + df['Lat_deg'] + ')'
+    lon_series = df['Lon_deg'].astype(str)
+    lat_series = df['Lat_deg'].astype(str)
+    combined_coords = lon_series.str.cat(lat_series, sep=' ')
+    df['geometry_str'] = combined_coords.map(lambda coords: f'Point ({coords})')
 
     for alias, sensor_id in alias_to_sensorid_map.items():
         if alias not in df.columns:
