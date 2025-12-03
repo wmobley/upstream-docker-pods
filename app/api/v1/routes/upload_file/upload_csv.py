@@ -54,6 +54,7 @@ def post_sensor_and_measurement(
     """Process sensor and measurement files and store data in the database."""
     start_time = time.time()
     sensor_repository = SensorRepository(db)
+    station_service = StationService(StationRepository(db))
 
     response = {
         'uploaded_file_sensors stored in memory': upload_file_sensors._in_memory,
@@ -74,6 +75,7 @@ def post_sensor_and_measurement(
     upload_file_measurements.file.close()
     data_processing_time = round(time.time() - start_time, 1)
     update_sensor_statistics(sensor_repository, alias_to_sensorid_map)
+    station_service.refresh_geometry(station_id)
 
     ckan_sync_messages: list[str] = []
     if tapis_token:
@@ -81,7 +83,6 @@ def post_sensor_and_measurement(
         ckan_client = get_ckan_service()
         if ckan_client and settings.CKAN_URL:
             campaign_service = CampaignService(CampaignRepository(db))
-            station_service = StationService(StationRepository(db))
             campaign = campaign_service.get_campaign_with_summary(campaign_id)
             station = station_service.get_station(station_id)
             if campaign and station and alias_to_sensorid_map:

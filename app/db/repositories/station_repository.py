@@ -3,7 +3,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import joinedload
 from app.api.v1.schemas.station import StationCreate, StationUpdate
 from app.db.models.sensor import Sensor
@@ -184,3 +184,11 @@ class StationRepository:
         self.db.commit()
         self.db.refresh(db_station)
         return db_station
+
+    def refresh_geometry(self, station_id: int) -> None:
+        """Recalculate station geometry from measurement points."""
+        self.db.execute(
+            text("SELECT update_station_geometry(:station_id)"),
+            {"station_id": station_id},
+        )
+        self.db.commit()

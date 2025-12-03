@@ -100,3 +100,7 @@ class StationService:
             published_at=published_at,
         )
         return result is not None
+
+    def refresh_geometry(self, station_id: int) -> None:
+        """Recalculate station geometry based on associated measurements."""
+        self.station_repository.refresh_geometry(station_id)
