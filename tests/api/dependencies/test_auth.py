@@ -101,3 +101,41 @@ def test_authenticate_user_non_dev_tapis_failure(monkeypatch):
     result = auth.authenticate_user("user", "pass")
     assert result.success is False
     assert result.error == "bad creds"
+
+
+def test_ensure_ckan_membership_invokes_service(monkeypatch):
+    monkeypatch.setattr(auth.settings, "CKAN_ORGANIZATION", "upstream")
+    monkeypatch.setattr(auth.settings, "CKAN_ADMIN_API_KEY", "api-key-123")
+    monkeypatch.setattr(auth.settings, "CKAN_ADMIN_USERNAME", "dso_test")
+
+    captured: dict = {}
+
+    class DummyService:
+        def ensure_user_in_organization(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(auth, "get_ckan_service", lambda: DummyService())
+
+    auth.ensure_ckan_membership("alice", "USER")
+    assert captured == {
+        "api_key": "api-key-123",
+        "organization": "upstream",
+        "username": "alice",
+        "role": "admin",
+        "requestor": "dso_test",
+    }
+
+
+def test_ensure_ckan_membership_skips_ineligible_role(monkeypatch):
+    monkeypatch.setattr(auth.settings, "CKAN_ORGANIZATION", "upstream")
+    monkeypatch.setattr(auth.settings, "CKAN_ADMIN_API_KEY", "api-key-123")
+    calls = {"count": 0}
+
+    class DummyService:
+        def ensure_user_in_organization(self, **_kwargs):
+            calls["count"] += 1
+
+    monkeypatch.setattr(auth, "get_ckan_service", lambda: DummyService())
+
+    auth.ensure_ckan_membership("alice", "READ")
+    assert calls["count"] == 0

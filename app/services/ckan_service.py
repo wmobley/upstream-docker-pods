@@ -32,7 +32,12 @@ class CKANService:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
-    def _headers(self, token: str) -> Dict[str, str]:
+    def _headers(self, token: str, *, as_api_key: bool = False) -> Dict[str, str]:
+        if as_api_key:
+            return {
+                "Authorization": token,
+                "Content-Type": "application/json",
+            }
         return {
             "Authorization": f"Bearer {token}",
             "X-Tapis-Token": token,
@@ -47,12 +52,13 @@ class CKANService:
         token: str,
         json: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
+        as_api_key: bool = False,
     ) -> Any:
         url = f"{self.base_url}{path}"
         response = requests.request(
             method=method,
             url=url,
-            headers=self._headers(token),
+            headers=self._headers(token, as_api_key=as_api_key),
             json=json,
             params=params,
             timeout=self.timeout,
@@ -214,6 +220,50 @@ class CKANService:
                 raise CKANError("Unexpected CKAN response format when creating resource")
             return cast(Dict[str, Any], result)
         except CKANError:
+            raise
+
+    def ensure_user_in_organization(
+        self,
+        *,
+        api_key: str,
+        organization: str,
+        username: str,
+        role: str = "admin",
+        requestor: str | None = None,
+    ) -> Dict[str, Any]:
+        payload = {
+            "id": organization,
+            "username": username,
+            "role": role,
+        }
+        try:
+            result = self._request(
+                method="POST",
+                path="/api/3/action/organization_member_create",
+                token=api_key,
+                json=payload,
+                as_api_key=True,
+            )
+            logger.info(
+                "CKAN membership ensured for %s in %s as %s (requested by %s)",
+                username,
+                organization,
+                role,
+                requestor or "unknown",
+            )
+            if not isinstance(result, dict):
+                raise CKANError("Unexpected CKAN response format when adding organization member")
+            return cast(Dict[str, Any], result)
+        except CKANError as exc:
+            lowered = str(exc).lower()
+            if "already" in lowered and "member" in lowered:
+                logger.info(
+                    "CKAN reports %s already a member of %s (requested by %s)",
+                    username,
+                    organization,
+                    requestor or "unknown",
+                )
+                return {"already_member": True}
             raise
 
     def find_datasets_by_extra(self, *, token: str, key: str, value: str, rows: int = 20) -> List[Dict[str, Any]]:

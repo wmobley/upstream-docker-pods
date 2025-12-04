@@ -1,13 +1,15 @@
 # mypy: allow-untyped-calls
 
 import jwt
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from app.api.dependencies.auth import AuthResult, authenticate_user, resolve_user_role
+from app.api.dependencies.auth import AuthResult, authenticate_user, resolve_user_role, ensure_ckan_membership
 from app.core.config import get_settings
 from pydantic import BaseModel
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 class LoginResponse(BaseModel):
     access_token: str
@@ -44,6 +46,10 @@ async def login(
     # Create jwt token
     tapis_tokens = auth_result.tapis_tokens or {}
     role = resolve_user_role(form_data.username, tapis_tokens.get("access_token"))
+    try:
+        ensure_ckan_membership(form_data.username, role)
+    except Exception:  # pragma: no cover - defensive log
+        logger.exception("Unable to ensure CKAN membership for %s", form_data.username)
     return LoginResponse(
         access_token=create_token(form_data.username, jwt_secret, role),
         token_type="bearer",

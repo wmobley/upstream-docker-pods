@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     ALG: str = Field(default="HS256")
     CKAN_URL: str | None = Field(default=None)
     CKAN_ORGANIZATION: str | None = Field(default=None)
+    CKAN_ADMIN_USERNAME: str | None = Field(default="dso_test")
+    CKAN_ADMIN_API_KEY: str | None = Field(default=None)
     CKAN_TIMEOUT: int = Field(default=30)
     UI_BASE_URL: str = Field(default="http://127.0.0.1:5173")
     API_BASE_URL: str | None = Field(default="http://127.0.0.1:8000")

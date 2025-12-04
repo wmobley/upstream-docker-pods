@@ -12,6 +12,7 @@ from app.core.roles import ROLE_RANK, UserRole as UserRoleEnum, normalize_role a
 from app.db.repositories.user_role_repository import UserRoleRepository
 from app.db.session import SessionLocal
 from app.tapis import TapisAuthClient
+from app.services.ckan_service import CKANError, get_ckan_service
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token")
 settings: Settings = get_settings()
@@ -105,6 +106,54 @@ def resolve_user_role(username: str, _tapis_access_token: str | None) -> str:
         return UserRoleEnum.ADMIN.value
 
     return _default_role()
+
+def ensure_ckan_membership(username: str, role: str) -> None:
+    normalized_username = (username or "").strip()
+    normalized_role = normalize_role_value(role, default=UserRoleEnum.NONE)
+
+    eligible_roles = {
+        UserRoleEnum.USER.value,
+        UserRoleEnum.ADMIN.value,
+        UserRoleEnum.APPROVEDADMIN.value,
+    }
+    if not normalized_username or normalized_role not in eligible_roles:
+        return
+
+    organization = (settings.CKAN_ORGANIZATION or "upstream").strip()
+    admin_api_key = (settings.CKAN_ADMIN_API_KEY or "").strip()
+    admin_username = (settings.CKAN_ADMIN_USERNAME or "dso_test").strip()
+    if not organization or not admin_api_key:
+        logger.info(
+            "Skipping CKAN membership grant for %s: missing organization or admin API key",
+            normalized_username,
+        )
+        return
+
+    ckan_client = get_ckan_service()
+    if not ckan_client:
+        logger.info(
+            "Skipping CKAN membership grant for %s: CKAN integration not configured",
+            normalized_username,
+        )
+        return
+
+    try:
+        ckan_client.ensure_user_in_organization(
+            api_key=admin_api_key,
+            organization=organization,
+            username=normalized_username,
+            role="admin",
+            requestor=admin_username or None,
+        )
+    except CKANError as exc:
+        logger.warning(
+            "CKAN membership grant failed for %s in %s: %s",
+            normalized_username,
+            organization,
+            exc,
+        )
+    except Exception:  # pragma: no cover - defensive log
+        logger.exception("Unexpected error while ensuring CKAN membership for %s", normalized_username)
 
 
 def _role_allows(role: str | None, minimum: str) -> bool:
