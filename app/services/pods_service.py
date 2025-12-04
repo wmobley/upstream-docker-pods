@@ -72,6 +72,7 @@ class PodsService:
 
         postgres_payload = {
             "pod_id": f"{base_clean}postgres",
+            "image": "postgis/postgis:17-3.5",
             "description": "postgres for upstream-docker",
             "command": ["docker-entrypoint.sh"],
             "arguments": [
