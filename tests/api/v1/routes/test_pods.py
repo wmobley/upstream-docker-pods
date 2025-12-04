@@ -22,6 +22,7 @@ def test_create_pod_bundle_invokes_service(monkeypatch):
     class DummyService:
         def __init__(self, token_override=None):
             calls["init"] = calls.get("init", 0) + 1
+            calls["token"] = token_override
 
         def build_bundle(self, *, base, pg_user, pg_password):
             calls["args"] = (base, pg_user, pg_password)
@@ -32,6 +33,7 @@ def test_create_pod_bundle_invokes_service(monkeypatch):
     response = client.post(
         "/api/v1/pods/bundle",
         json={"base": "sniffer", "pg_user": "pguser", "pg_password": "pgpass"},
+        headers={"X-TAPIS-TOKEN": "user-token"},
     )
 
     assert response.status_code == 201
@@ -39,6 +41,7 @@ def test_create_pod_bundle_invokes_service(monkeypatch):
     assert body["status"] == "requested"
     assert body["created"] == {"volume": "ok", "api": "ok", "ui": "ok"}
     assert calls["args"] == ("sniffer", "pguser", "pgpass")
+    assert calls["token"] == "user-token"
 
 
 def test_create_pod_bundle_validation_error(monkeypatch):
@@ -54,6 +57,7 @@ def test_create_pod_bundle_validation_error(monkeypatch):
     response = client.post(
         "/api/v1/pods/bundle",
         json={"base": "", "pg_user": "pguser", "pg_password": "pgpass"},
+        headers={"X-TAPIS-TOKEN": "user-token"},
     )
 
     assert response.status_code == 400

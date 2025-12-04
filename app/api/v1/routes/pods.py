@@ -26,6 +26,8 @@ def create_pod_bundle(
     """
     Create a Postgres/API/UI pod bundle using server-side credentials.
     """
+    if not tapis_token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tapis access token is required to create pods.")
     service = PodsService(token_override=tapis_token)
     try:
         created = service.build_bundle(

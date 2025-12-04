@@ -25,7 +25,10 @@ class PodsService:
     def __init__(self, token_override: str | None = None) -> None:
         self.settings = get_settings()
         self.base_url = (self.settings.TAPIS_PODS_BASE_URL or self.settings.TAPIS_BASE_URL).rstrip("/")
-        self._token = token_override or self._fetch_service_token()
+        if token_override:
+            self._token = token_override
+        else:
+            raise RuntimeError("Tapis token required to create pods bundle")
 
     def _fetch_service_token(self) -> str:
         username = self.settings.TAPIS_SERVICE_USERNAME or self.settings.TAS_USER
