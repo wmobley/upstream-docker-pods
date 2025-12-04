@@ -1,5 +1,5 @@
 {
-  "template_id": "upstream-ui-template",
+  "template_id": "upstreamuitemplate",
   "description": "Upstream UI frontend",
   "template": {
     "pod_id": "{{BASE}}",

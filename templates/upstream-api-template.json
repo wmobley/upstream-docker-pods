@@ -1,5 +1,5 @@
 {
-  "template_id": "upstream-api-template",
+  "template_id": "upstreamapitemplate",
   "description": "Upstream API connected to the Postgres pod",
   "template": {
     "pod_id": "{{BASE}}api",

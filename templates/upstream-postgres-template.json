@@ -1,5 +1,5 @@
 {
-  "template_id": "upstream-postgres-template",
+  "template_id": "upstreampostgrestemplate",
   "description": "Postgres with PostGIS for an Upstream deployment bundle",
   "template": {
     "pod_id": "{{BASE}}postgres",

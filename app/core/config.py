@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     CKAN_TIMEOUT: int = Field(default=30)
     UI_BASE_URL: str = Field(default="http://127.0.0.1:5173")
     API_BASE_URL: str | None = Field(default="http://127.0.0.1:8000")
+    TAPIS_PODS_BASE_URL: str | None = Field(default=None)
+    TAPIS_SERVICE_USERNAME: str | None = Field(default=None)
+    TAPIS_SERVICE_PASSWORD: str | None = Field(default=None)
     ALLOWED_ALLOCATIONS: list[str] | None = Field(default=None)
     DEFAULT_ADMIN_USERS: list[str] = Field(default_factory=lambda: ["wmobley"])
 
