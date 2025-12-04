@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.api.dependencies.auth import get_edit_user
+from app.api.dependencies.auth import get_edit_user, get_tapis_token_header_optional
 from app.api.v1.schemas.user import User
 from app.services.pods_service import PodsService
 from typing import Dict, Any
@@ -18,11 +18,15 @@ class BundleRequest(BaseModel):
 
 
 @router.post("/bundle", status_code=status.HTTP_201_CREATED)
-def create_pod_bundle(payload: BundleRequest, _user: User = Depends(get_edit_user)) -> Dict[str, Any]:
+def create_pod_bundle(
+    payload: BundleRequest,
+    _user: User = Depends(get_edit_user),
+    tapis_token: str | None = Depends(get_tapis_token_header_optional),
+) -> Dict[str, Any]:
     """
     Create a Postgres/API/UI pod bundle using server-side credentials.
     """
-    service = PodsService()
+    service = PodsService(token_override=tapis_token)
     try:
         created = service.build_bundle(
             base=payload.base,

@@ -20,7 +20,7 @@ def test_create_pod_bundle_invokes_service(monkeypatch):
     calls = {}
 
     class DummyService:
-        def __init__(self):
+        def __init__(self, token_override=None):
             calls["init"] = calls.get("init", 0) + 1
 
         def build_bundle(self, *, base, pg_user, pg_password):
@@ -43,7 +43,7 @@ def test_create_pod_bundle_invokes_service(monkeypatch):
 
 def test_create_pod_bundle_validation_error(monkeypatch):
     class DummyService:
-        def __init__(self):
+        def __init__(self, token_override=None):
             pass
 
         def build_bundle(self, *, base, pg_user, pg_password):  # pragma: no cover - mocked
