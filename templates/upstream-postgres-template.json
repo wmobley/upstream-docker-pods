@@ -1,0 +1,46 @@
+{
+  "template_id": "upstream-postgres-template",
+  "description": "Postgres with PostGIS for an Upstream deployment bundle",
+  "template": {
+    "pod_id": "{{BASE}}postgres",
+    "pod_template": "postgres:17postgis3.5@2025-10-13-20:41:16",
+    "description": "postgres for upstream-docker",
+    "command": ["docker-entrypoint.sh"],
+    "arguments": [
+      "-c",
+      "ssl=on",
+      "-c",
+      "ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem",
+      "-c",
+      "ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key"
+    ],
+    "environment_variables": {
+      "POSTGRES_USER": "{{PG_USER}}",
+      "POSTGRES_PASSWORD": "{{PG_PASSWORD}}",
+      "POSTGRES_DB": "{{PG_USER}}"
+    },
+    "status_requested": "ON",
+    "volume_mounts": {
+      "{{BASE}}volume": {
+        "type": "tapisvolume",
+        "mount_path": "/var/lib/postgresql/data",
+        "sub_path": ""
+      }
+    },
+    "time_to_stop_default": -1,
+    "networking": {
+      "default": {
+        "protocol": "postgres",
+        "port": 5432,
+        "url": "{{BASE}}postgres.pods.tacc.tapis.io"
+      }
+    },
+    "resources": {
+      "cpu_request": 250,
+      "cpu_limit": 2000,
+      "mem_request": 256,
+      "mem_limit": 3072,
+      "gpus": 0
+    }
+  }
+}
