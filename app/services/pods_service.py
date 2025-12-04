@@ -61,7 +61,10 @@ class PodsService:
         return self._request(method="POST", path="/v3/pods/volumes", json=payload)
 
     def create_pod(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        return self._request(method="POST", path="/v3/pods", json=payload)
+        sanitized = dict(payload)
+        sanitized.pop("pod_template", None)
+        logger.debug("Creating pod %s with keys: %s", sanitized.get("pod_id"), list(sanitized.keys()))
+        return self._request(method="POST", path="/v3/pods", json=sanitized)
 
     def build_bundle(self, *, base: str, pg_user: str, pg_password: str) -> Dict[str, Any]:
         base_clean = _sanitize_base(base)
@@ -69,7 +72,6 @@ class PodsService:
 
         postgres_payload = {
             "pod_id": f"{base_clean}postgres",
-            "pod_template": "postgres:17postgis3.5@2025-10-13-20:41:16",
             "description": "postgres for upstream-docker",
             "command": ["docker-entrypoint.sh"],
             "arguments": [
@@ -113,7 +115,6 @@ class PodsService:
         api_payload = {
             "pod_id": f"{base_clean}api",
             "image": "ghcr.io/wmobley/upstream-docker-pods:main",
-            "pod_template": "",
             "description": "Upstream API connected to postgres pod",
             "command": [
                 "/bin/bash",
@@ -161,7 +162,6 @@ class PodsService:
         ui_payload = {
             "pod_id": base_clean,
             "image": "ghcr.io/wmobley/upstream-ui-pods:main",
-            "pod_template": "",
             "description": "Upstream UI frontend",
             "environment_variables": {
                 "VITE_UPSTREAM_API_URL": f"https://{base_clean}api.pods.tacc.tapis.io",
