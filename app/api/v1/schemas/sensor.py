@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from pydantic import BaseModel
 
@@ -14,6 +14,7 @@ class SensorIn(BaseModel):
     postprocessscript: Optional[str] = None
     units: Optional[str] = None
     variablename: str | None = None
+    metadata: Dict[str, Any] | None = None
 
 class SensorCreateResponse(BaseModel):
     id: int
@@ -45,6 +46,7 @@ class SensorItem(BaseModel):
     is_published: bool = False
     published_at: datetime | None = None
     statistics: SensorStatistics | None = None
+    metadata: Dict[str, Any] | None = None
 
 class ListSensorsResponse(SensorItem):
     pass
@@ -74,6 +76,7 @@ class SensorUpdate(BaseModel):
     postprocessscript: Optional[str] = None
     units: Optional[str] = None
     variablename: Optional[str] | None = None
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class ForceUpdateSensorStatisticsResponse(BaseModel):

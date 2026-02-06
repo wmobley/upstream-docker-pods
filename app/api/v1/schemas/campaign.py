@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Dict
 
 from pydantic import BaseModel, Field
 
@@ -14,6 +14,7 @@ class CampaignsIn(BaseModel):
     start_date: datetime | None = None
     end_date: datetime | None = None
     allocation: str | None = None
+    metadata: Dict[str, Any] | None = None
 
 class CampaignCreateResponse(BaseModel):
     id: int
@@ -44,6 +45,7 @@ class ListCampaignsResponseItem(BaseModel):
     geometry: dict = Field(default_factory=dict, nullable=True)  # type: ignore[call-overload,type-arg]
     is_published: bool = False
     published_at: datetime | None = None
+    metadata: Dict[str, Any] | None = None
 
 class ListCampaignsResponsePagination(BaseModel):
     items: list[ListCampaignsResponseItem]
@@ -73,6 +75,7 @@ class GetCampaignResponse(BaseModel):
     stations: list[StationsListResponseItem] = []
     is_published: bool = False
     published_at: datetime | None = None
+    metadata: Dict[str, Any] | None = None
 
 
 class CampaignUpdate(BaseModel):
@@ -83,6 +86,7 @@ class CampaignUpdate(BaseModel):
     allocation: Optional[str] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class PublishRequest(BaseModel):

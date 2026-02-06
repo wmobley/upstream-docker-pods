@@ -17,6 +17,7 @@ from app.db.repositories.campaign_repository import CampaignRepository
 from app.db.repositories.sensor_repository import SensorRepository
 from app.db.repositories.measurement_repository import MeasurementRepository
 from app.db.repositories.station_repository import StationRepository
+from app.db.repositories.metadata_schema_repository import MetadataSchemaRepository
 from app.services.campaign_service import CampaignService
 from app.services.ckan_publish import ensure_station_dataset, sync_sensor_resources
 from app.services.ckan_service import get_ckan_service
@@ -88,6 +89,9 @@ def post_sensor_and_measurement(
             if campaign and station and alias_to_sensorid_map:
                 owner_org = (campaign.allocation or settings.CKAN_ORGANIZATION or "").strip() or None
                 if owner_org:
+                    metadata_repo = MetadataSchemaRepository(db)
+                    station_schema = metadata_repo.list_schema(scope="station", active_only=True)
+                    campaign_schema = metadata_repo.list_schema(scope="campaign", active_only=True)
                     dataset, dataset_id, dataset_errors = ensure_station_dataset(
                         settings=settings,
                         ckan_client=ckan_client,
@@ -96,6 +100,8 @@ def post_sensor_and_measurement(
                         station=station,
                         owner_org=owner_org,
                         private=True,
+                        station_metadata_schema=station_schema,
+                        campaign_metadata_schema=campaign_schema,
                     )
                     ckan_sync_messages.extend(dataset_errors)
                     sensors = sensor_repository.get_sensors_by_ids(list(alias_to_sensorid_map.values()))

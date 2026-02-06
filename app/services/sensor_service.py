@@ -34,6 +34,7 @@ class SensorService:
             variablename=response.variablename,
             is_published=bool(getattr(response, "published", False)),
             published_at=getattr(response, "published_at", None),
+            metadata=getattr(response, "meta", None),
             statistics=None
         )
     def update_sensor(self, sensor_id: int, sensor: SensorUpdate) -> SensorCreateResponse | None:
@@ -86,6 +87,7 @@ class SensorService:
                 variablename=sensor.variablename,
                 is_published=bool(getattr(sensor, "published", False)),
                 published_at=getattr(sensor, "published_at", None),
+                metadata=getattr(sensor, "meta", None),
                 statistics=SensorStatistics(
                     max_value=statistics.max_value if statistics else None,
                     min_value=statistics.min_value if statistics else None,
@@ -144,6 +146,7 @@ class SensorService:
                 variablename=sensor.variablename,
                 is_published=bool(getattr(sensor, "published", False)),
                 published_at=getattr(sensor, "published_at", None),
+                metadata=getattr(sensor, "meta", None),
                 statistics=SensorStatistics(
                     max_value=statistics.max_value if statistics else None,
                     min_value=statistics.min_value if statistics else None,

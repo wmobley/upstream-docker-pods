@@ -117,6 +117,7 @@ class CKANService:
         tags: Iterable[str],
         extras: Iterable[Dict[str, str]],
         private: bool = True,
+        extra_fields: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "name": name,
@@ -127,6 +128,8 @@ class CKANService:
             "tags": [{"name": tag} for tag in tags],
             "extras": list(extras),
         }
+        if extra_fields:
+            payload.update(extra_fields)
         try:
             result = self._request(
                 method="POST",

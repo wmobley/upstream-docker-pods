@@ -62,6 +62,7 @@ class CampaignService:
                     bbox_north=row[0].bbox_north,
                 ),
                 geometry=json.loads(row[5]) if row[5] else {},
+                metadata=row[0].meta if getattr(row[0], "meta", None) is not None else None,
                 summary=SummaryListCampaigns(
                     sensor_types=[x for x in sensor_types if x is not None],
                     variable_names=[x for x in variable_names if x is not None]
@@ -85,6 +86,7 @@ class CampaignService:
             is_published=bool(getattr(station, "published", False)),
             published_at=getattr(station, "published_at", None),
             geometry=json.loads(station.geometry) if station.geometry else {},
+            metadata=getattr(station, "meta", None),
             sensors=[SensorSummaryForStations(
                 id=sensor.sensorid,
                 variable_name=sensor.variablename,
@@ -114,6 +116,7 @@ class CampaignService:
                 sensor_types=self.campaign_repository.get_sensor_types(campaign_id),
                 sensor_variables=self.campaign_repository.get_sensor_variables(campaign_id),
             ),
+            metadata=campaign.meta if getattr(campaign, "meta", None) is not None else None,
         )
 
     def delete_campaign_station(self, campaign_id: int) ->bool:

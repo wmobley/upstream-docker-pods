@@ -23,7 +23,8 @@ class StationRepository:
             active=request.active,
             startdate=request.start_date,
             campaignid=campaign_id,
-            station_type=request.station_type.value
+            station_type=request.station_type.value,
+            meta=request.metadata or {},
         )
         self.db.add(db_station)
         self.db.commit()
@@ -134,11 +135,14 @@ class StationRepository:
                 'contact_email': 'contactemail',
                 'active': 'active',
                 'start_date': 'startdate',
+                'metadata': 'meta',
 
             }
 
             for field, value in update_data.items():
                 db_field = field_mapping.get(field, field)
+                if db_field == "meta" and value is None:
+                    value = {}
                 setattr(db_station, db_field, value)
         else:
             # Full update (existing logic)
@@ -170,6 +174,7 @@ class StationRepository:
             db_station.contactemail = contact_email
             db_station.active = active
             db_station.startdate = start_date
+            db_station.meta = request.metadata or {}
 
         self.db.commit()
         self.db.refresh(db_station)

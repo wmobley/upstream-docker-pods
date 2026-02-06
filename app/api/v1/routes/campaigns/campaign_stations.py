@@ -25,12 +25,14 @@ from app.api.v1.schemas.campaign import PublishRequest, PublishResponse
 from app.api.v1.schemas.user import User
 from app.db.session import get_db
 from app.db.repositories.station_repository import StationRepository
+from app.db.repositories.metadata_schema_repository import MetadataSchemaRepository
 from app.db.repositories.campaign_repository import CampaignRepository
 from app.db.repositories.sensor_repository import SensorRepository
 from app.db.repositories.measurement_repository import MeasurementRepository
 from app.services.station_service import StationService
 from app.services.export_service import ExportService
 from app.services.campaign_service import CampaignService
+from app.services.metadata_schema_service import MetadataSchemaService
 from app.services.ckan_service import CKANError, CKANService, get_ckan_service, _slugify
 from app.services.ckan_publish import ensure_station_dataset, sync_sensor_resources
 from app.core.config import get_settings
@@ -127,6 +129,10 @@ async def create_station(
 ) -> StationCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    metadata_service = MetadataSchemaService(MetadataSchemaRepository(db))
+    errors = metadata_service.validate_metadata("station", station.metadata)
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
     station_service = StationService(StationRepository(db))
     response = station_service.create_station(station, campaign_id)
 
@@ -139,6 +145,9 @@ async def create_station(
             if campaign and station_detail:
                 owner_org = (campaign.allocation or settings.CKAN_ORGANIZATION or "").strip() or None
                 if owner_org:
+                    metadata_repo = MetadataSchemaRepository(db)
+                    station_schema = metadata_repo.list_schema(scope="station", active_only=True)
+                    campaign_schema = metadata_repo.list_schema(scope="campaign", active_only=True)
                     dataset, dataset_id, dataset_errors = ensure_station_dataset(
                         settings=settings,
                         ckan_client=ckan_client,
@@ -147,6 +156,8 @@ async def create_station(
                         station=station_detail,
                         owner_org=owner_org,
                         private=True,
+                        station_metadata_schema=station_schema,
+                        campaign_metadata_schema=campaign_schema,
                     )
                     if not dataset_id and dataset_errors:
                         logger.warning("CKAN dataset creation reported errors for station %s: %s", response.id, dataset_errors)
@@ -299,6 +310,10 @@ def update_station(
 ) -> StationCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    metadata_service = MetadataSchemaService(MetadataSchemaRepository(db))
+    errors = metadata_service.validate_metadata("station", station.metadata)
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
     station_service = StationService(StationRepository(db))
     updated_station = station_service.update_station(station_id, station)
     if not updated_station:
@@ -317,6 +332,10 @@ def partial_update_station(
 ) -> StationCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    metadata_service = MetadataSchemaService(MetadataSchemaRepository(db))
+    errors = metadata_service.validate_metadata("station", station.metadata)
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
     station_service = StationService(StationRepository(db))
     update_station = station_service.partial_update_station(station_id, station)
     if not update_station:
@@ -464,6 +483,9 @@ async def publish_station(
 
         try:
             if owner_org_slug:
+                metadata_repo = MetadataSchemaRepository(db)
+                station_schema = metadata_repo.list_schema(scope="station", active_only=True)
+                campaign_schema = metadata_repo.list_schema(scope="campaign", active_only=True)
                 dataset, dataset_id, dataset_errors = ensure_station_dataset(
                     settings=settings,
                     ckan_client=ckan_client,
@@ -472,6 +494,8 @@ async def publish_station(
                     station=station,
                     owner_org=owner_org_slug,
                     private=False,
+                    station_metadata_schema=station_schema,
+                    campaign_metadata_schema=campaign_schema,
                 )
                 errors.extend(dataset_errors)
                 sensors = station.sensors or []
@@ -494,6 +518,19 @@ async def publish_station(
             message = f"Unexpected error while publishing station {station_id} in CKAN: {exc}"
             logger.exception("%s", message)
             errors.append(message)
+
+    if ckan_client and settings.CKAN_URL and tapis_token and errors:
+        return PublishResponse(
+            success=False,
+            message=f"Station {station.name} not published due to CKAN errors",
+            published_count=0,
+            errors=errors,
+            id=station_id,
+            type="station",
+            is_published=False,
+            published_at=None,
+            cascaded_items=[],
+        )
 
     published_at = datetime.now(timezone.utc)
     if not station_service.set_publish_state(

@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional, List
+from typing import Any, Optional, List, Dict
 from pydantic import BaseModel, Field
 
 from app.api.v1.schemas.sensor import SensorItem
@@ -20,6 +20,7 @@ class StationCreate(BaseModel):
     active: bool | None = True
     start_date: datetime
     station_type: StationType  = StationType.STATIC
+    metadata: Dict[str, Any] | None = None
 
 class StationItem(BaseModel):
     id: int
@@ -32,6 +33,7 @@ class StationItem(BaseModel):
     geometry: dict = Field(default_factory=dict, nullable=True)  # type: ignore[call-overload,type-arg]
     is_published: bool = False
     published_at: datetime | None = None
+    metadata: Dict[str, Any] | None = None
 
 class StationItemWithSummary(StationItem):
     sensor_count: int
@@ -67,3 +69,4 @@ class StationUpdate(BaseModel):
     active: Optional[bool] | None = None
     start_date: Optional[datetime] | None = None
     station_type: Optional[StationType] | None  = None
+    metadata: Optional[Dict[str, Any]] = None

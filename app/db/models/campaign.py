@@ -1,7 +1,8 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import geoalchemy2
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
@@ -22,6 +23,7 @@ class Campaign(Base):
     bbox_south: Mapped[Optional[float]] = mapped_column()
     bbox_north: Mapped[Optional[float]] = mapped_column()
     geometry: Mapped[geoalchemy2.types.Geometry] = mapped_column(geoalchemy2.types.Geometry("GEOMETRY", srid=4326))
+    meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, nullable=False, default=dict)
     # relationships
     stations: Mapped[List["Station"]] = relationship(
         back_populates="campaign"

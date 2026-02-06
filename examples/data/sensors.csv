@@ -1,4 +1,4 @@
-,alias,BestGuessFormula,postprocess,units,datatype
-0,Rain Increment,Rain Increment,False,inches,1
-1,Flow Volume,Flow Volume,False,cfs,1
-2,River Stage,River Stage,False,ft,1
+alias,BestGuessFormula,postprocess,units,datatype
+Rain Increment,Rain Increment,False,inches,1
+Flow Volume,Flow Volume,False,cfs,1
+River Stage,River Stage,False,ft,1

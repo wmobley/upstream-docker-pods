@@ -14,7 +14,7 @@ from app.db.session import SessionLocal
 from app.tapis import TapisAuthClient
 from app.services.ckan_service import CKANError, get_ckan_service
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token", auto_error=False)
 settings: Settings = get_settings()
 
 logger = logging.getLogger(__name__)
@@ -163,11 +163,17 @@ def _role_allows(role: str | None, minimum: str) -> bool:
 
 
 # Async function to get the current user based on the provided OAuth2 token
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
+async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> User:
     if settings.ENV == "dev":
         return User(
             username="test",
             role=_default_role(),
+        )
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     try:

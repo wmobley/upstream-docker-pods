@@ -10,9 +10,11 @@ from app.api.v1.schemas.campaign import PublishRequest, PublishResponse
 from app.api.v1.schemas.user import User
 from app.db.session import get_db
 from app.db.repositories.sensor_repository import SensorRepository, SortField
+from app.db.repositories.metadata_schema_repository import MetadataSchemaRepository
 from app.db.repositories.station_repository import StationRepository
 from app.services.sensor_service import SensorService
 from app.services.station_service import StationService
+from app.services.metadata_schema_service import MetadataSchemaService
 from app.db.repositories.measurement_repository import MeasurementRepository
 
 
@@ -119,6 +121,10 @@ def update_sensor(
     ) -> SensorCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    metadata_service = MetadataSchemaService(MetadataSchemaRepository(db))
+    errors = metadata_service.validate_metadata("sensor", sensor.metadata)
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
     sensor_service = SensorService(SensorRepository(db),
                                            measurement_repository=MeasurementRepository(db)
 )
@@ -139,6 +145,10 @@ def partial_update_sensor(
 ) -> SensorCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    metadata_service = MetadataSchemaService(MetadataSchemaRepository(db))
+    errors = metadata_service.validate_metadata("sensor", sensor.metadata)
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
     sensor_service = SensorService(SensorRepository(db),
                                            measurement_repository=MeasurementRepository(db)
 )

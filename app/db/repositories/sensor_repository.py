@@ -54,6 +54,7 @@ class SensorRepository:
             postprocessscript=request.postprocessscript,
             units=request.units,
             variablename=request.variablename,
+            meta=request.metadata or {},
         )
         self.db.add(db_sensor)
         self.db.commit()
@@ -95,6 +96,7 @@ class SensorRepository:
             units=sensor.units,
             is_published=bool(getattr(sensor, "published", False)),
             published_at=getattr(sensor, "published_at", None),
+            metadata=getattr(sensor, "meta", None),
             statistics=SensorStatisticsSchema(
                 max_value=statistics.max_value if statistics else None,
                 min_value=statistics.min_value if statistics else None,
@@ -305,9 +307,12 @@ class SensorRepository:
                 "postprocessscript": "postprocessscript",
                 "units": "units",
                 "variablename": "variablename",
+                "metadata": "meta",
             }
             for field, value in update_data.items():
                 db_field = field_mapping.get(field, field)
+                if db_field == "meta" and value is None:
+                    value = {}
                 setattr(db_station, db_field, value)
         else:
             # Full update (existing logic)
@@ -340,6 +345,7 @@ class SensorRepository:
             db_station.postprocessscript = postprocessscript
             db_station.units = units
             db_station.variablename = variablename
+            db_station.meta = request.metadata or {}
 
         self.db.commit()
         self.db.refresh(db_station)

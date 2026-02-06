@@ -23,9 +23,11 @@ from app.api.v1.schemas.campaign import (
 )
 from app.api.v1.schemas.user import User
 from app.db.repositories.campaign_repository import CampaignRepository
+from app.db.repositories.metadata_schema_repository import MetadataSchemaRepository
 from app.db.repositories.station_repository import StationRepository
 from app.db.session import get_db
 from app.services.campaign_service import CampaignService
+from app.services.metadata_schema_service import MetadataSchemaService
 from pydantic import BaseModel
 
 
@@ -38,6 +40,10 @@ async def create_campaign(
     current_user: User = Depends(get_edit_user),
     db: Session = Depends(get_db),
 ) -> CampaignCreateResponse:
+    metadata_service = MetadataSchemaService(MetadataSchemaRepository(db))
+    errors = metadata_service.validate_metadata("campaign", campaign.metadata)
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
     campaign_service = CampaignService(CampaignRepository(db))
     return campaign_service.create_campaign(campaign)
 
@@ -117,6 +123,10 @@ def update_campaign(
 ) -> CampaignCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    metadata_service = MetadataSchemaService(MetadataSchemaRepository(db))
+    errors = metadata_service.validate_metadata("campaign", campaign.metadata)
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
     campaign_service = CampaignService(CampaignRepository(db))
     updated_campaign = campaign_service.update_campaign(campaign_id, campaign)
     if not updated_campaign:
@@ -134,6 +144,10 @@ def partial_update_campaign(
 ) -> CampaignCreateResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    metadata_service = MetadataSchemaService(MetadataSchemaRepository(db))
+    errors = metadata_service.validate_metadata("campaign", campaign.metadata)
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
     campaign_service = CampaignService(CampaignRepository(db))
     updated_campaign = campaign_service.partial_update_campaign(campaign_id, campaign)
     if not updated_campaign:

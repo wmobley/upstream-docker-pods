@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Iterable, Sequence
 
@@ -18,6 +19,8 @@ def ensure_station_dataset(
     station: Any,
     owner_org: str | None,
     private: bool,
+    station_metadata_schema: Sequence[Any] | None = None,
+    campaign_metadata_schema: Sequence[Any] | None = None,
 ) -> tuple[dict[str, Any] | None, str | None, list[str]]:
     """
     Ensure a CKAN dataset exists for the given station and return the dataset payload,
@@ -36,6 +39,56 @@ def ensure_station_dataset(
     source_url = f"{settings.UI_BASE_URL.rstrip('/')}/campaigns/{campaign.id}/stations/{station.id}"
     extras.append({"key": "source", "value": source_url})
 
+    spatial_value = None
+    station_geometry = getattr(station, "geometry", None)
+    if isinstance(station_geometry, dict) and station_geometry:
+        spatial_value = json.dumps(station_geometry)
+
+    version_value = None
+    published_at = getattr(station, "published_at", None)
+    if published_at:
+        version_value = published_at.date().isoformat()
+    elif getattr(campaign, "end_date", None):
+        version_value = campaign.end_date.date().isoformat() if hasattr(campaign.end_date, "date") else str(campaign.end_date)
+    elif getattr(campaign, "start_date", None):
+        version_value = campaign.start_date.date().isoformat() if hasattr(campaign.start_date, "date") else str(campaign.start_date)
+
+    extra_fields: dict[str, Any] = {
+        "url": source_url,
+        "author": campaign.contact_name or None,
+        "author_email": campaign.contact_email or None,
+        "maintainer": station.contact_name or campaign.contact_name or None,
+        "maintainer_email": station.contact_email or campaign.contact_email or None,
+        "temporal_coverage_start": campaign.start_date.isoformat() if campaign.start_date else None,
+        "temporal_coverage_end": campaign.end_date.isoformat() if campaign.end_date else None,
+        "spatial": spatial_value,
+    }
+    if version_value:
+        extra_fields["version"] = version_value
+
+    station_metadata = getattr(station, "meta", None) or {}
+    campaign_metadata = getattr(campaign, "meta", None) or {}
+    station_top_level, station_extras = _build_ckan_metadata(
+        station_metadata,
+        station_metadata_schema or [],
+        prefix="meta:station:",
+        allow_top_level=True,
+    )
+    campaign_top_level, campaign_extras = _build_ckan_metadata(
+        campaign_metadata,
+        campaign_metadata_schema or [],
+        prefix="meta:campaign:",
+        allow_top_level=False,
+    )
+    if station_extras:
+        extras.extend(station_extras)
+    if campaign_extras:
+        extras.extend(campaign_extras)
+    if station_top_level:
+        extra_fields.update(station_top_level)
+    if campaign_top_level:
+        extra_fields.update(campaign_top_level)
+
     dataset: dict[str, Any] | None = None
     dataset_id: str | None = None
 
@@ -49,6 +102,7 @@ def ensure_station_dataset(
             tags=tags,
             extras=extras,
             private=private,
+            extra_fields={k: v for k, v in extra_fields.items() if v is not None},
         )
         dataset_id = str(dataset.get("id") or dataset.get("name") or dataset_name)
         if dataset_id:
@@ -160,6 +214,52 @@ def sync_sensor_resources(
         _upsert_resource(sensor_api_name, sensor_api_url, sensor_api_description, "GeoJSON", sensor_id)
 
     return errors
+
+
+def _build_ckan_metadata(
+    metadata: dict[str, Any],
+    schema_items: Sequence[Any],
+    *,
+    prefix: str,
+    allow_top_level: bool,
+) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    top_level: dict[str, Any] = {}
+    extras: list[dict[str, str]] = []
+    if not metadata or not schema_items:
+        return top_level, extras
+
+    for item in schema_items:
+        key = _schema_attr(item, "key")
+        if not key or key not in metadata:
+            continue
+        value = metadata.get(key)
+        if value is None:
+            continue
+        ckan_field = _schema_attr(item, "ckan_field")
+        ckan_mode = (_schema_attr(item, "ckan_mode") or "extra").lower()
+        if allow_top_level and ckan_field and ckan_mode == "top_level":
+            top_level[ckan_field] = value
+        else:
+            extras.append({"key": f"{prefix}{key}", "value": _serialize_metadata_value(value)})
+
+    return top_level, extras
+
+
+def _schema_attr(item: Any, name: str) -> Any:
+    if isinstance(item, dict):
+        return item.get(name)
+    return getattr(item, name, None)
+
+
+def _serialize_metadata_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        try:
+            return json.dumps(value)
+        except Exception:
+            return str(value)
+    return str(value)
 
 
 __all__ = ["ensure_station_dataset", "sync_sensor_resources"]

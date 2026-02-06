@@ -25,6 +25,7 @@ class CampaignRepository:
             allocation=request.allocation,
             startdate=request.start_date,
             enddate=request.end_date,
+            meta=request.metadata or {},
         )
         self.db.add(db_campaign)
         self.db.commit()
@@ -161,11 +162,14 @@ class CampaignRepository:
                 'contact_name': 'contactname',
                 'contact_email': 'contactemail',
                 'start_date': 'startdate',
-                'end_date': 'enddate'
+                'end_date': 'enddate',
+                'metadata': 'meta',
             }
 
             for field, value in update_data.items():
                 db_field = field_mapping.get(field, field)
+                if db_field == "meta" and value is None:
+                    value = {}
                 setattr(db_campaign, db_field, value)
         else:
             # Full update (existing logic)
@@ -200,6 +204,7 @@ class CampaignRepository:
             db_campaign.allocation = allocation
             db_campaign.startdate = start_date
             db_campaign.enddate = end_date
+            db_campaign.meta = request.metadata or {}
 
         self.db.commit()
         self.db.refresh(db_campaign)

@@ -43,6 +43,7 @@ class StationService:
                 sensor_count=row[1],
                 is_published=bool(getattr(row[0], "published", False)),
                 published_at=getattr(row[0], "published_at", None),
+                metadata=getattr(row[0], "meta", None),
             )
             stations.append(station)
         return stations, total_count
@@ -72,6 +73,7 @@ class StationService:
             geometry=geometry,
             is_published=bool(getattr(row, "published", False)),
             published_at=getattr(row, "published_at", None),
+            metadata=getattr(row, "meta", None),
             sensors=[
                 SensorItem(
                     id=sensor.sensorid,
@@ -83,6 +85,7 @@ class StationService:
                     variablename=sensor.variablename,
                     is_published=bool(getattr(sensor, "published", False)),
                     published_at=getattr(sensor, "published_at", None),
+                    metadata=getattr(sensor, "meta", None),
                 )
                 for sensor in row.sensors
             ]
