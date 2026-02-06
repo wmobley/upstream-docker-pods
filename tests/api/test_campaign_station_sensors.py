@@ -9,9 +9,12 @@ from app.db.models.sensor import Sensor
 from app.db.repositories.sensor_repository import SensorRepository, SortField
 from app.db.models.sensor_statistics import SensorStatistics
 from app.api.dependencies.auth import get_viewer_user
+from app.api.dependencies import auth
 from app.api.v1.schemas.user import User
 from app.api.dependencies.auth import get_viewer_user
 from app.api.v1.schemas.user import User
+from app.db.session import get_db
+from sqlalchemy.orm import Session
 
 # Test JWT secret
 TEST_JWT_SECRET = "test_secret"
@@ -19,7 +22,11 @@ TEST_JWT_ALGORITHM = "HS256"
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(app)
+    auth.settings.ENV = "test"
+    app.dependency_overrides[get_db] = lambda: MagicMock(spec=Session)
+    client_instance = TestClient(app)
+    yield client_instance
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture(autouse=True)

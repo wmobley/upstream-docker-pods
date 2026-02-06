@@ -13,6 +13,7 @@ from app.api.v1.schemas.sensor import (
     ListSensorsResponsePagination
 )
 from app.api.v1.schemas.user import User
+from app.api.dependencies import auth
 from app.api.dependencies.auth import get_current_user, get_edit_user
 from app.db.session import get_db
 from app.db.repositories.sensor_repository import SortField
@@ -92,6 +93,8 @@ def client_no_auth():
         'DATABASE_URL': 'sqlite:///:memory:',
         'SECRET_KEY': 'test-secret-key',
     }):
+        auth.settings.ENV = "test"
+        app.dependency_overrides[get_db] = override_get_db
         client = TestClient(app)
         yield client
         app.dependency_overrides.clear()
