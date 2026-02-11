@@ -75,7 +75,7 @@ An interactive schema browser is available at `https://<host>/docs` (for example
 1. SSH to the VM with your TACC credentials:
 
    ```bash
-   ssh <tacc_username>@upstream-dso.tacc.utexas.edu
+   ssh <tacc_username>@upstream.pods.tacc.tapis.io
    ```
 
 2. Switch to root:
@@ -105,10 +105,10 @@ An interactive schema browser is available at `https://<host>/docs` (for example
 
 ## Deployment
 
-There are two instances running on upstream-dso.tacc.utexas.edu:
+There are two instances running on upstream.pods.tacc.tapis.io:
 
-- **Production**: https://upstream-dso.tacc.utexas.edu/docs/
-- **Development**: https://upstream-dso.tacc.utexas.edu/dev/docs/
+- **Production**: https://upstreamapi.pods.tacc.tapis.io/docs/
+- **Development**: https://upstreamapi.pods.tacc.tapis.io/dev/docs/
 
 ## Database Migrations
 
