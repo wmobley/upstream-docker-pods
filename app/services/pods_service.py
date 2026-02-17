@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import logging
 import re
 from typing import Any, Dict, Optional, cast
@@ -67,7 +68,32 @@ class PodsService:
         sanitized = dict(payload)
         sanitized.pop("pod_template", None)
         logger.debug("Creating pod %s with keys: %s", sanitized.get("pod_id"), list(sanitized.keys()))
-        return self._request(method="POST", path="/v3/pods", json=sanitized)
+        try:
+            return self._request(method="POST", path="/v3/pods", json=sanitized)
+        except RuntimeError as exc:
+            message = str(exc)
+            mount_path_rejected = (
+                "volume_mounts" in message
+                and "mount_path" in message
+                and "Extra inputs are not permitted" in message
+            )
+            if not mount_path_rejected:
+                raise
+
+            # Some Pods deployments reject volume_mounts.*.mount_path.
+            # Retry with that key removed for compatibility.
+            compatibility_payload = copy.deepcopy(sanitized)
+            volume_mounts = compatibility_payload.get("volume_mounts")
+            if isinstance(volume_mounts, dict):
+                for mount_cfg in volume_mounts.values():
+                    if isinstance(mount_cfg, dict):
+                        mount_cfg.pop("mount_path", None)
+
+            logger.warning(
+                "Pods rejected mount_path in volume_mounts for pod %s; retrying create without mount_path.",
+                sanitized.get("pod_id"),
+            )
+            return self._request(method="POST", path="/v3/pods", json=compatibility_payload)
 
     def build_bundle(self, *, base: str, pg_user: str, pg_password: str) -> Dict[str, Any]:
         base_clean = _sanitize_base(base)
