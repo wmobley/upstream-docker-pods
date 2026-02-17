@@ -21,9 +21,9 @@
     },
     "status_requested": "ON",
     "volume_mounts": {
-      "{{BASE}}volume": {
+      "/var/lib/postgresql/data": {
         "type": "tapisvolume",
-        "mount_path": "/var/lib/postgresql/data",
+        "source_id": "{{BASE}}volume",
         "sub_path": ""
       }
     },

@@ -52,7 +52,7 @@ class PodsService:
             "Accept": "application/json",
         }
 
-    def _request(self, *, method: str, path: str, json: Dict[str, Any]) -> Dict[str, Any]:
+    def _request(self, *, method: str, path: str, json: Dict[str, Any] | None = None) -> Dict[str, Any]:
         url = f"{self.base_url}{path}"
         response = requests.request(method=method, url=url, headers=self._headers(), json=json, timeout=30)
         if not response.ok:
@@ -62,7 +62,15 @@ class PodsService:
 
     def create_volume(self, *, volume_id: str, description: str) -> Dict[str, Any]:
         payload = {"volume_id": volume_id, "description": description}
-        return self._request(method="POST", path="/v3/pods/volumes", json=payload)
+        try:
+            return self._request(method="POST", path="/v3/pods/volumes", json=payload)
+        except RuntimeError as exc:
+            message = str(exc).lower()
+            # Treat "already exists" as success so bundle creation is idempotent.
+            if "already exists" in message and "volume" in message:
+                logger.info("Volume %s already exists; continuing.", volume_id)
+                return {"status": "exists", "volume_id": volume_id}
+            raise
 
     def create_pod(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         sanitized = dict(payload)
@@ -81,19 +89,33 @@ class PodsService:
                 "volume_mounts" in message
                 and "requires source_id" in message
             )
-            if not (mount_path_rejected or source_id_required):
+            mount_path_key_required = (
+                "volume_mounts" in message
+                and "mount_path must be an absolute path starting with '/'" in message
+            )
+            if not (mount_path_rejected or source_id_required or mount_path_key_required):
                 raise
 
             compatibility_payload = copy.deepcopy(sanitized)
             volume_mounts = compatibility_payload.get("volume_mounts")
             if isinstance(volume_mounts, dict):
+                normalized_mounts: Dict[str, Any] = {}
                 for mount_name, mount_cfg in volume_mounts.items():
                     if not isinstance(mount_cfg, dict):
+                        normalized_mounts[mount_name] = mount_cfg
                         continue
-                    if mount_path_rejected:
-                        mount_cfg.pop("mount_path", None)
-                    if source_id_required and mount_cfg.get("type") == "tapisvolume" and not mount_cfg.get("source_id"):
-                        mount_cfg["source_id"] = mount_name
+                    mount_cfg_copy = dict(mount_cfg)
+                    mount_path = mount_cfg_copy.get("mount_path")
+                    if mount_cfg_copy.get("type") == "tapisvolume" and not mount_cfg_copy.get("source_id"):
+                        mount_cfg_copy["source_id"] = mount_name
+                    if mount_path_rejected or mount_path_key_required:
+                        mount_cfg_copy.pop("mount_path", None)
+
+                    mount_key = mount_name
+                    if isinstance(mount_path, str) and mount_path.startswith("/"):
+                        mount_key = mount_path
+                    normalized_mounts[mount_key] = mount_cfg_copy
+                compatibility_payload["volume_mounts"] = normalized_mounts
 
             logger.warning(
                 "Pods rejected volume_mounts payload for pod %s; retrying create with compatibility mapping.",
@@ -125,10 +147,9 @@ class PodsService:
             },
             "status_requested": "ON",
             "volume_mounts": {
-                volume_id: {
+                "/var/lib/postgresql/data": {
                     "type": "tapisvolume",
                     "source_id": volume_id,
-                    "mount_path": "/var/lib/postgresql/data",
                     "sub_path": "",
                 }
             },
