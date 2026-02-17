@@ -77,20 +77,26 @@ class PodsService:
                 and "mount_path" in message
                 and "Extra inputs are not permitted" in message
             )
-            if not mount_path_rejected:
+            source_id_required = (
+                "volume_mounts" in message
+                and "requires source_id" in message
+            )
+            if not (mount_path_rejected or source_id_required):
                 raise
 
-            # Some Pods deployments reject volume_mounts.*.mount_path.
-            # Retry with that key removed for compatibility.
             compatibility_payload = copy.deepcopy(sanitized)
             volume_mounts = compatibility_payload.get("volume_mounts")
             if isinstance(volume_mounts, dict):
-                for mount_cfg in volume_mounts.values():
-                    if isinstance(mount_cfg, dict):
+                for mount_name, mount_cfg in volume_mounts.items():
+                    if not isinstance(mount_cfg, dict):
+                        continue
+                    if mount_path_rejected:
                         mount_cfg.pop("mount_path", None)
+                    if source_id_required and mount_cfg.get("type") == "tapisvolume" and not mount_cfg.get("source_id"):
+                        mount_cfg["source_id"] = mount_name
 
             logger.warning(
-                "Pods rejected mount_path in volume_mounts for pod %s; retrying create without mount_path.",
+                "Pods rejected volume_mounts payload for pod %s; retrying create with compatibility mapping.",
                 sanitized.get("pod_id"),
             )
             return self._request(method="POST", path="/v3/pods", json=compatibility_payload)
@@ -121,6 +127,7 @@ class PodsService:
             "volume_mounts": {
                 volume_id: {
                     "type": "tapisvolume",
+                    "source_id": volume_id,
                     "mount_path": "/var/lib/postgresql/data",
                     "sub_path": "",
                 }
