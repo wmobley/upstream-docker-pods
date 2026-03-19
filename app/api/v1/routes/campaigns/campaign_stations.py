@@ -420,7 +420,7 @@ async def publish_station(
     db: Session = Depends(get_db),
 ) -> PublishResponse:
     publish_request = publish_request or PublishRequest()
-    request_id = request.headers.get("X-Request-ID", "")
+    request_id = request.headers.get("X-Request-ID") or request.query_params.get("_request_id", "")
     logger.info(
         "station_publish_start extra=%s",
         {
@@ -672,7 +672,7 @@ async def unpublish_station(
     tapis_token: str | None = Depends(get_tapis_token_header_optional),
     db: Session = Depends(get_db),
 ) -> PublishResponse:
-    request_id = request.headers.get("X-Request-ID", "")
+    request_id = request.headers.get("X-Request-ID") or request.query_params.get("_request_id", "")
     logger.info(
         "station_unpublish_start extra=%s",
         {

@@ -190,7 +190,7 @@ async def publish_campaign(
     db: Session = Depends(get_db),
 ) -> PublishResponse:
     publish_request = publish_request or PublishRequest(cascade=True)
-    request_id = request.headers.get("X-Request-ID", "")
+    request_id = request.headers.get("X-Request-ID") or request.query_params.get("_request_id", "")
     logger.info(
         "campaign_publish_start extra=%s",
         {
@@ -312,7 +312,7 @@ async def unpublish_campaign(
     db: Session = Depends(get_db),
 ) -> PublishResponse:
     publish_request = publish_request or PublishRequest(cascade=True)
-    request_id = request.headers.get("X-Request-ID", "")
+    request_id = request.headers.get("X-Request-ID") or request.query_params.get("_request_id", "")
     logger.info(
         "campaign_unpublish_start extra=%s",
         {
