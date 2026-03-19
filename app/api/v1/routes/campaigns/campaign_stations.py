@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Annotated, Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -409,6 +409,7 @@ async def export_measurements_csv(
 
 @router.post("/stations/{station_id}/publish", response_model=PublishResponse)
 async def publish_station(
+    request: Request,
     campaign_id: int,
     station_id: int,
     publish_request: PublishRequest | None = None,
@@ -418,6 +419,21 @@ async def publish_station(
     tapis_token: str | None = Depends(get_tapis_token_header_optional),
     db: Session = Depends(get_db),
 ) -> PublishResponse:
+    publish_request = publish_request or PublishRequest()
+    request_id = request.headers.get("X-Request-ID", "")
+    logger.info(
+        "station_publish_start extra=%s",
+        {
+            "request_id": request_id,
+            "campaign_id": campaign_id,
+            "station_id": station_id,
+            "username": getattr(current_user, "username", None),
+            "cascade": publish_request.cascade,
+            "force": publish_request.force,
+            "organization": publish_request.organization,
+            "has_tapis_token": bool(tapis_token),
+        },
+    )
     if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
 
@@ -434,12 +450,17 @@ async def publish_station(
     settings = get_settings()
     ckan_client = get_ckan_service()
     errors: list[str] = []
+    owner_org_slug: str | None = None
+    ckan_dataset_attempted = False
+    ckan_resource_sync_attempted = False
+    ckan_branch = "disabled"
     if ckan_client and settings.CKAN_URL and tapis_token:
+        ckan_branch = "configured"
         requested_org = ""
-        if publish_request and publish_request.organization:
+        if publish_request.organization:
             requested_org = publish_request.organization.strip()
         owner_org_candidate = (requested_org or campaign.allocation or settings.CKAN_ORGANIZATION or "").strip()
-        owner_org_slug: str | None = owner_org_candidate or None
+        owner_org_slug = owner_org_candidate or None
 
         if owner_org_slug:
             try:
@@ -448,6 +469,7 @@ async def publish_station(
                 message = f"Failed to verify CKAN organization access: {exc}"
                 logger.warning("%s", message)
                 errors.append(message)
+                ckan_branch = "organization_lookup_failed"
             else:
                 normalized_candidate = owner_org_slug.lower()
 
@@ -464,6 +486,7 @@ async def publish_station(
                 matched_org = next((org for org in user_orgs if _match_org(org)), None)
                 if matched_org:
                     owner_org_slug = (matched_org.get("name") or matched_org.get("id") or owner_org_slug).strip()
+                    ckan_branch = "organization_resolved"
                 else:
                     message = (
                         f"Skipping CKAN publication for station {station.id}: "
@@ -471,6 +494,7 @@ async def publish_station(
                     )
                     logger.warning("%s", message)
                     errors.append(message)
+                    ckan_branch = "organization_membership_mismatch"
                     owner_org_slug = None
         else:
             message = (
@@ -480,9 +504,11 @@ async def publish_station(
             )
             logger.info("%s", message)
             errors.append(message)
+            ckan_branch = "organization_missing"
 
         try:
             if owner_org_slug:
+                ckan_dataset_attempted = True
                 metadata_repo = MetadataSchemaRepository(db)
                 station_schema = metadata_repo.list_schema(scope="station", active_only=True)
                 campaign_schema = metadata_repo.list_schema(scope="campaign", active_only=True)
@@ -498,7 +524,10 @@ async def publish_station(
                     campaign_metadata_schema=campaign_schema,
                 )
                 errors.extend(dataset_errors)
+                if dataset_errors:
+                    ckan_branch = "dataset_failed"
                 sensors = station.sensors or []
+                ckan_resource_sync_attempted = True
                 resource_errors = sync_sensor_resources(
                     settings=settings,
                     ckan_client=ckan_client,
@@ -510,17 +539,41 @@ async def publish_station(
                     sensors=sensors,
                 )
                 errors.extend(resource_errors)
+                if resource_errors:
+                    ckan_branch = "resource_sync_failed"
+                elif not dataset_errors:
+                    ckan_branch = "ckan_sync_complete"
         except CKANError as exc:
             message = f"Failed to publish station {station_id} in CKAN: {exc}"
             logger.warning("%s", message)
             errors.append(message)
+            ckan_branch = "ckan_exception"
         except Exception as exc:
             message = f"Unexpected error while publishing station {station_id} in CKAN: {exc}"
             logger.exception("%s", message)
             errors.append(message)
+            ckan_branch = "ckan_unexpected_exception"
+    elif ckan_client and settings.CKAN_URL and not tapis_token:
+        ckan_branch = "missing_tapis_token"
+    elif not ckan_client or not settings.CKAN_URL:
+        ckan_branch = "ckan_disabled"
+
+    logger.info(
+        "station_publish_ckan_branch extra=%s",
+        {
+            "request_id": request_id,
+            "campaign_id": campaign_id,
+            "station_id": station_id,
+            "ckan_branch": ckan_branch,
+            "resolved_owner_org": owner_org_slug,
+            "dataset_attempted": ckan_dataset_attempted,
+            "resource_sync_attempted": ckan_resource_sync_attempted,
+            "errors": errors,
+        },
+    )
 
     if ckan_client and settings.CKAN_URL and tapis_token and errors:
-        return PublishResponse(
+        response = PublishResponse(
             success=False,
             message=f"Station {station.name} not published due to CKAN errors",
             published_count=0,
@@ -531,6 +584,18 @@ async def publish_station(
             published_at=None,
             cascaded_items=[],
         )
+        logger.warning(
+            "station_publish_complete extra=%s",
+            {
+                "request_id": request_id,
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+                "success": response.success,
+                "errors": response.errors,
+                "ckan_branch": ckan_branch,
+            },
+        )
+        return response
 
     published_at = datetime.now(timezone.utc)
     if not station_service.set_publish_state(
@@ -538,6 +603,15 @@ async def publish_station(
         published=True,
         published_at=published_at,
     ):
+        logger.error(
+            "station_publish_db_state_failed extra=%s",
+            {
+                "request_id": request_id,
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+                "published_at": published_at.isoformat(),
+            },
+        )
         raise HTTPException(status_code=500, detail="Failed to update station publish state")
 
     cascaded_items: list[str] = []
@@ -561,7 +635,7 @@ async def publish_station(
                     )
         cascaded_items.extend(f"sensor:{sensor_id}" for sensor_id in cascaded_sensor_ids)
 
-    return PublishResponse(
+    response = PublishResponse(
         success=True,
         message=f"Station {station.name} marked as published",
         published_count=1,
@@ -572,10 +646,24 @@ async def publish_station(
         published_at=published_at,
         cascaded_items=cascaded_items,
     )
+    logger.info(
+        "station_publish_complete extra=%s",
+        {
+            "request_id": request_id,
+            "campaign_id": campaign_id,
+            "station_id": station_id,
+            "success": response.success,
+            "errors": response.errors,
+            "cascaded_items": response.cascaded_items,
+            "ckan_branch": ckan_branch,
+        },
+    )
+    return response
 
 
 @router.post("/stations/{station_id}/unpublish", response_model=PublishResponse)
 async def unpublish_station(
+    request: Request,
     campaign_id: int,
     station_id: int,
     current_user: User = Depends(get_edit_user),
@@ -584,6 +672,17 @@ async def unpublish_station(
     tapis_token: str | None = Depends(get_tapis_token_header_optional),
     db: Session = Depends(get_db),
 ) -> PublishResponse:
+    request_id = request.headers.get("X-Request-ID", "")
+    logger.info(
+        "station_unpublish_start extra=%s",
+        {
+            "request_id": request_id,
+            "campaign_id": campaign_id,
+            "station_id": station_id,
+            "username": getattr(current_user, "username", None),
+            "has_tapis_token": bool(tapis_token),
+        },
+    )
     if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
 
@@ -599,26 +698,40 @@ async def unpublish_station(
 
     settings = get_settings()
     ckan_client = get_ckan_service()
+    ckan_branch = "ckan_disabled"
     if ckan_client and settings.CKAN_URL and tapis_token:
         try:
+            ckan_branch = "dataset_visibility_private"
             dataset_name = _slugify(f"{campaign.name}-{station.name}")
             dataset = ckan_client.get_dataset(token=tapis_token, name_or_id=dataset_name)
             dataset_id = dataset.get("id") or dataset_name
             if dataset_id:
                 ckan_client.ensure_dataset_visibility(token=tapis_token, dataset_id=str(dataset_id), private=True)
         except CKANError as exc:
+            ckan_branch = "dataset_visibility_failed"
             logger.warning("Failed to set CKAN dataset %s private: %s", dataset_name, exc)
         except Exception:
+            ckan_branch = "dataset_visibility_unexpected_error"
             logger.exception("Unexpected error while unpublishing station %s in CKAN", station_id)
+    elif ckan_client and settings.CKAN_URL and not tapis_token:
+        ckan_branch = "missing_tapis_token"
 
     if not station_service.set_publish_state(
         station_id,
         published=False,
         published_at=None,
     ):
+        logger.error(
+            "station_unpublish_db_state_failed extra=%s",
+            {
+                "request_id": request_id,
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+            },
+        )
         raise HTTPException(status_code=500, detail="Failed to update station publish state")
 
-    return PublishResponse(
+    response = PublishResponse(
         success=True,
         message=f"Station {station.name} unpublished from CKAN",
         published_count=0,
@@ -629,3 +742,15 @@ async def unpublish_station(
         published_at=None,
         cascaded_items=[],
     )
+    logger.info(
+        "station_unpublish_complete extra=%s",
+        {
+            "request_id": request_id,
+            "campaign_id": campaign_id,
+            "station_id": station_id,
+            "success": response.success,
+            "errors": response.errors,
+            "ckan_branch": ckan_branch,
+        },
+    )
+    return response

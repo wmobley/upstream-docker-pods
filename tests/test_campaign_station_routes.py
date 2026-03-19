@@ -1,5 +1,6 @@
 import pytest
 from datetime import datetime
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch
 from sqlalchemy.orm import Session
@@ -13,7 +14,7 @@ from app.api.v1.schemas.station import (
     StationItemWithSummary,
     StationsListResponseItem,
 )
-from app.api.v1.schemas.campaign import GetCampaignResponse, SummaryGetCampaign
+from app.api.v1.schemas.campaign import GetCampaignResponse, PublishResponse, SummaryGetCampaign
 from app.api.v1.schemas.user import User
 from app.api.dependencies import auth
 from app.api.dependencies.auth import get_current_user, get_edit_user
@@ -338,6 +339,102 @@ class TestCampaignStationRoutes:
             assert called_arg_station_id == self.station_id
             assert isinstance(called_arg_station_data, StationUpdate)
             assert called_arg_station_data.description == MOCK_STATION_PARTIAL_UPDATE_PAYLOAD["description"]
+
+    def test_publish_station_returns_application_failure_when_ckan_membership_missing(self, client_with_auth):
+        campaign_response = GetCampaignResponse(
+            id=self.campaign_id,
+            name="Test Campaign",
+            allocation="restricted-org",
+            summary=SummaryGetCampaign(
+                station_count=1,
+                sensor_count=0,
+                sensor_types=[],
+                sensor_variables=[],
+            ),
+            stations=[],
+        )
+        station_response = GetStationResponse(
+            id=self.station_id,
+            name="Test Station Alpha",
+            description="Test description",
+            start_date=datetime.utcnow(),
+            geometry={},
+            sensors=[],
+        )
+
+        mock_settings = Mock()
+        mock_settings.CKAN_URL = "https://ckan.example.com"
+        mock_settings.CKAN_ORGANIZATION = None
+
+        with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=True), \
+             patch('app.services.station_service.StationService.get_station', return_value=station_response), \
+             patch('app.services.campaign_service.CampaignService.get_campaign_with_summary', return_value=campaign_response), \
+             patch('app.api.v1.routes.campaigns.campaign_stations.get_settings', return_value=mock_settings), \
+             patch('app.api.v1.routes.campaigns.campaign_stations.get_ckan_service') as mock_get_ckan_service, \
+             patch('app.services.station_service.StationService.set_publish_state') as mock_set_publish_state:
+            mock_ckan_client = Mock()
+            mock_ckan_client.list_user_organizations.return_value = []
+            mock_get_ckan_service.return_value = mock_ckan_client
+
+            response = client_with_auth.post(
+                f"/api/v1/campaigns/{self.campaign_id}/stations/{self.station_id}/publish",
+                json={"cascade": False},
+                headers={"X-TAPIS-TOKEN": "fake-token", "X-Request-ID": "req-station-failure"},
+            )
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["success"] is False
+            assert body["is_published"] is False
+            assert "not published due to CKAN errors" in body["message"]
+            assert body["errors"]
+            mock_set_publish_state.assert_not_called()
+
+    def test_publish_campaign_returns_child_station_errors(self, client_with_auth):
+        campaign_response = GetCampaignResponse(
+            id=self.campaign_id,
+            name="Test Campaign",
+            summary=SummaryGetCampaign(
+                station_count=2,
+                sensor_count=0,
+                sensor_types=[],
+                sensor_variables=[],
+            ),
+            stations=[],
+        )
+        station_one = Mock(stationid=101)
+        station_two = Mock(stationid=102)
+
+        with patch('app.api.v1.routes.campaigns.root.check_allocation_permission', return_value=True), \
+             patch('app.services.campaign_service.CampaignService.get_campaign_with_summary', return_value=campaign_response), \
+             patch('app.db.repositories.station_repository.StationRepository.get_stations_by_campaign_id', return_value=[station_one, station_two]), \
+             patch('app.api.v1.routes.campaigns.campaign_stations.publish_station', autospec=True) as mock_publish_station:
+            mock_publish_station.side_effect = [
+                PublishResponse(
+                    success=True,
+                    message="ok",
+                    published_count=1,
+                    errors=[],
+                    id=101,
+                    type="station",
+                    is_published=True,
+                    cascaded_items=[],
+                ),
+                HTTPException(status_code=502, detail="CKAN dataset sync failed"),
+            ]
+
+            response = client_with_auth.post(
+                f"/api/v1/campaigns/{self.campaign_id}/publish",
+                json={"cascade": True},
+                headers={"X-TAPIS-TOKEN": "fake-token", "X-Request-ID": "req-campaign-failure"},
+            )
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["success"] is False
+            assert body["is_published"] is True
+            assert "published with some errors" in body["message"]
+            assert "station 102: CKAN dataset sync failed" in body["errors"]
 
     def test_partial_update_station_not_found_error_message(self, client_with_auth):
         with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=True), \

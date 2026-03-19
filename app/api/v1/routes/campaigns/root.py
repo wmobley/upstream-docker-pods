@@ -1,7 +1,8 @@
+import logging
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 from app.api.dependencies.pytas import check_allocation_permission, get_user_allocations
 
@@ -32,6 +33,7 @@ from pydantic import BaseModel
 
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("")
@@ -178,6 +180,7 @@ async def get_campaign_permissions(
 
 @router.post("/{campaign_id}/publish", response_model=PublishResponse)
 async def publish_campaign(
+    request: Request,
     campaign_id: int,
     publish_request: PublishRequest | None = None,
     current_user: User = Depends(get_edit_user),
@@ -187,6 +190,18 @@ async def publish_campaign(
     db: Session = Depends(get_db),
 ) -> PublishResponse:
     publish_request = publish_request or PublishRequest(cascade=True)
+    request_id = request.headers.get("X-Request-ID", "")
+    logger.info(
+        "campaign_publish_start extra=%s",
+        {
+            "request_id": request_id,
+            "campaign_id": campaign_id,
+            "username": getattr(current_user, "username", None),
+            "cascade": publish_request.cascade,
+            "force": publish_request.force,
+            "has_tapis_token": bool(tapis_token),
+        },
+    )
 
     if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
@@ -207,7 +222,16 @@ async def publish_campaign(
 
         for station in stations:
             try:
+                logger.info(
+                    "campaign_publish_station_start extra=%s",
+                    {
+                        "request_id": request_id,
+                        "campaign_id": campaign_id,
+                        "station_id": station.stationid,
+                    },
+                )
                 result = await publish_station(
+                    request=request,
                     campaign_id=campaign_id,
                     station_id=station.stationid,
                     publish_request=PublishRequest(
@@ -225,14 +249,33 @@ async def publish_campaign(
                     cascaded_items.extend(
                         [f"station:{station.stationid}:{item}" for item in result.cascaded_items]
                     )
+                logger.info(
+                    "campaign_publish_station_result extra=%s",
+                    {
+                        "request_id": request_id,
+                        "campaign_id": campaign_id,
+                        "station_id": station.stationid,
+                        "success": result.success,
+                        "errors": result.errors,
+                        "cascaded_items": result.cascaded_items,
+                    },
+                )
             except HTTPException as exc:
                 error_detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
                 errors.append(f"station {station.stationid}: {error_detail}")
+                logger.warning(
+                    "campaign_publish_station_error extra=%s",
+                    {
+                        "request_id": request_id,
+                        "campaign_id": campaign_id,
+                        "station_id": station.stationid,
+                        "error": error_detail,
+                    },
+                )
 
     published_at = datetime.utcnow()
     success = len(errors) == 0
-
-    return PublishResponse(
+    response = PublishResponse(
         success=success,
         message="Campaign marked as published" if success else "Campaign published with some errors",
         published_count=1 + len(cascaded_items),
@@ -243,10 +286,23 @@ async def publish_campaign(
         published_at=published_at,
         cascaded_items=cascaded_items,
     )
+    logger.info(
+        "campaign_publish_complete extra=%s",
+        {
+            "request_id": request_id,
+            "campaign_id": campaign_id,
+            "success": response.success,
+            "errors": response.errors,
+            "published_count": response.published_count,
+            "cascaded_items": response.cascaded_items,
+        },
+    )
+    return response
 
 
 @router.post("/{campaign_id}/unpublish", response_model=PublishResponse)
 async def unpublish_campaign(
+    request: Request,
     campaign_id: int,
     publish_request: PublishRequest | None = None,
     current_user: User = Depends(get_edit_user),
@@ -256,6 +312,17 @@ async def unpublish_campaign(
     db: Session = Depends(get_db),
 ) -> PublishResponse:
     publish_request = publish_request or PublishRequest(cascade=True)
+    request_id = request.headers.get("X-Request-ID", "")
+    logger.info(
+        "campaign_unpublish_start extra=%s",
+        {
+            "request_id": request_id,
+            "campaign_id": campaign_id,
+            "username": getattr(current_user, "username", None),
+            "cascade": publish_request.cascade,
+            "has_tapis_token": bool(tapis_token),
+        },
+    )
 
     if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
@@ -277,6 +344,7 @@ async def unpublish_campaign(
         for station in stations:
             try:
                 result = await unpublish_station(
+                    request=request,
                     campaign_id=campaign_id,
                     station_id=station.stationid,
                     allocations=allocations,
@@ -290,13 +358,31 @@ async def unpublish_campaign(
                     cascaded_items.extend(
                         [f"station:{station.stationid}:{item}" for item in result.cascaded_items]
                     )
+                logger.info(
+                    "campaign_unpublish_station_result extra=%s",
+                    {
+                        "request_id": request_id,
+                        "campaign_id": campaign_id,
+                        "station_id": station.stationid,
+                        "success": result.success,
+                        "errors": result.errors,
+                    },
+                )
             except HTTPException as exc:
                 error_detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
                 errors.append(f"station {station.stationid}: {error_detail}")
+                logger.warning(
+                    "campaign_unpublish_station_error extra=%s",
+                    {
+                        "request_id": request_id,
+                        "campaign_id": campaign_id,
+                        "station_id": station.stationid,
+                        "error": error_detail,
+                    },
+                )
 
     success = len(errors) == 0
-
-    return PublishResponse(
+    response = PublishResponse(
         success=success,
         message="Campaign marked as private" if success else "Campaign private with some errors",
         published_count=0,
@@ -307,3 +393,14 @@ async def unpublish_campaign(
         published_at=None,
         cascaded_items=cascaded_items,
     )
+    logger.info(
+        "campaign_unpublish_complete extra=%s",
+        {
+            "request_id": request_id,
+            "campaign_id": campaign_id,
+            "success": response.success,
+            "errors": response.errors,
+            "cascaded_items": response.cascaded_items,
+        },
+    )
+    return response
