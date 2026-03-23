@@ -8,6 +8,12 @@ from app.db.repositories.station_repository import StationRepository
 logger = logging.getLogger(__name__)
 
 
+def _isoformat_or_none(value: object) -> str | None:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return None
+
+
 class StationService:
     def __init__(self, station_repository: StationRepository):
         self.station_repository = station_repository
@@ -60,7 +66,7 @@ class StationService:
                 "station_id": station_id,
                 "row_found": row is not None,
                 "row_published": bool(getattr(row, "published", False)) if row else None,
-                "row_published_at": getattr(row, "published_at", None).isoformat() if row and getattr(row, "published_at", None) else None,
+                "row_published_at": _isoformat_or_none(getattr(row, "published_at", None) if row else None),
             },
         )
         geometry = {}
@@ -128,10 +134,10 @@ class StationService:
             {
                 "station_id": station_id,
                 "requested_published": published,
-                "requested_published_at": published_at.isoformat() if published_at else None,
+                "requested_published_at": _isoformat_or_none(published_at),
                 "result_found": result is not None,
                 "result_published": bool(getattr(result, "published", False)) if result else None,
-                "result_published_at": getattr(result, "published_at", None).isoformat() if result and getattr(result, "published_at", None) else None,
+                "result_published_at": _isoformat_or_none(getattr(result, "published_at", None) if result else None),
             },
         )
         return result is not None

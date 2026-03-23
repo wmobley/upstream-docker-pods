@@ -13,6 +13,12 @@ from app.db.models.station import Station
 logger = logging.getLogger(__name__)
 
 
+def _isoformat_or_none(value: object) -> str | None:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return None
+
+
 class StationRepository:
     def __init__(self, db: Session):
         self.db = db
@@ -59,7 +65,7 @@ class StationRepository:
             {
                 "station_id": station_id,
                 "published": bool(getattr(station, "published", False)),
-                "published_at": getattr(station, "published_at", None).isoformat() if getattr(station, "published_at", None) else None,
+                "published_at": _isoformat_or_none(getattr(station, "published_at", None)),
             },
         )
         return station
@@ -200,9 +206,9 @@ class StationRepository:
             {
                 "station_id": station_id,
                 "current_published": bool(getattr(db_station, "published", False)),
-                "current_published_at": getattr(db_station, "published_at", None).isoformat() if getattr(db_station, "published_at", None) else None,
+                "current_published_at": _isoformat_or_none(getattr(db_station, "published_at", None)),
                 "requested_published": published,
-                "requested_published_at": published_at.isoformat() if published_at else None,
+                "requested_published_at": _isoformat_or_none(published_at),
             },
         )
         db_station.published = published
@@ -214,7 +220,7 @@ class StationRepository:
             {
                 "station_id": station_id,
                 "published": bool(getattr(db_station, "published", False)),
-                "published_at": getattr(db_station, "published_at", None).isoformat() if getattr(db_station, "published_at", None) else None,
+                "published_at": _isoformat_or_none(getattr(db_station, "published_at", None)),
             },
         )
         return db_station
