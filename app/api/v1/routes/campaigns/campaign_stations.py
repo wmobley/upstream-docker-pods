@@ -201,18 +201,30 @@ async def list_stations(
 # Route to retrieve a specific station
 @router.get("/stations/{station_id}")
 async def get_station(
+    request: Request,
     station_id: int,
     campaign_id: int,
     current_user: User = Depends(get_viewer_user),
     allocations: list[str] = Depends(get_user_allocations),
     db: Session = Depends(get_db),
 ) -> GetStationResponse:
+    request_id = request.headers.get("X-Request-ID") or request.query_params.get("_request_id", "")
     if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
     station_service = StationService(StationRepository(db))
     station = station_service.get_station(station_id)
     if not station:
         raise HTTPException(status_code=404, detail="Station not found")
+    logger.info(
+        "station_get_route_response extra=%s",
+        {
+            "request_id": request_id,
+            "campaign_id": campaign_id,
+            "station_id": station_id,
+            "response_is_published": station.is_published,
+            "response_published_at": station.published_at.isoformat() if station.published_at else None,
+        },
+    )
     return station
 
 

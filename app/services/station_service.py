@@ -1,8 +1,11 @@
 import json
+import logging
 from datetime import datetime
 from app.api.v1.schemas.sensor import SensorItem
 from app.api.v1.schemas.station import GetStationResponse,  StationItemWithSummary, StationCreate, StationCreateResponse, StationUpdate
 from app.db.repositories.station_repository import StationRepository
+
+logger = logging.getLogger(__name__)
 
 
 class StationService:
@@ -51,6 +54,15 @@ class StationService:
 
     def get_station(self, station_id: int) -> GetStationResponse | None:
         row = self.station_repository.get_station(station_id)
+        logger.info(
+            "station_service_get_station_row extra=%s",
+            {
+                "station_id": station_id,
+                "row_found": row is not None,
+                "row_published": bool(getattr(row, "published", False)) if row else None,
+                "row_published_at": getattr(row, "published_at", None).isoformat() if row and getattr(row, "published_at", None) else None,
+            },
+        )
         geometry = {}
         if row:
             geometry_raw = getattr(row, "geometry_geojson", None)
@@ -62,7 +74,7 @@ class StationService:
 
         if not row:
             return None
-        return GetStationResponse(
+        response = GetStationResponse(
             id=row.stationid,
             name=row.stationname,
             description=row.description,
@@ -90,6 +102,15 @@ class StationService:
                 for sensor in row.sensors
             ]
         )
+        logger.info(
+            "station_service_get_station_response extra=%s",
+            {
+                "station_id": station_id,
+                "response_is_published": response.is_published,
+                "response_published_at": response.published_at.isoformat() if response.published_at else None,
+            },
+        )
+        return response
     def delete_station_sensors(self, station_id: int) ->bool:
         return self.station_repository.delete_station_sensors(station_id)
 
@@ -101,6 +122,17 @@ class StationService:
             station_id,
             published=published,
             published_at=published_at,
+        )
+        logger.info(
+            "station_service_set_publish_state extra=%s",
+            {
+                "station_id": station_id,
+                "requested_published": published,
+                "requested_published_at": published_at.isoformat() if published_at else None,
+                "result_found": result is not None,
+                "result_published": bool(getattr(result, "published", False)) if result else None,
+                "result_published_at": getattr(result, "published_at", None).isoformat() if result and getattr(result, "published_at", None) else None,
+            },
         )
         return result is not None
 

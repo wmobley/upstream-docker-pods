@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Iterable, List, Optional, cast
+from typing import Any, Dict, Iterable, List, Literal, Optional, cast
 
 import requests
 
@@ -32,17 +32,26 @@ class CKANService:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
-    def _headers(self, token: str, *, as_api_key: bool = False) -> Dict[str, str]:
+    def _headers(
+        self,
+        token: str,
+        *,
+        as_api_key: bool = False,
+        auth_mode: Literal["combined", "bearer", "x_tapis"] = "combined",
+    ) -> Dict[str, str]:
         if as_api_key:
             return {
                 "Authorization": token,
                 "Content-Type": "application/json",
             }
-        return {
-            "Authorization": f"Bearer {token}",
-            "X-Tapis-Token": token,
+        headers: Dict[str, str] = {
             "Content-Type": "application/json",
         }
+        if auth_mode in {"combined", "bearer"}:
+            headers["Authorization"] = f"Bearer {token}"
+        if auth_mode in {"combined", "x_tapis"}:
+            headers["X-Tapis-Token"] = token
+        return headers
 
     def _request(
         self,
@@ -53,12 +62,13 @@ class CKANService:
         json: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
         as_api_key: bool = False,
+        auth_mode: Literal["combined", "bearer", "x_tapis"] = "combined",
     ) -> Any:
         url = f"{self.base_url}{path}"
         response = requests.request(
             method=method,
             url=url,
-            headers=self._headers(token, as_api_key=as_api_key),
+            headers=self._headers(token, as_api_key=as_api_key, auth_mode=auth_mode),
             json=json,
             params=params,
             timeout=self.timeout,
@@ -81,12 +91,18 @@ class CKANService:
             raise CKANError(str(payload.get("error", "unknown error")))
         return payload["result"]
 
-    def list_user_organizations(self, *, token: str) -> List[Dict[str, Any]]:
+    def list_user_organizations(
+        self,
+        *,
+        token: str,
+        auth_mode: Literal["combined", "bearer", "x_tapis"] = "combined",
+    ) -> List[Dict[str, Any]]:
         result = self._request(
             method="GET",
             path="/api/3/action/organization_list_for_user",
             token=token,
             params={"all_fields": True},
+            auth_mode=auth_mode,
         )
         if not isinstance(result, list):
             raise CKANError("Unexpected CKAN response format for organization list")
@@ -94,6 +110,23 @@ class CKANService:
             cast(Dict[str, Any], org) for org in result if isinstance(org, dict)
         ]
         return organizations
+
+    def debug_organization_lookup(self, *, token: str) -> Dict[str, Any]:
+        results: Dict[str, Any] = {}
+        for auth_mode in ("combined", "bearer", "x_tapis"):
+            try:
+                organizations = self.list_user_organizations(token=token, auth_mode=auth_mode)
+                results[auth_mode] = {
+                    "success": True,
+                    "organization_count": len(organizations),
+                    "organizations": organizations,
+                }
+            except CKANError as exc:
+                results[auth_mode] = {
+                    "success": False,
+                    "error": str(exc),
+                }
+        return results
 
     def get_dataset(self, *, token: str, name_or_id: str) -> Dict[str, Any]:
         result = self._request(

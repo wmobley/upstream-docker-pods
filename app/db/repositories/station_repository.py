@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -8,6 +9,8 @@ from sqlalchemy.orm import joinedload
 from app.api.v1.schemas.station import StationCreate, StationUpdate
 from app.db.models.sensor import Sensor
 from app.db.models.station import Station
+
+logger = logging.getLogger(__name__)
 
 
 class StationRepository:
@@ -51,6 +54,14 @@ class StationRepository:
 
         station, geometry_str = result
         setattr(station, "geometry_geojson", geometry_str)
+        logger.info(
+            "station_repository_get_station extra=%s",
+            {
+                "station_id": station_id,
+                "published": bool(getattr(station, "published", False)),
+                "published_at": getattr(station, "published_at", None).isoformat() if getattr(station, "published_at", None) else None,
+            },
+        )
         return station
 
     def station_belongs_to_campaign(self, station_id: int, campaign_id: int) -> bool:
@@ -184,10 +195,28 @@ class StationRepository:
         db_station = self.db.query(Station).filter(Station.stationid == station_id).first()
         if not db_station:
             return None
+        logger.info(
+            "station_repository_set_publish_state_before extra=%s",
+            {
+                "station_id": station_id,
+                "current_published": bool(getattr(db_station, "published", False)),
+                "current_published_at": getattr(db_station, "published_at", None).isoformat() if getattr(db_station, "published_at", None) else None,
+                "requested_published": published,
+                "requested_published_at": published_at.isoformat() if published_at else None,
+            },
+        )
         db_station.published = published
         db_station.published_at = published_at
         self.db.commit()
         self.db.refresh(db_station)
+        logger.info(
+            "station_repository_set_publish_state_after extra=%s",
+            {
+                "station_id": station_id,
+                "published": bool(getattr(db_station, "published", False)),
+                "published_at": getattr(db_station, "published_at", None).isoformat() if getattr(db_station, "published_at", None) else None,
+            },
+        )
         return db_station
 
     def refresh_geometry(self, station_id: int) -> None:
