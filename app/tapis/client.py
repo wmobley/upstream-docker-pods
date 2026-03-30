@@ -1,4 +1,5 @@
 import logging
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Optional, cast
@@ -27,6 +28,46 @@ class TapisAuthClient:
 
     base_url: str
     tenant_id: str
+
+    @staticmethod
+    def _token_summary(token: Any) -> str:
+        if not isinstance(token, str) or not token:
+            return "missing"
+        dots = token.count(".")
+        return f"len={len(token)} dots={dots} prefix={token[:12]} suffix={token[-12:]}"
+
+    @classmethod
+    def _coerce_token_string(cls, value: Any, *, token_key: str) -> Optional[str]:
+        if value is None:
+            return None
+
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate.lower().startswith("bearer "):
+                candidate = candidate.split(" ", 1)[1].strip()
+            if candidate.startswith('"') and candidate.endswith('"'):
+                candidate = candidate[1:-1].strip()
+            if candidate.startswith("{") and candidate.endswith("}"):
+                try:
+                    parsed = json.loads(candidate)
+                except Exception:
+                    return candidate or None
+                return cls._coerce_token_string(parsed, token_key=token_key)
+            return candidate or None
+
+        if isinstance(value, dict):
+            for key in (token_key, "token", "access_token", "refresh_token"):
+                if key in value:
+                    return cls._coerce_token_string(value.get(key), token_key=token_key)
+            return None
+
+        for attr in (token_key, "token", "access_token", "refresh_token"):
+            if hasattr(value, attr):
+                nested = getattr(value, attr, None)
+                if nested is not None and nested is not value:
+                    return cls._coerce_token_string(nested, token_key=token_key)
+
+        return None
 
     def authenticate(self, username: str, password: str) -> TapisAuthOutcome:
         """
@@ -79,8 +120,8 @@ class TapisAuthClient:
         refresh_token_obj = getattr(client, "refresh_token", None)
         service_token_obj = getattr(client, "service_token", None)
 
-        access_token = getattr(access_token_obj, "access_token", None)
-        refresh_token = getattr(refresh_token_obj, "refresh_token", None)
+        access_token = self._coerce_token_string(getattr(access_token_obj, "access_token", None), token_key="access_token")
+        refresh_token = self._coerce_token_string(getattr(refresh_token_obj, "refresh_token", None), token_key="refresh_token")
         expires_at = getattr(access_token_obj, "expires_at", None)
 
         def log_token_obj(name: str, obj: Any) -> None:
@@ -112,16 +153,16 @@ class TapisAuthClient:
                     username,
                     list(token_payload.keys()),
                 )
-            access_token = access_token or token_payload.get("access_token")
-            refresh_token = refresh_token or token_payload.get("refresh_token")
+            access_token = access_token or self._coerce_token_string(token_payload.get("access_token"), token_key="access_token")
+            refresh_token = refresh_token or self._coerce_token_string(token_payload.get("refresh_token"), token_key="refresh_token")
             expires_at = expires_at or token_payload.get("expires_at")
 
             if not access_token:
                 try:
                     result = cast(Dict[str, Any], token_payload.get("result", {}) or {})
                     token_info = result.get("token_info", {}) if isinstance(result, dict) else {}
-                    access_token = token_info.get("access_token")
-                    refresh_token = refresh_token or token_info.get("refresh_token")
+                    access_token = self._coerce_token_string(token_info.get("access_token"), token_key="access_token")
+                    refresh_token = refresh_token or self._coerce_token_string(token_info.get("refresh_token"), token_key="refresh_token")
                     expires_at = expires_at or token_info.get("expires_at")
                 except AttributeError:
                     access_token = None
@@ -141,12 +182,19 @@ class TapisAuthClient:
         # Final fallback: tapipy keeps the JWTs on the access/refresh token objects.
         if not access_token and hasattr(client, "access_token"):
             access_token_obj = getattr(client, "access_token")
-            access_token = getattr(access_token_obj, "access_token", access_token)
+            access_token = self._coerce_token_string(getattr(access_token_obj, "access_token", access_token), token_key="access_token")
             expires_at = expires_at or getattr(access_token_obj, "expires_at", None)
         if not refresh_token and hasattr(client, "refresh_token"):
             refresh_token_obj = getattr(client, "refresh_token")
-            refresh_token = getattr(refresh_token_obj, "refresh_token", refresh_token)
+            refresh_token = self._coerce_token_string(getattr(refresh_token_obj, "refresh_token", refresh_token), token_key="refresh_token")
             expires_at = expires_at or getattr(refresh_token_obj, "expires_at", None)
+
+        logger.info(
+            "Tapis token extraction summary for %s: access=%s refresh=%s",
+            username,
+            self._token_summary(access_token),
+            self._token_summary(refresh_token),
+        )
 
         if not access_token:
             logger.info(
@@ -154,6 +202,14 @@ class TapisAuthClient:
                 username,
             )
             return TapisAuthOutcome(tokens=None, error="access_token missing from Tapis response")
+
+        if access_token.count(".") != 2:
+            logger.warning(
+                "Tapis authentication returned malformed access_token for %s: %s",
+                username,
+                self._token_summary(access_token),
+            )
+            return TapisAuthOutcome(tokens=None, error="Malformed access_token returned from Tapis")
 
         def coerce_expiration(value: Any) -> Optional[int]:
             if value is None:

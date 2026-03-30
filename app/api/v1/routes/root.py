@@ -30,6 +30,17 @@ def create_token(username: str, jwt_secret: str, role: str | None = None) -> str
         payload["role"] = role
     return jwt.encode(payload, jwt_secret, algorithm="HS256")
 
+
+def _token_summary(token: str | None) -> dict[str, int | str | None]:
+    if not token:
+        return {"length": None, "dots": None, "prefix": None, "suffix": None}
+    return {
+        "length": len(token),
+        "dots": token.count("."),
+        "prefix": token[:12],
+        "suffix": token[-12:],
+    }
+
 # Route for user authentication and token generation
 @router.post("/token", tags=["auth"])
 async def login(
@@ -50,6 +61,15 @@ async def login(
         ensure_ckan_membership(form_data.username, role)
     except Exception:  # pragma: no cover - defensive log
         logger.exception("Unable to ensure CKAN membership for %s", form_data.username)
+    logger.info(
+        "login_token_summary extra=%s",
+        {
+            "username": form_data.username,
+            "tenant_id": get_settings().TAPIS_TENANT_ID,
+            "tapis_access_token": _token_summary(tapis_tokens.get("access_token")),
+            "tapis_refresh_token": _token_summary(tapis_tokens.get("refresh_token")),
+        },
+    )
     return LoginResponse(
         access_token=create_token(form_data.username, jwt_secret, role),
         token_type="bearer",
