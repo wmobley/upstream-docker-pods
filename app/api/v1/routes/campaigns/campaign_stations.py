@@ -462,6 +462,8 @@ async def publish_station(
             "tapis_token": _token_summary(tapis_token),
         },
     )
+    raw_x_tapis_token = request.headers.get('X-TAPIS-TOKEN') or request.headers.get('X-Tapis-Token') or request.headers.get('x-tapis-token')
+    raw_authorization = request.headers.get('Authorization') or request.headers.get('authorization')
     logger.debug(
         "station_publish_token_debug extra=%s",
         {
@@ -473,6 +475,34 @@ async def publish_station(
             "oauth_token": _token_summary(_token),
             "has_tapis_token": bool(tapis_token),
             "tapis_token": _token_summary(tapis_token),
+        },
+    )
+    logger.debug(
+        "station_publish_request_headers extra=%s",
+        {
+            "request_id": request_id,
+            "raw_x_tapis_token_present": bool(const_raw_x_tapis_token),
+            "raw_x_tapis_token": _token_summary(const_raw_x_tapis_token),
+            "raw_authorization_present": bool(const_raw_authorization),
+            "raw_authorization": _token_summary(
+                const_raw_authorization.split(" ", 1)[1] if const_raw_authorization and const_raw_authorization.lower().startswith("bearer ") else const_raw_authorization
+            ),
+        },
+    )
+    logger.debug(
+        "station_publish_raw_request extra=%s",
+        {
+            "request_id": request_id,
+            "url": str(request.url),
+            "method": request.method,
+            "content_type": request.headers.get("content-type"),
+            "accept": request.headers.get("accept"),
+            "x_tapis_token_present": bool(raw_x_tapis_token),
+            "authorization_present": bool(raw_authorization),
+            "x_tapis_token_summary": _token_summary(raw_x_tapis_token),
+            "authorization_summary": _token_summary(
+                raw_authorization.split(" ", 1)[1] if raw_authorization and raw_authorization.lower().startswith("bearer ") else raw_authorization
+            ),
         },
     )
     if not check_allocation_permission(current_user, campaign_id, allocations):

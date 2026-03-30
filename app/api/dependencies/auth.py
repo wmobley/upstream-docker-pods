@@ -235,6 +235,14 @@ def get_tapis_token_header_optional(
     x_tapis_token: str | None = Header(default=None, alias="X-TAPIS-TOKEN"),
     authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> str | None:
+    logger.debug(
+        "Optional Tapis token header lookup extra=%s",
+        {
+            "x_tapis_token_present": bool(x_tapis_token),
+            "authorization_present": bool(authorization),
+            "authorization_is_bearer": bool(authorization and authorization.lower().startswith("bearer ")),
+        },
+    )
     if x_tapis_token:
         logger.debug("Resolved optional Tapis token from X-TAPIS-TOKEN header")
         return x_tapis_token
