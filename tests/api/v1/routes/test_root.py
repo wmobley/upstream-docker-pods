@@ -22,7 +22,7 @@ def mock_settings():
             TAS_USER=TEST_USERNAME,
             TAS_SECRET=TEST_PASSWORD,
             TAS_URL='http://localhost:5432',
-            TAPIS_BASE_URL="https://tacc.tapis.io",
+            TAPIS_BASE_URL="https://portals.tapis.io",
             TAPIS_TENANT_ID="portals",
             TAPIS_ENFORCE_AUTH_IN_DEV=True,
             ALG="HS256",

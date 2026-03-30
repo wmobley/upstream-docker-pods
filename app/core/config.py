@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     TAS_SECRET: str = Field(default="test_secret")
     JWT_SECRET: str = Field(default="test_secret")
     TAS_URL: str = Field(default="https://example.com")
-    TAPIS_BASE_URL: str = Field(default="https://tacc.tapis.io")
+    TAPIS_BASE_URL: str = Field(default="https://portals.tapis.io")
     TAPIS_TENANT_ID: str = Field(default="portals")
     TAPIS_ENFORCE_AUTH_IN_DEV: bool = Field(default=False)
     DATABASE_URL: str = Field(default="sqlite:///:memory:")
