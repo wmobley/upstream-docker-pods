@@ -237,6 +237,10 @@ def get_tapis_token_header_optional(
 ) -> str | None:
     if x_tapis_token:
         return x_tapis_token
+
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization.split(" ", 1)[1]
+
     return None
 
 async def get_current_user_optional(request: Request) -> User | None:

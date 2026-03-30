@@ -248,7 +248,18 @@ class CKANService:
             return cast(Dict[str, Any], result)
         except CKANError as exc:
             message = str(exc).lower()
-            if "already exists" not in message and "already in use" not in message and "url is already" not in message:
+            should_patch = (
+                "already exists" in message
+                or "already in use" in message
+                or "url is already" in message
+            )
+            if not should_patch:
+                try:
+                    self.get_dataset(token=token, name_or_id=name)
+                except CKANError:
+                    raise
+                should_patch = True
+            if not should_patch:
                 raise
             payload["id"] = name
             result = self._request(
