@@ -477,7 +477,7 @@ async def publish_station(
             "tapis_token": _token_summary(tapis_token),
         },
     )
-    logger.debug(
+    logger.info(
         "station_publish_request_headers extra=%s",
         {
             "request_id": request_id,
@@ -489,7 +489,7 @@ async def publish_station(
             ),
         },
     )
-    logger.debug(
+    logger.info(
         "station_publish_raw_request extra=%s",
         {
             "request_id": request_id,

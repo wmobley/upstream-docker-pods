@@ -235,7 +235,7 @@ def get_tapis_token_header_optional(
     x_tapis_token: str | None = Header(default=None, alias="X-TAPIS-TOKEN"),
     authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> str | None:
-    logger.debug(
+    logger.info(
         "Optional Tapis token header lookup extra=%s",
         {
             "x_tapis_token_present": bool(x_tapis_token),
