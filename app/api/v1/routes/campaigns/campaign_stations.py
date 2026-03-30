@@ -481,11 +481,11 @@ async def publish_station(
         "station_publish_request_headers extra=%s",
         {
             "request_id": request_id,
-            "raw_x_tapis_token_present": bool(const_raw_x_tapis_token),
-            "raw_x_tapis_token": _token_summary(const_raw_x_tapis_token),
-            "raw_authorization_present": bool(const_raw_authorization),
+            "raw_x_tapis_token_present": bool(raw_x_tapis_token),
+            "raw_x_tapis_token": _token_summary(raw_x_tapis_token),
+            "raw_authorization_present": bool(raw_authorization),
             "raw_authorization": _token_summary(
-                const_raw_authorization.split(" ", 1)[1] if const_raw_authorization and const_raw_authorization.lower().startswith("bearer ") else const_raw_authorization
+                raw_authorization.split(" ", 1)[1] if raw_authorization and raw_authorization.lower().startswith("bearer ") else raw_authorization
             ),
         },
     )
