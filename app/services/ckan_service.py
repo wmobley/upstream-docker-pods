@@ -11,6 +11,20 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 
 
+def _mask_token(token: str | None) -> dict[str, int | str | None]:
+    if not token:
+        return {"length": None, "dots": None, "prefix": None, "suffix": None}
+    normalized = token
+    if normalized.lower().startswith("bearer "):
+        normalized = normalized.split(" ", 1)[1]
+    return {
+        "length": len(normalized),
+        "dots": normalized.count("."),
+        "prefix": normalized[:16],
+        "suffix": normalized[-16:],
+    }
+
+
 class CKANError(RuntimeError):
     """Raised when CKAN returns an error response."""
 
@@ -65,10 +79,24 @@ class CKANService:
         auth_mode: Literal["combined", "bearer", "x_tapis"] = "combined",
     ) -> Any:
         url = f"{self.base_url}{path}"
+        headers = self._headers(token, as_api_key=as_api_key, auth_mode=auth_mode)
+        logger.info(
+            "CKAN outbound request extra=%s",
+            {
+                "method": method,
+                "url": url,
+                "auth_mode": auth_mode,
+                "as_api_key": as_api_key,
+                "authorization": _mask_token(headers.get("Authorization")),
+                "x_tapis_token": _mask_token(headers.get("X-Tapis-Token")),
+                "json_keys": sorted(json.keys()) if isinstance(json, dict) else None,
+                "param_keys": sorted(params.keys()) if isinstance(params, dict) else None,
+            },
+        )
         response = requests.request(
             method=method,
             url=url,
-            headers=self._headers(token, as_api_key=as_api_key, auth_mode=auth_mode),
+            headers=headers,
             json=json,
             params=params,
             timeout=self.timeout,
