@@ -57,6 +57,32 @@ def _fetch_user_organizations(*, token: str, username: str) -> List[str]:
     return sorted(identifiers)
 
 
+def user_has_ckan_organization(
+    *,
+    token: str,
+    username: str,
+    organization: str,
+) -> bool:
+    ckan_client = get_ckan_service()
+    if not ckan_client or not settings.CKAN_URL:
+        return False
+
+    try:
+        return ckan_client.user_is_in_organization(
+            token=token,
+            organization_id=organization,
+            username=username,
+        )
+    except CKANError as exc:
+        logger.warning(
+            "Fallback CKAN organization membership check failed for %s in %s: %s",
+            username,
+            organization,
+            exc,
+        )
+        return False
+
+
 async def get_user_allocations(
     current_user: User = Depends(get_viewer_user),
     tapis_token: str | None = Depends(get_tapis_token_header_optional),

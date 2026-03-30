@@ -128,6 +128,51 @@ class CKANService:
                 }
         return results
 
+    def get_organization(
+        self,
+        *,
+        token: str,
+        organization_id: str,
+        include_users: bool = False,
+        auth_mode: Literal["combined", "bearer", "x_tapis"] = "combined",
+    ) -> Dict[str, Any]:
+        result = self._request(
+            method="GET",
+            path="/api/3/action/organization_show",
+            token=token,
+            params={"id": organization_id, "include_users": include_users},
+            auth_mode=auth_mode,
+        )
+        if not isinstance(result, dict):
+            raise CKANError("Unexpected CKAN response format for organization")
+        return cast(Dict[str, Any], result)
+
+    def user_is_in_organization(
+        self,
+        *,
+        token: str,
+        organization_id: str,
+        username: str,
+        auth_mode: Literal["combined", "bearer", "x_tapis"] = "combined",
+    ) -> bool:
+        organization = self.get_organization(
+            token=token,
+            organization_id=organization_id,
+            include_users=True,
+            auth_mode=auth_mode,
+        )
+        users = organization.get("users", [])
+        if not isinstance(users, list):
+            raise CKANError("Unexpected CKAN response format for organization users")
+        normalized_username = username.strip().lower()
+        for user in users:
+            if not isinstance(user, dict):
+                continue
+            candidate = str(user.get("name") or "").strip().lower()
+            if candidate == normalized_username:
+                return True
+        return False
+
     def get_dataset(self, *, token: str, name_or_id: str) -> Dict[str, Any]:
         result = self._request(
             method="GET",

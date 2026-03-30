@@ -13,7 +13,11 @@ from app.api.dependencies.auth import (
     get_tapis_token_header,
     get_tapis_token_header_optional,
 )
-from app.api.dependencies.pytas import check_allocation_permission, get_user_allocations
+from app.api.dependencies.pytas import (
+    check_allocation_permission,
+    get_user_allocations,
+    user_has_ckan_organization,
+)
 from app.api.v1.schemas.station import (
     GetStationResponse,
     ListStationsResponsePagination,
@@ -500,14 +504,28 @@ async def publish_station(
                     owner_org_slug = (matched_org.get("name") or matched_org.get("id") or owner_org_slug).strip()
                     ckan_branch = "organization_resolved"
                 else:
-                    message = (
-                        f"Skipping CKAN publication for station {station.id}: "
-                        f"user {current_user.username} is not a member of organization '{owner_org_slug}'."
+                    fallback_member = user_has_ckan_organization(
+                        token=tapis_token,
+                        username=current_user.username,
+                        organization=owner_org_slug,
                     )
-                    logger.warning("%s", message)
-                    errors.append(message)
-                    ckan_branch = "organization_membership_mismatch"
-                    owner_org_slug = None
+                    if fallback_member:
+                        logger.warning(
+                            "CKAN organization_list_for_user returned no match for %s in %s; "
+                            "falling back to organization_show membership verification.",
+                            current_user.username,
+                            owner_org_slug,
+                        )
+                        ckan_branch = "organization_resolved_fallback"
+                    else:
+                        message = (
+                            f"Skipping CKAN publication for station {station.id}: "
+                            f"user {current_user.username} is not a member of organization '{owner_org_slug}'."
+                        )
+                        logger.warning("%s", message)
+                        errors.append(message)
+                        ckan_branch = "organization_membership_mismatch"
+                        owner_org_slug = None
         else:
             message = (
                 f"Skipping CKAN publication for station {station.id}: "
