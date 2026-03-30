@@ -236,11 +236,14 @@ def get_tapis_token_header_optional(
     authorization: str | None = Header(default=None, alias="Authorization"),
 ) -> str | None:
     if x_tapis_token:
+        logger.debug("Resolved optional Tapis token from X-TAPIS-TOKEN header")
         return x_tapis_token
 
     if authorization and authorization.lower().startswith("bearer "):
+        logger.debug("Resolved optional Tapis token from Authorization bearer header")
         return authorization.split(" ", 1)[1]
 
+    logger.debug("No optional Tapis token found in request headers")
     return None
 
 async def get_current_user_optional(request: Request) -> User | None:

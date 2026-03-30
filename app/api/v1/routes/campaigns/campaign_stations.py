@@ -462,6 +462,19 @@ async def publish_station(
             "tapis_token": _token_summary(tapis_token),
         },
     )
+    logger.debug(
+        "station_publish_token_debug extra=%s",
+        {
+            "request_id": request_id,
+            "campaign_id": campaign_id,
+            "station_id": station_id,
+            "current_user": getattr(current_user, "username", None),
+            "has_oauth_token": bool(_token),
+            "oauth_token": _token_summary(_token),
+            "has_tapis_token": bool(tapis_token),
+            "tapis_token": _token_summary(tapis_token),
+        },
+    )
     if not check_allocation_permission(current_user, campaign_id, allocations):
         raise HTTPException(status_code=404, detail="Allocation is incorrect")
 
