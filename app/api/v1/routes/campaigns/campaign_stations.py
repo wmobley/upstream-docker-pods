@@ -48,6 +48,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/campaigns/{campaign_id}", tags=["stations"])
 
 
+def _token_summary(token: str | None) -> dict[str, int | str | None]:
+    if not token:
+        return {"length": None, "dots": None, "prefix": None, "suffix": None}
+    return {
+        "length": len(token),
+        "dots": token.count("."),
+        "prefix": token[:16],
+        "suffix": token[-16:],
+    }
+
+
 def _delete_station_dataset(
     *,
     ckan_client: CKANService,
@@ -448,6 +459,7 @@ async def publish_station(
             "force": publish_request.force,
             "organization": publish_request.organization,
             "has_tapis_token": bool(tapis_token),
+            "tapis_token": _token_summary(tapis_token),
         },
     )
     if not check_allocation_permission(current_user, campaign_id, allocations):
