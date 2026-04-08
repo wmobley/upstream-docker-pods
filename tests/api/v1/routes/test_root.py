@@ -91,3 +91,17 @@ def test_login_failure_with_detail(mock_settings):
         )
         assert response.status_code == 401
         assert response.json()["detail"] == "Tapis said nope"
+
+
+def test_docs_cache_headers():
+    response = client.get("/docs")
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Pragma"] == "no-cache"
+
+
+def test_openapi_cache_headers():
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Pragma"] == "no-cache"
