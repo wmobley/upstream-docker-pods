@@ -1,4 +1,6 @@
-from fastapi import FastAPI, Request
+from collections.abc import Awaitable, Callable
+
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.main import api_router
@@ -26,7 +28,10 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def add_cache_control_headers(request: Request, call_next):
+async def add_cache_control_headers(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     response = await call_next(request)
 
     if request.url.path.startswith("/api/") or request.url.path in {"/docs", "/openapi.json", "/redoc"}:

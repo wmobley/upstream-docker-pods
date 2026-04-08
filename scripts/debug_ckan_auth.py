@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 # Ensure the repo root is on sys.path so this helper can be executed from any cwd.
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -16,7 +16,7 @@ if str(ROOT_DIR) not in sys.path:
 
 import requests
 
-from app.services.ckan_service import CKANError, CKANService
+from app.services.ckan_service import CKANAuthMode, CKANError, CKANService
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +181,11 @@ def main() -> int:
         error("Authentication token is required via --token or CKAN_TOKEN environment variable.")
 
     client = make_ckan_client(args.base_url)
-    modes = [args.auth_mode] if args.auth_mode != "all" else ["combined", "bearer", "x_tapis"]
+    modes: list[CKANAuthMode]
+    if args.auth_mode == "all":
+        modes = ["combined", "bearer", "x_tapis"]
+    else:
+        modes = [cast(CKANAuthMode, args.auth_mode)]
 
     results: dict[str, Any] = {}
     for mode in modes:

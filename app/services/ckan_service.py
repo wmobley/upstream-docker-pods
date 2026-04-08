@@ -10,6 +10,8 @@ from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+CKANAuthMode = Literal["combined", "bearer", "x_tapis"]
+
 
 def _mask_token(token: str | None) -> dict[str, int | str | None]:
     if not token:
@@ -51,7 +53,7 @@ class CKANService:
         token: str,
         *,
         as_api_key: bool = False,
-        auth_mode: Literal["combined", "bearer", "x_tapis"] = "combined",
+        auth_mode: CKANAuthMode = "combined",
     ) -> Dict[str, str]:
         if as_api_key:
             return {
@@ -76,7 +78,7 @@ class CKANService:
         json: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
         as_api_key: bool = False,
-        auth_mode: Literal["combined", "bearer", "x_tapis"] = "combined",
+        auth_mode: CKANAuthMode = "combined",
     ) -> Any:
         url = f"{self.base_url}{path}"
         headers = self._headers(token, as_api_key=as_api_key, auth_mode=auth_mode)
@@ -123,7 +125,7 @@ class CKANService:
         self,
         *,
         token: str,
-        auth_mode: Literal["combined", "bearer", "x_tapis"] = "combined",
+        auth_mode: CKANAuthMode = "combined",
     ) -> List[Dict[str, Any]]:
         result = self._request(
             method="GET",
@@ -162,7 +164,7 @@ class CKANService:
         token: str,
         organization_id: str,
         include_users: bool = False,
-        auth_mode: Literal["combined", "bearer", "x_tapis"] = "combined",
+        auth_mode: CKANAuthMode = "combined",
     ) -> Dict[str, Any]:
         result = self._request(
             method="GET",
@@ -181,7 +183,7 @@ class CKANService:
         token: str,
         organization_id: str,
         username: str,
-        auth_mode: Literal["combined", "bearer", "x_tapis"] = "combined",
+        auth_mode: CKANAuthMode = "combined",
     ) -> bool:
         organization = self.get_organization(
             token=token,
