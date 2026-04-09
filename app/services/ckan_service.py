@@ -310,6 +310,7 @@ class CKANService:
         description: str,
         format_: str = "API",
         resource_id: str | None = None,
+        extra_fields: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "package_id": dataset_id,
@@ -318,6 +319,8 @@ class CKANService:
             "format": format_,
             "description": description,
         }
+        if extra_fields:
+            payload.update(extra_fields)
 
         if resource_id:
             payload["id"] = resource_id

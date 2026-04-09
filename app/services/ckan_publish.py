@@ -78,7 +78,7 @@ def ensure_station_dataset(
         campaign_metadata,
         campaign_metadata_schema or [],
         prefix="meta:campaign:",
-        allow_top_level=False,
+        allow_top_level=True,
     )
     if station_extras:
         extras.extend(station_extras)
@@ -145,6 +145,7 @@ def sync_sensor_resources(
     dataset: dict[str, Any] | None,
     dataset_id: str | None,
     sensors: Sequence[Any] | Iterable[Any],
+    sensor_metadata_schema: Sequence[Any] | None = None,
 ) -> list[str]:
     """
     Ensure CKAN resources exist for the provided sensors. Returns a list of warnings/errors.
@@ -164,7 +165,14 @@ def sync_sensor_resources(
     ui_base = settings.UI_BASE_URL.rstrip("/")
     api_base = settings.API_BASE_URL.rstrip("/") if settings.API_BASE_URL else None
 
-    def _upsert_resource(name: str, url: str, description: str, format_: str, sensor_identifier: str) -> None:
+    def _upsert_resource(
+        name: str,
+        url: str,
+        description: str,
+        format_: str,
+        sensor_identifier: str,
+        extra_fields: dict[str, Any] | None = None,
+    ) -> None:
         existing = existing_resources_by_name.get(name)
         resource_id = str(existing.get("id")) if existing and existing.get("id") else None
         try:
@@ -176,6 +184,7 @@ def sync_sensor_resources(
                 description=description,
                 format_=format_,
                 resource_id=resource_id,
+                extra_fields=extra_fields,
             )
             existing_resources_by_name[name] = resource
         except CKANError as exc:
@@ -195,11 +204,29 @@ def sync_sensor_resources(
     for sensor in sensors:
         sensor_id, sensor_label = _sensor_identifier(sensor)
         sensor_slug = _slugify(f"{station.name}-{sensor_label}") or f"sensor-{sensor_id}"
+        sensor_metadata = getattr(sensor, "meta", None) or {}
+        sensor_top_level, sensor_extras = _build_ckan_metadata(
+            sensor_metadata,
+            sensor_metadata_schema or [],
+            prefix="meta:sensor:",
+            allow_top_level=True,
+        )
+        resource_extra_fields = {
+            **sensor_top_level,
+            **_extras_to_field_map(sensor_extras),
+        }
 
         sensor_ui_name = f"{sensor_slug}-ui"
         sensor_ui_url = f"{ui_base}/campaigns/{campaign.id}/stations/{station.id}/sensors/{sensor_id}"
         sensor_ui_description = f"Interactive upstream view for sensor {sensor_label} at station {station.name}."
-        _upsert_resource(sensor_ui_name, sensor_ui_url, sensor_ui_description, "HTML", sensor_id)
+        _upsert_resource(
+            sensor_ui_name,
+            sensor_ui_url,
+            sensor_ui_description,
+            "HTML",
+            sensor_id,
+            resource_extra_fields,
+        )
 
         if not api_base:
             continue
@@ -211,7 +238,14 @@ def sync_sensor_resources(
         sensor_api_description = (
             f"Measurement API endpoint (GeoJSON) for sensor {sensor_label} at station {station.name}."
         )
-        _upsert_resource(sensor_api_name, sensor_api_url, sensor_api_description, "GeoJSON", sensor_id)
+        _upsert_resource(
+            sensor_api_name,
+            sensor_api_url,
+            sensor_api_description,
+            "GeoJSON",
+            sensor_id,
+            resource_extra_fields,
+        )
 
     return errors
 
@@ -260,6 +294,14 @@ def _serialize_metadata_value(value: Any) -> str:
         except Exception:
             return str(value)
     return str(value)
+
+
+def _extras_to_field_map(extras: Sequence[dict[str, str]]) -> dict[str, str]:
+    return {
+        item["key"]: item["value"]
+        for item in extras
+        if isinstance(item, dict) and "key" in item and "value" in item
+    }
 
 
 __all__ = ["ensure_station_dataset", "sync_sensor_resources"]

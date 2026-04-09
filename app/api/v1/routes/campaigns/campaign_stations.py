@@ -597,6 +597,7 @@ async def publish_station(
                 metadata_repo = MetadataSchemaRepository(db)
                 station_schema = metadata_repo.list_schema(scope="station", active_only=True)
                 campaign_schema = metadata_repo.list_schema(scope="campaign", active_only=True)
+                sensor_schema = metadata_repo.list_schema(scope="sensor", active_only=True)
                 dataset, dataset_id, dataset_errors = ensure_station_dataset(
                     settings=settings,
                     ckan_client=ckan_client,
@@ -622,6 +623,7 @@ async def publish_station(
                     dataset=dataset,
                     dataset_id=dataset_id,
                     sensors=sensors,
+                    sensor_metadata_schema=sensor_schema,
                 )
                 errors.extend(resource_errors)
                 if resource_errors:

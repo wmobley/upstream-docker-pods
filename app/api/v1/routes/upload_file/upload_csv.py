@@ -92,6 +92,7 @@ def post_sensor_and_measurement(
                     metadata_repo = MetadataSchemaRepository(db)
                     station_schema = metadata_repo.list_schema(scope="station", active_only=True)
                     campaign_schema = metadata_repo.list_schema(scope="campaign", active_only=True)
+                    sensor_schema = metadata_repo.list_schema(scope="sensor", active_only=True)
                     dataset, dataset_id, dataset_errors = ensure_station_dataset(
                         settings=settings,
                         ckan_client=ckan_client,
@@ -114,6 +115,7 @@ def post_sensor_and_measurement(
                         dataset=dataset,
                         dataset_id=dataset_id,
                         sensors=sensors,
+                        sensor_metadata_schema=sensor_schema,
                     )
                     ckan_sync_messages.extend(resource_errors)
         else:
