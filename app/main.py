@@ -1,4 +1,5 @@
 from collections.abc import Awaitable, Callable
+import os
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +27,13 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+UPSTREAM_RELEASE = (
+    os.environ.get("UPSTREAM_RELEASE")
+    or os.environ.get("IMAGE_TAG")
+    or os.environ.get("HOSTNAME")
+    or "unknown"
+)
+
 
 @app.middleware("http")
 async def add_cache_control_headers(
@@ -37,6 +45,8 @@ async def add_cache_control_headers(
     if request.url.path.startswith("/api/") or request.url.path in {"/docs", "/openapi.json", "/redoc"}:
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
+
+    response.headers["X-Upstream-Release"] = UPSTREAM_RELEASE
 
     return response
 

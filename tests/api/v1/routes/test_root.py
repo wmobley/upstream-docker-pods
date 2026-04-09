@@ -105,3 +105,9 @@ def test_openapi_cache_headers():
     assert response.status_code == 200
     assert response.headers["Cache-Control"] == "no-store"
     assert response.headers["Pragma"] == "no-cache"
+
+
+def test_release_header_present():
+    response = client.get("/docs")
+    assert response.status_code == 200
+    assert "X-Upstream-Release" in response.headers
