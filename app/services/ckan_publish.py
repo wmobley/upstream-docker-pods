@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from typing import Any, Iterable, Sequence
 
 from app.core.config import Settings
 from app.services.ckan_service import CKANService, CKANError, _slugify
 
 logger = logging.getLogger(__name__)
+SPATIAL_BUFFER_METERS = 5.0
 
 
 def ensure_station_dataset(
@@ -41,8 +43,9 @@ def ensure_station_dataset(
 
     spatial_value = None
     station_geometry = getattr(station, "geometry", None)
-    if isinstance(station_geometry, dict) and station_geometry:
-        spatial_value = json.dumps(station_geometry)
+    spatial_geometry = _geometry_to_buffered_bbox_polygon(station_geometry)
+    if spatial_geometry:
+        spatial_value = json.dumps(spatial_geometry)
 
     version_value = None
     published_at = getattr(station, "published_at", None)
@@ -248,6 +251,64 @@ def sync_sensor_resources(
         )
 
     return errors
+
+
+def _geometry_to_buffered_bbox_polygon(
+    geometry: dict[str, Any] | None,
+    *,
+    buffer_meters: float = SPATIAL_BUFFER_METERS,
+) -> dict[str, Any] | None:
+    if not isinstance(geometry, dict) or not geometry:
+        return None
+
+    coordinates = geometry.get("coordinates")
+    points = _flatten_coordinates(coordinates)
+    if not points:
+        return None
+
+    longitudes = [point[0] for point in points]
+    latitudes = [point[1] for point in points]
+    min_lon = min(longitudes)
+    max_lon = max(longitudes)
+    min_lat = min(latitudes)
+    max_lat = max(latitudes)
+
+    center_lat = (min_lat + max_lat) / 2
+    lat_buffer = buffer_meters / 111_320
+    cos_lat = math.cos(math.radians(center_lat))
+    lon_buffer = buffer_meters / (111_320 * max(abs(cos_lat), 1e-6))
+
+    west = min_lon - lon_buffer
+    east = max_lon + lon_buffer
+    south = min_lat - lat_buffer
+    north = max_lat + lat_buffer
+
+    return {
+        "type": "Polygon",
+        "coordinates": [[
+            [west, south],
+            [west, north],
+            [east, north],
+            [east, south],
+            [west, south],
+        ]],
+    }
+
+
+def _flatten_coordinates(coordinates: Any) -> list[tuple[float, float]]:
+    points: list[tuple[float, float]] = []
+
+    def _visit(node: Any) -> None:
+        if not isinstance(node, list):
+            return
+        if len(node) >= 2 and all(isinstance(value, (int, float)) for value in node[:2]):
+            points.append((float(node[0]), float(node[1])))
+            return
+        for item in node:
+            _visit(item)
+
+    _visit(coordinates)
+    return points
 
 
 def _build_ckan_metadata(
