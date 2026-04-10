@@ -72,6 +72,10 @@ class PodsService:
                 return {"status": "exists", "volume_id": volume_id}
             raise
 
+    def set_volume_permission(self, *, volume_id: str, user: str, level: str = "ADMIN") -> Dict[str, Any]:
+        payload = {"user": user, "level": level}
+        return self._request(method="POST", path=f"/v3/pods/volumes/{volume_id}/permissions", json=payload)
+
     def create_pod(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         sanitized = dict(payload)
         sanitized.pop("pod_template", None)
@@ -122,6 +126,20 @@ class PodsService:
                 sanitized.get("pod_id"),
             )
             return self._request(method="POST", path="/v3/pods", json=compatibility_payload)
+
+    def set_pod_permission(self, *, pod_id: str, user: str, level: str = "ADMIN") -> Dict[str, Any]:
+        payload = {"user": user, "level": level}
+        return self._request(method="POST", path=f"/v3/pods/{pod_id}/permissions", json=payload)
+
+    def grant_default_admin_permissions(self, *, volume_id: str, pod_ids: list[str]) -> dict[str, Any]:
+        admin_users = [user for user in (self.settings.DEFAULT_ADMIN_USERS or []) if user]
+        grants: dict[str, Any] = {"volume": {}, "pods": {}}
+        for user in admin_users:
+            grants["volume"][user] = self.set_volume_permission(volume_id=volume_id, user=user, level="ADMIN")
+            for pod_id in pod_ids:
+                pod_grants = grants["pods"].setdefault(pod_id, {})
+                pod_grants[user] = self.set_pod_permission(pod_id=pod_id, user=user, level="ADMIN")
+        return grants
 
     def build_bundle(self, *, base: str, pg_user: str, pg_password: str) -> Dict[str, Any]:
         base_clean = _sanitize_base(base)
@@ -252,6 +270,10 @@ class PodsService:
             "api": self.create_pod(api_payload),
             "ui": self.create_pod(ui_payload),
         }
+        created["permissions"] = self.grant_default_admin_permissions(
+            volume_id=volume_id,
+            pod_ids=[f"{base_clean}postgres", f"{base_clean}api", base_clean],
+        )
         return created
 
 

@@ -12,6 +12,7 @@ def test_get_settings() -> None:
     assert hasattr(settings, 'TAS_SECRET')
     assert hasattr(settings, 'JWT_SECRET')
     assert hasattr(settings, 'ALG')
+    assert hasattr(settings, 'TAPIS_BACKUP_SYSTEM_ID')
 
 def test_settings_singleton() -> None:
     settings1 = get_settings()
@@ -27,6 +28,7 @@ def test_settings_required_values() -> None:
     assert settings.ALG is not None
     assert settings.POSTGRES_PASSWORD is not None
     assert settings.DATABASE_URL is not None
+    assert settings.TAPIS_BACKUP_SYSTEM_ID is not None
 
 def test_settings_jwt_config() -> None:
     settings = get_settings()
@@ -56,3 +58,6 @@ def test_settings_with_env_sample(monkeypatch):
     assert settings.ENVIRONMENT == "dev"
     assert settings.ENV == "dev"
     assert settings.DATABASE_URL == "postgresql+psycopg://fastapi_traefik@localhost:5432/fastapi_traefik"
+    assert settings.TAPIS_BACKUP_SYSTEM_ID == "ptdatax.project.PTDATAX-284"
+    assert settings.TAPIS_BACKUP_ROOT_PATH == "/upstream-postgres"
+    assert settings.TAPIS_BACKUP_RETENTION_DAYS == 7

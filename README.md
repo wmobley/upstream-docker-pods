@@ -128,6 +128,10 @@ alembic downgrade -1
 alembic history
 ```
 
+## Postgres Backups
+
+Pod-hosted Upstream Postgres backups are documented in [../tapis-postgres-backup/README.md](/Users/wmobley/Documents/GitHub/upstream/tapis-postgres-backup/README.md). The backup tooling now lives in its own top-level directory so it can be operated from the VM without being mixed into the API service code.
+
 ## Seeding Development Data via API
 
 The Alembic migrations insert sample campaigns, stations, sensors, and hourly measurements directly into the database. For workflows that need to exercise the API instead, use the helper script `scripts/seed_api_data.py`:

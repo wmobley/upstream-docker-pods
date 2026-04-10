@@ -24,8 +24,13 @@ class Settings(BaseSettings):
     TAPIS_PODS_BASE_URL: str | None = Field(default=None)
     TAPIS_SERVICE_USERNAME: str | None = Field(default=None)
     TAPIS_SERVICE_PASSWORD: str | None = Field(default=None)
+    TAPIS_BACKUP_SYSTEM_ID: str = Field(default="ptdatax.project.PTDATAX-284")
+    TAPIS_BACKUP_ROOT_PATH: str = Field(default="/upstream-postgres")
+    TAPIS_BACKUP_RETENTION_DAYS: int = Field(default=7)
+    TAPIS_BACKUP_STAGING_DIR: str = Field(default="/tmp/upstream-postgres-backups")
+    TAPIS_BACKUP_TIMEOUT_SECONDS: int = Field(default=300)
     ALLOWED_ALLOCATIONS: list[str] | None = Field(default=None)
-    DEFAULT_ADMIN_USERS: list[str] = Field(default_factory=lambda: ["wmobley"])
+    DEFAULT_ADMIN_USERS: list[str] = Field(default_factory=lambda: ["wmobley", "tasclient_dsso"])
 
     model_config = SettingsConfigDict(
         env_file=".env",

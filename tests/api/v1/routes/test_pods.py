@@ -26,7 +26,7 @@ def test_create_pod_bundle_invokes_service(monkeypatch):
 
         def build_bundle(self, *, base, pg_user, pg_password):
             calls["args"] = (base, pg_user, pg_password)
-            return {"volume": "ok", "api": "ok", "ui": "ok"}
+            return {"volume": "ok", "api": "ok", "ui": "ok", "permissions": "ok"}
 
     monkeypatch.setattr("app.api.v1.routes.pods.PodsService", DummyService)
 
@@ -39,7 +39,7 @@ def test_create_pod_bundle_invokes_service(monkeypatch):
     assert response.status_code == 201
     body = response.json()
     assert body["status"] == "requested"
-    assert body["created"] == {"volume": "ok", "api": "ok", "ui": "ok"}
+    assert body["created"] == {"volume": "ok", "api": "ok", "ui": "ok", "permissions": "ok"}
     assert calls["args"] == ("sniffer", "pguser", "pgpass")
     assert calls["token"] == "user-token"
 
