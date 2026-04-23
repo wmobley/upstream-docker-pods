@@ -7,6 +7,7 @@ from typing import Annotated, Dict, Any, List
 from starlette.formparsers import MultiPartParser
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
 
 from app.api.dependencies.auth import get_edit_user, get_tapis_token_header_optional
 from app.api.v1.schemas.user import User
@@ -33,6 +34,14 @@ DEFAULT_VARIABLE_NAME = 'No BestGuess Formula'
 
 router = APIRouter(prefix="/uploadfile_csv", tags=["uploadfile_csv"])
 logger = logging.getLogger(__name__)
+
+
+def is_measurement_batch_too_large_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        "number of parameters must be between 0 and 65535" in message
+        or "too many parameters" in message
+    )
 
 def create_upload_event(session: Session) -> UploadFileEvent:
     """Create and return a new upload file event."""
@@ -247,6 +256,31 @@ def post_sensor_and_measurement(
             },
         )
         raise
+    except OperationalError as exc:
+        db.rollback()
+        logger.exception(
+            "upload_csv_operational_error extra=%s",
+            {
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+                "upload_event_id": upload_event.id,
+                "sensors_filename": upload_file_sensors.filename,
+                "measurements_filename": upload_file_measurements.filename,
+            },
+        )
+        if is_measurement_batch_too_large_error(exc):
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    "Upload is too large for a single database write batch. "
+                    "Split the measurements into smaller uploads and retry. "
+                    f"upload_event_id={upload_event.id}"
+                ),
+            ) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal upload error. See server logs. upload_event_id={upload_event.id}",
+        ) from exc
     except Exception:
         db.rollback()
         logger.exception(

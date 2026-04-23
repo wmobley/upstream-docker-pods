@@ -1,7 +1,6 @@
 from datetime import datetime
 import logging
 import pandas as pd
-from sqlalchemy import insert
 from sqlalchemy.dialects.postgresql import insert
 from starlette.formparsers import MultiPartParser
 from fastapi import HTTPException, UploadFile
@@ -15,7 +14,11 @@ from app.api.v1.schemas.sensor import SensorIn
 
 # Constants
 MultiPartParser.spool_max_size = 500 * 1024 * 1024
-BATCH_SIZE = 10000
+# Keep each INSERT safely below PostgreSQL's 65535 bind-parameter limit.
+# Each measurement row binds 7 values in the bulk insert statement.
+POSTGRES_MAX_BIND_PARAMS = 65535
+MEASUREMENT_INSERT_PARAM_COUNT = 7
+BATCH_SIZE = 9000
 DEFAULT_VARIABLE_NAME = 'No BestGuess Formula'
 logger = logging.getLogger(__name__)
 
@@ -40,7 +43,6 @@ def process_batch(batch: list[dict[str, int | datetime | float | WKTElement]], s
     )
     batch.clear()
     return inserted_count
-
 def process_sensors_file(file: UploadFile, station_id: int, upload_event_id: int, session: Session) -> dict[str, int]:
     """Process the sensors CSV file and return a mapping of aliases to sensor IDs."""
     # Read CSV using pandas
@@ -164,7 +166,8 @@ def process_measurements_file(
             "aliases": sorted(alias_to_sensorid_map.keys()),
         },
     )
-    measurement_batch = []
+    max_rows_per_insert = min(BATCH_SIZE, POSTGRES_MAX_BIND_PARAMS // MEASUREMENT_INSERT_PARAM_COUNT)
+    measurement_batch: list[dict[str, int | datetime | float | WKTElement]] = []
     total_measurements = 0
     errors = []
     lon_series = df['Lon_deg'].astype(str)
@@ -203,26 +206,25 @@ def process_measurements_file(
                 "value_count": alias_value_count,
             },
         )
-        sensor_measurements = [
-            {
-                'stationid': station_id,
-                'collectiontime': time,
-                'measurementvalue': value,
-                'geometry': WKTElement(geom, srid=4326),
-                'sensorid': sensor_id,
-                'variablename': alias,
-                'upload_file_events_id': upload_event_id
-            }
-            for time, value, geom in zip(
-                df.loc[valid_mask, 'collectiontime'],
-                df.loc[valid_mask, alias],
-                df.loc[valid_mask, 'geometry_str']
+        for time, value, geom in zip(
+            df.loc[valid_mask, 'collectiontime'],
+            df.loc[valid_mask, alias],
+            df.loc[valid_mask, 'geometry_str']
+        ):
+            measurement_batch.append(
+                {
+                    'stationid': station_id,
+                    'collectiontime': time,
+                    'measurementvalue': value,
+                    'geometry': WKTElement(geom, srid=4326),
+                    'sensorid': sensor_id,
+                    'variablename': alias,
+                    'upload_file_events_id': upload_event_id
+                }
             )
-        ]
-        measurement_batch.extend(sensor_measurements)
-        if len(measurement_batch) >= BATCH_SIZE:
-            total_measurements += process_batch(measurement_batch, session)
-            measurement_batch = []
+            if len(measurement_batch) >= max_rows_per_insert:
+                total_measurements += process_batch(measurement_batch, session)
+                measurement_batch = []
 
     if measurement_batch:
         total_measurements += process_batch(measurement_batch, session)
@@ -233,6 +235,7 @@ def process_measurements_file(
         {
             "station_id": station_id,
             "upload_event_id": upload_event_id,
+            "max_rows_per_insert": max_rows_per_insert,
             "total_measurements": total_measurements,
             "error_count": len(errors),
             "errors": errors,
