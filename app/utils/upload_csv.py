@@ -17,6 +17,7 @@ from app.api.v1.schemas.sensor import SensorIn
 MultiPartParser.spool_max_size = 500 * 1024 * 1024
 BATCH_SIZE = 10000
 DEFAULT_VARIABLE_NAME = 'No BestGuess Formula'
+logger = logging.getLogger(__name__)
 
 
 def process_batch(batch: list[dict[str, int | datetime | float | WKTElement]], session: Session) -> int:
@@ -30,6 +31,13 @@ def process_batch(batch: list[dict[str, int | datetime | float | WKTElement]], s
     result = session.execute(stmt)
     inserted_count = result.rowcount if hasattr(result, 'rowcount') else len(batch)
     session.commit()
+    logger.info(
+        "upload_csv_process_batch extra=%s",
+        {
+            "batch_size": len(batch),
+            "inserted_count": inserted_count,
+        },
+    )
     batch.clear()
     return inserted_count
 
@@ -38,6 +46,16 @@ def process_sensors_file(file: UploadFile, station_id: int, upload_event_id: int
     # Read CSV using pandas
     sensor_repository = SensorRepository(session)
     df_sensors = pd.read_csv(file.file, keep_default_na=False, na_values=[])
+    logger.info(
+        "process_sensors_file_read extra=%s",
+        {
+            "station_id": station_id,
+            "upload_event_id": upload_event_id,
+            "filename": file.filename,
+            "row_count": len(df_sensors.index),
+            "columns": df_sensors.columns.tolist(),
+        },
+    )
     sensor_maps : list[Sensor]= []
     existing_sensors : list[Sensor]= []
     validator = Pandantic(schema=SensorIn)
@@ -64,6 +82,16 @@ def process_sensors_file(file: UploadFile, station_id: int, upload_event_id: int
             sensor_maps.append(sensor)
         else:
             existing_sensors.append(existing_sensor)
+    logger.info(
+        "process_sensors_file_classified extra=%s",
+        {
+            "station_id": station_id,
+            "upload_event_id": upload_event_id,
+            "new_sensor_count": len(sensor_maps),
+            "existing_sensor_count": len(existing_sensors),
+            "aliases": [str(sensor.alias) for sensor in sensor_maps],
+        },
+    )
     sensor_repository.create_sensors(sensor_maps)
 
     # Get sensor mapping
@@ -78,6 +106,15 @@ def process_sensors_file(file: UploadFile, station_id: int, upload_event_id: int
     for sensor in existing_sensors:
         if sensor.alias is not None:
           response[sensor.alias] = sensor.sensorid
+
+    logger.info(
+        "process_sensors_file_done extra=%s",
+        {
+            "station_id": station_id,
+            "upload_event_id": upload_event_id,
+            "alias_to_sensorid_map": response,
+        },
+    )
 
     return response
 
@@ -115,6 +152,18 @@ def process_measurements_file(
         na_values=[''],         # Only empty strings become NaN
         dtype={'Lon_deg': 'str', 'Lat_deg': 'str'},  # Pre-specify dtypes
     )
+    logger.info(
+        "process_measurements_file_read extra=%s",
+        {
+            "station_id": station_id,
+            "upload_event_id": upload_event_id,
+            "filename": file.filename,
+            "row_count": len(df.index),
+            "columns": df.columns.tolist(),
+            "alias_count": len(alias_to_sensorid_map),
+            "aliases": sorted(alias_to_sensorid_map.keys()),
+        },
+    )
     measurement_batch = []
     total_measurements = 0
     errors = []
@@ -127,13 +176,33 @@ def process_measurements_file(
         if alias not in df.columns:
             # Handle errors if alias is missing in the file
             error_msg = f"Measurements columns are {df.columns.tolist()} doesn't match with '{alias}'"
-            logging.error(error_msg)
+            logger.error(error_msg)
             errors.append(error_msg)
             continue
         valid_mask = pd.notna(df[alias])
         if not valid_mask.any():
+            logger.info(
+                "process_measurements_file_no_values_for_alias extra=%s",
+                {
+                    "station_id": station_id,
+                    "upload_event_id": upload_event_id,
+                    "alias": alias,
+                    "sensor_id": sensor_id,
+                },
+            )
             continue
 
+        alias_value_count = int(valid_mask.sum())
+        logger.info(
+            "process_measurements_file_alias_values extra=%s",
+            {
+                "station_id": station_id,
+                "upload_event_id": upload_event_id,
+                "alias": alias,
+                "sensor_id": sensor_id,
+                "value_count": alias_value_count,
+            },
+        )
         sensor_measurements = [
             {
                 'stationid': station_id,
@@ -159,10 +228,29 @@ def process_measurements_file(
         total_measurements += process_batch(measurement_batch, session)
         measurement_batch = []
 
+    logger.info(
+        "process_measurements_file_done extra=%s",
+        {
+            "station_id": station_id,
+            "upload_event_id": upload_event_id,
+            "total_measurements": total_measurements,
+            "error_count": len(errors),
+            "errors": errors,
+        },
+    )
+
     return total_measurements, errors
 
 def update_sensor_statistics(sensor_repository: SensorRepository, alias_to_sensorid_map: dict[str, int]) -> None:
     """Update statistics for all sensors."""
     for sensor_id in alias_to_sensorid_map.values():
+        logger.info(
+            "update_sensor_statistics_sensor_start extra=%s",
+            {"sensor_id": sensor_id},
+        )
         sensor_repository.delete_sensor_statistics(sensor_id)
         sensor_repository.refresh_sensor_statistics(sensor_id)
+        logger.info(
+            "update_sensor_statistics_sensor_done extra=%s",
+            {"sensor_id": sensor_id},
+        )

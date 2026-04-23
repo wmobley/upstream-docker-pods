@@ -64,72 +64,211 @@ def post_sensor_and_measurement(
 
     # Create upload event
     upload_event = create_upload_event(db)
+    logger.info(
+        "upload_csv_start extra=%s",
+        {
+            "campaign_id": campaign_id,
+            "station_id": station_id,
+            "upload_event_id": upload_event.id,
+            "user": getattr(current_user, "username", None),
+            "sensors_filename": upload_file_sensors.filename,
+            "measurements_filename": upload_file_measurements.filename,
+            "sensors_in_memory": upload_file_sensors._in_memory,
+            "measurements_in_memory": upload_file_measurements._in_memory,
+            "tapis_token_present": bool(tapis_token),
+        },
+    )
 
-    # Process sensors file
-    alias_to_sensorid_map = process_sensors_file(
+    try:
+        logger.info(
+            "upload_csv_process_sensors_start extra=%s",
+            {
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+                "upload_event_id": upload_event.id,
+                "sensors_filename": upload_file_sensors.filename,
+            },
+        )
+        alias_to_sensorid_map = process_sensors_file(
             upload_file_sensors, station_id, upload_event.id, db
         )
-    upload_file_sensors.file.close()
+        upload_file_sensors.file.close()
+        logger.info(
+            "upload_csv_process_sensors_done extra=%s",
+            {
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+                "upload_event_id": upload_event.id,
+                "sensor_alias_count": len(alias_to_sensorid_map),
+                "sensor_aliases": sorted(alias_to_sensorid_map.keys()),
+            },
+        )
 
-    # Process measurements file
-    total_measurements, errors = process_measurements_file(upload_file_measurements, station_id, alias_to_sensorid_map, upload_event.id, db)
-    upload_file_measurements.file.close()
-    data_processing_time = round(time.time() - start_time, 1)
-    update_sensor_statistics(sensor_repository, alias_to_sensorid_map)
-    station_service.refresh_geometry(station_id)
+        logger.info(
+            "upload_csv_process_measurements_start extra=%s",
+            {
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+                "upload_event_id": upload_event.id,
+                "measurements_filename": upload_file_measurements.filename,
+            },
+        )
+        total_measurements, errors = process_measurements_file(
+            upload_file_measurements, station_id, alias_to_sensorid_map, upload_event.id, db
+        )
+        upload_file_measurements.file.close()
+        logger.info(
+            "upload_csv_process_measurements_done extra=%s",
+            {
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+                "upload_event_id": upload_event.id,
+                "total_measurements": total_measurements,
+                "error_count": len(errors),
+                "errors": errors,
+            },
+        )
 
-    ckan_sync_messages: list[str] = []
-    if tapis_token:
-        settings = get_settings()
-        ckan_client = get_ckan_service()
-        if ckan_client and settings.CKAN_URL:
-            campaign_service = CampaignService(CampaignRepository(db))
-            campaign = campaign_service.get_campaign_with_summary(campaign_id)
-            station = station_service.get_station(station_id)
-            if campaign and station and alias_to_sensorid_map:
-                owner_org = (campaign.allocation or settings.CKAN_ORGANIZATION or "").strip() or None
-                if owner_org:
-                    metadata_repo = MetadataSchemaRepository(db)
-                    station_schema = metadata_repo.list_schema(scope="station", active_only=True)
-                    campaign_schema = metadata_repo.list_schema(scope="campaign", active_only=True)
-                    sensor_schema = metadata_repo.list_schema(scope="sensor", active_only=True)
-                    dataset, dataset_id, dataset_errors = ensure_station_dataset(
-                        settings=settings,
-                        ckan_client=ckan_client,
-                        tapis_token=tapis_token,
-                        campaign=campaign,
-                        station=station,
-                        owner_org=owner_org,
-                        private=True,
-                        station_metadata_schema=station_schema,
-                        campaign_metadata_schema=campaign_schema,
-                    )
-                    ckan_sync_messages.extend(dataset_errors)
-                    sensors = sensor_repository.get_sensors_by_ids(list(alias_to_sensorid_map.values()))
-                    resource_errors = sync_sensor_resources(
-                        settings=settings,
-                        ckan_client=ckan_client,
-                        tapis_token=tapis_token,
-                        campaign=campaign,
-                        station=station,
-                        dataset=dataset,
-                        dataset_id=dataset_id,
-                        sensors=sensors,
-                        sensor_metadata_schema=sensor_schema,
-                    )
-                    ckan_sync_messages.extend(resource_errors)
+        logger.info(
+            "upload_csv_update_sensor_statistics_start extra=%s",
+            {
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+                "upload_event_id": upload_event.id,
+                "sensor_ids": sorted(alias_to_sensorid_map.values()),
+            },
+        )
+        update_sensor_statistics(sensor_repository, alias_to_sensorid_map)
+        logger.info(
+            "upload_csv_update_sensor_statistics_done extra=%s",
+            {
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+                "upload_event_id": upload_event.id,
+            },
+        )
+
+        logger.info(
+            "upload_csv_refresh_geometry_start extra=%s",
+            {
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+                "upload_event_id": upload_event.id,
+            },
+        )
+        station_service.refresh_geometry(station_id)
+        logger.info(
+            "upload_csv_refresh_geometry_done extra=%s",
+            {
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+                "upload_event_id": upload_event.id,
+            },
+        )
+
+        ckan_sync_messages: list[str] = []
+        if tapis_token:
+            settings = get_settings()
+            ckan_client = get_ckan_service()
+            if ckan_client and settings.CKAN_URL:
+                campaign_service = CampaignService(CampaignRepository(db))
+                campaign = campaign_service.get_campaign_with_summary(campaign_id)
+                station = station_service.get_station(station_id)
+                if campaign and station and alias_to_sensorid_map:
+                    owner_org = (campaign.allocation or settings.CKAN_ORGANIZATION or "").strip() or None
+                    if owner_org:
+                        metadata_repo = MetadataSchemaRepository(db)
+                        station_schema = metadata_repo.list_schema(scope="station", active_only=True)
+                        campaign_schema = metadata_repo.list_schema(scope="campaign", active_only=True)
+                        sensor_schema = metadata_repo.list_schema(scope="sensor", active_only=True)
+                        dataset, dataset_id, dataset_errors = ensure_station_dataset(
+                            settings=settings,
+                            ckan_client=ckan_client,
+                            tapis_token=tapis_token,
+                            campaign=campaign,
+                            station=station,
+                            owner_org=owner_org,
+                            private=True,
+                            station_metadata_schema=station_schema,
+                            campaign_metadata_schema=campaign_schema,
+                        )
+                        ckan_sync_messages.extend(dataset_errors)
+                        sensors = sensor_repository.get_sensors_by_ids(list(alias_to_sensorid_map.values()))
+                        resource_errors = sync_sensor_resources(
+                            settings=settings,
+                            ckan_client=ckan_client,
+                            tapis_token=tapis_token,
+                            campaign=campaign,
+                            station=station,
+                            dataset=dataset,
+                            dataset_id=dataset_id,
+                            sensors=sensors,
+                            sensor_metadata_schema=sensor_schema,
+                        )
+                        ckan_sync_messages.extend(resource_errors)
+            else:
+                logger.info("Skipping CKAN sensor sync for station %s: CKAN integration not configured.", station_id)
         else:
-            logger.info("Skipping CKAN sensor sync for station %s: CKAN integration not configured.", station_id)
-    else:
-        logger.info("Skipping CKAN sensor sync for station %s: no Tapis token provided.", station_id)
+            logger.info("Skipping CKAN sensor sync for station %s: no Tapis token provided.", station_id)
 
-    response.update({
-        'Total sensors processed': len(alias_to_sensorid_map),
-        'Total measurements added to database': total_measurements,
-        'Data Processing time': f"{data_processing_time} seconds.",
-        'errors': [Error(message=error) for error in errors]
-    })
-    if ckan_sync_messages:
-        response['ckan_warnings'] = ckan_sync_messages
+        data_processing_time = round(time.time() - start_time, 1)
+        response.update({
+            'Total sensors processed': len(alias_to_sensorid_map),
+            'Total measurements added to database': total_measurements,
+            'Data Processing time': f"{data_processing_time} seconds.",
+            'errors': [Error(message=error) for error in errors]
+        })
+        if ckan_sync_messages:
+            response['ckan_warnings'] = ckan_sync_messages
 
-    return response
+        logger.info(
+            "upload_csv_done extra=%s",
+            {
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+                "upload_event_id": upload_event.id,
+                "total_sensors": len(alias_to_sensorid_map),
+                "total_measurements": total_measurements,
+                "processing_seconds": data_processing_time,
+                "error_count": len(errors),
+            },
+        )
+        return response
+    except HTTPException:
+        db.rollback()
+        logger.exception(
+            "upload_csv_http_exception extra=%s",
+            {
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+                "upload_event_id": upload_event.id,
+                "sensors_filename": upload_file_sensors.filename,
+                "measurements_filename": upload_file_measurements.filename,
+            },
+        )
+        raise
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "upload_csv_unhandled_exception extra=%s",
+            {
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+                "upload_event_id": upload_event.id,
+                "sensors_filename": upload_file_sensors.filename,
+                "measurements_filename": upload_file_measurements.filename,
+            },
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal upload error. See server logs. upload_event_id={upload_event.id}",
+        )
+    finally:
+        try:
+            upload_file_sensors.file.close()
+        except Exception:
+            pass
+        try:
+            upload_file_measurements.file.close()
+        except Exception:
+            pass
