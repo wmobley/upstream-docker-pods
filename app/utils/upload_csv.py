@@ -23,12 +23,15 @@ DEFAULT_VARIABLE_NAME = 'No BestGuess Formula'
 logger = logging.getLogger(__name__)
 
 
-def process_batch(batch: list[dict[str, int | datetime | float | WKTElement]], session: Session) -> int:
+MeasurementValue = int | datetime | float | str | WKTElement
+
+
+def process_batch(batch: list[dict[str, MeasurementValue]], session: Session) -> int:
     """Process a batch of measurements and insert to database."""
     if not batch:
         return 0
     stmt = insert(Measurement).values(batch)
-    stmt = stmt.on_conflict_do_nothing( # type: ignore[attr-defined]
+    stmt = stmt.on_conflict_do_nothing(
         index_elements=['sensorid', 'collectiontime']
     )
     result = session.execute(stmt)
@@ -127,7 +130,7 @@ def create_measurement_dict(
     geometry: WKTElement,
     sensor_id: int,
     upload_event_id: int
-) -> dict[str, int | datetime | float | WKTElement]:
+) -> dict[str, MeasurementValue]:
     """Create a measurement dictionary with all required fields."""
     return {
         'stationid': station_id,
@@ -167,7 +170,7 @@ def process_measurements_file(
         },
     )
     max_rows_per_insert = min(BATCH_SIZE, POSTGRES_MAX_BIND_PARAMS // MEASUREMENT_INSERT_PARAM_COUNT)
-    measurement_batch: list[dict[str, int | datetime | float | WKTElement]] = []
+    measurement_batch: list[dict[str, MeasurementValue]] = []
     total_measurements = 0
     errors = []
     lon_series = df['Lon_deg'].astype(str)
