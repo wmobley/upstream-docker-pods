@@ -75,7 +75,7 @@ class MeasurementRepository:
         # Order by collection time for time series data
         query = query.order_by(Measurement.collectiontime.desc())
 
-        total_count = query.filter(Measurement.measurementvalue > 0).count()
+        total_count = query.count()
 
         results_paginated = query.offset((page - 1) * limit).limit(limit).all()
 
