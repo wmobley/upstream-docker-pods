@@ -69,8 +69,8 @@ def _dataset_matches_expected_extras(existing: Dict[str, Any], payload: Dict[str
             return False
     for key in ("upstream_dataset_hash", "upstream_dataset_key"):
         expected = expected_extras.get(key)
-        existing = existing_extras.get(key)
-        if expected is not None and existing is not None and existing != expected:
+        existing_value = existing_extras.get(key)
+        if expected is not None and existing_value is not None and existing_value != expected:
             return False
     return True
 
