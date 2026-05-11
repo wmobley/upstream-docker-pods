@@ -237,6 +237,7 @@ async def publish_campaign(
                     publish_request=PublishRequest(
                         cascade=publish_request.cascade,
                         force=publish_request.force,
+                        organization=publish_request.organization,
                     ),
                     current_user=current_user,
                     _token=_token,
@@ -244,11 +245,15 @@ async def publish_campaign(
                     allocations=allocations,
                     db=db,
                 )
-                cascaded_items.append(f"station:{station.stationid}")
-                if result.cascaded_items:
-                    cascaded_items.extend(
-                        [f"station:{station.stationid}:{item}" for item in result.cascaded_items]
-                    )
+                if result.success:
+                    cascaded_items.append(f"station:{station.stationid}")
+                    if result.cascaded_items:
+                        cascaded_items.extend(
+                            [f"station:{station.stationid}:{item}" for item in result.cascaded_items]
+                        )
+                else:
+                    station_errors = result.errors or [result.message]
+                    errors.extend(f"station {station.stationid}: {error}" for error in station_errors)
                 logger.info(
                     "campaign_publish_station_result extra=%s",
                     {
@@ -285,6 +290,9 @@ async def publish_campaign(
         is_published=True,
         published_at=published_at,
         cascaded_items=cascaded_items,
+        error_code="CKAN_PUBLISH_PARTIAL_FAILURE" if errors else None,
+        error_title="CKAN publish failed for one or more stations" if errors else None,
+        error_detail=errors[0] if errors else None,
     )
     logger.info(
         "campaign_publish_complete extra=%s",

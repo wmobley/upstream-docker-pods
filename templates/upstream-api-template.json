@@ -12,8 +12,8 @@
       "alembic upgrade heads && uvicorn app.main:app --reload --host 0.0.0.0"
     ],
     "environment_variables": {
-      "DATABASE_URL": "postgresql+psycopg://{{PG_USER}}:{{PG_PASSWORD}}@{{BASE}}postgres.pods.tacc.tapis.io:443/{{PG_USER}}",
-      "VITE_UPSTREAM_API_URL": "https://{{BASE}}.pods.tacc.tapis.io",
+      "DATABASE_URL": "postgresql+psycopg://{{PG_USER}}:{{PG_PASSWORD}}@{{BASE}}postgres.pods.portals.tapis.io:443/{{PG_USER}}",
+      "VITE_UPSTREAM_API_URL": "https://{{BASE}}.pods.portals.tapis.io",
       "POSTGRES_PASSWORD": "{{PG_PASSWORD}}",
       "TAS_USER": "tasclient_dsso",
       "TAS_SECRET": "2TjvnY22spKet8cdZwxYZjunLmQCKFRkN9vEtWNnv2JV5vZnCUDxKCxsQyFJJxXG",
@@ -27,8 +27,8 @@
       "CKAN_ORGANIZATION": "upstream",
       "CKAN_ADMIN_USERNAME": "dso_test",
       "CKAN_ADMIN_API_KEY": "{{CKAN_ADMIN_API_KEY}}",
-      "UI_BASE_URL": "https://{{BASE}}.pods.tacc.tapis.io",
-      "API_BASE_URL": "https://{{BASE}}api.pods.tacc.tapis.io",
+      "UI_BASE_URL": "https://{{BASE}}.pods.portals.tapis.io",
+      "API_BASE_URL": "https://{{BASE}}api.pods.portals.tapis.io",
       "UPSTREAM_RELEASE": "{{IMAGE_TAG}}"
     },
     "status_requested": "ON",
@@ -38,7 +38,7 @@
       "default": {
         "protocol": "http",
         "port": 8000,
-        "url": "{{BASE}}api.pods.tacc.tapis.io"
+        "url": "{{BASE}}api.pods.portals.tapis.io"
       }
     },
     "resources": {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -10,6 +11,21 @@ from app.services.ckan_service import CKANService, CKANError, _slugify
 
 logger = logging.getLogger(__name__)
 SPATIAL_BUFFER_METERS = 5.0
+DATASET_HASH_EXTRA_KEY = "upstream_dataset_hash"
+DATASET_KEY_EXTRA_KEY = "upstream_dataset_key"
+
+
+def build_station_dataset_identity(*, settings: Settings, campaign: Any, station: Any) -> dict[str, str]:
+    source_url = f"{settings.UI_BASE_URL.rstrip('/')}/campaigns/{campaign.id}/stations/{station.id}"
+    dataset_key = source_url
+    dataset_hash = hashlib.sha256(dataset_key.encode("utf-8")).hexdigest()[:10]
+    base_name = _slugify(f"{campaign.name}-{station.name}")
+    return {
+        "name": _slugify(f"{base_name}-{dataset_hash}"),
+        "hash": dataset_hash,
+        "key": dataset_key,
+        "source_url": source_url,
+    }
 
 
 def ensure_station_dataset(
@@ -29,7 +45,8 @@ def ensure_station_dataset(
     dataset id, and any errors encountered.
     """
     errors: list[str] = []
-    dataset_name = _slugify(f"{campaign.name}-{station.name}")
+    dataset_identity = build_station_dataset_identity(settings=settings, campaign=campaign, station=station)
+    dataset_name = dataset_identity["name"]
     notes = station.description or f"Station {station.name} in campaign {campaign.name}"
     tags = {"upstream", _slugify(campaign.name), _slugify(station.name)}
     extras = [
@@ -37,8 +54,10 @@ def ensure_station_dataset(
         {"key": "campaign_name", "value": campaign.name},
         {"key": "station_id", "value": str(station.id)},
         {"key": "station_name", "value": station.name},
+        {"key": DATASET_HASH_EXTRA_KEY, "value": dataset_identity["hash"]},
+        {"key": DATASET_KEY_EXTRA_KEY, "value": dataset_identity["key"]},
     ]
-    source_url = f"{settings.UI_BASE_URL.rstrip('/')}/campaigns/{campaign.id}/stations/{station.id}"
+    source_url = dataset_identity["source_url"]
     extras.append({"key": "source", "value": source_url})
 
     spatial_value = None
@@ -365,4 +384,10 @@ def _extras_to_field_map(extras: Sequence[dict[str, str]]) -> dict[str, str]:
     }
 
 
-__all__ = ["ensure_station_dataset", "sync_sensor_resources"]
+__all__ = [
+    "DATASET_HASH_EXTRA_KEY",
+    "DATASET_KEY_EXTRA_KEY",
+    "build_station_dataset_identity",
+    "ensure_station_dataset",
+    "sync_sensor_resources",
+]

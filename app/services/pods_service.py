@@ -176,7 +176,7 @@ class PodsService:
                 "default": {
                     "protocol": "postgres",
                     "port": 5432,
-                    "url": f"{base_clean}postgres.pods.tacc.tapis.io",
+                    "url": f"{base_clean}postgres.pods.portals.tapis.io",
                 }
             },
             "resources": {
@@ -198,8 +198,8 @@ class PodsService:
                 "alembic upgrade heads && uvicorn app.main:app --reload --host 0.0.0.0",
             ],
             "environment_variables": {
-                "DATABASE_URL": f"postgresql+psycopg://{pg_user}:{pg_password}@{base_clean}postgres.pods.tacc.tapis.io:443/{pg_user}",
-                "VITE_UPSTREAM_API_URL": f"https://{base_clean}.pods.tacc.tapis.io",
+                "DATABASE_URL": f"postgresql+psycopg://{pg_user}:{pg_password}@{base_clean}postgres.pods.portals.tapis.io:443/{pg_user}",
+                "VITE_UPSTREAM_API_URL": f"https://{base_clean}.pods.portals.tapis.io",
                 "POSTGRES_PASSWORD": pg_password,
                 "TAS_USER": self.settings.TAS_USER,
                 "TAS_SECRET": self.settings.TAS_SECRET,
@@ -213,8 +213,8 @@ class PodsService:
                 "CKAN_ORGANIZATION": self.settings.CKAN_ORGANIZATION or "upstream",
                 "CKAN_ADMIN_USERNAME": self.settings.CKAN_ADMIN_USERNAME or "dso_test",
                 "CKAN_ADMIN_API_KEY": self.settings.CKAN_ADMIN_API_KEY or "",
-                "UI_BASE_URL": f"https://{base_clean}.pods.tacc.tapis.io",
-                "API_BASE_URL": f"https://{base_clean}api.pods.tacc.tapis.io",
+                "UI_BASE_URL": f"https://{base_clean}.pods.portals.tapis.io",
+                "API_BASE_URL": f"https://{base_clean}api.pods.portals.tapis.io",
             },
             "status_requested": "ON",
             "volume_mounts": {},
@@ -223,7 +223,7 @@ class PodsService:
                 "default": {
                     "protocol": "http",
                     "port": 8000,
-                    "url": f"{base_clean}api.pods.tacc.tapis.io",
+                    "url": f"{base_clean}api.pods.portals.tapis.io",
                 }
             },
             "resources": {
@@ -240,7 +240,7 @@ class PodsService:
             "image": "ghcr.io/wmobley/upstream-ui-pods:main",
             "description": "Upstream UI frontend",
             "environment_variables": {
-                "VITE_UPSTREAM_API_URL": f"https://{base_clean}api.pods.tacc.tapis.io",
+                "VITE_UPSTREAM_API_URL": f"https://{base_clean}api.pods.portals.tapis.io",
                 "VITE_CKAN_URL": self.settings.CKAN_URL,
                 "VITE_TAPIS_BASE_URL": self.settings.TAPIS_BASE_URL,
                 "VITE_TAPIS_PODS_BASE_URL": self.settings.TAPIS_BASE_URL,
@@ -252,7 +252,7 @@ class PodsService:
                 "default": {
                     "protocol": "http",
                     "port": 80,
-                    "url": f"{base_clean}.pods.tacc.tapis.io",
+                    "url": f"{base_clean}.pods.portals.tapis.io",
                 }
             },
             "resources": {

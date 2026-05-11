@@ -116,3 +116,8 @@ class PublishResponse(BaseModel):
     is_published: bool | None = None
     published_at: datetime | None = None
     cascaded_items: List[str] | None = None
+    error_code: str | None = None
+    error_title: str | None = None
+    error_detail: str | None = None
+    ckan_dataset_name: str | None = None
+    ckan_dataset_url: str | None = None

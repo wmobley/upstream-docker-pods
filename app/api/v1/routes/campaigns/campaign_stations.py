@@ -38,7 +38,12 @@ from app.services.export_service import ExportService
 from app.services.campaign_service import CampaignService
 from app.services.metadata_schema_service import MetadataSchemaService
 from app.services.ckan_service import CKANError, CKANService, get_ckan_service, _slugify
-from app.services.ckan_publish import ensure_station_dataset, sync_sensor_resources
+from app.services.ckan_publish import (
+    DATASET_HASH_EXTRA_KEY,
+    build_station_dataset_identity,
+    ensure_station_dataset,
+    sync_sensor_resources,
+)
 from app.core.config import get_settings
 
 
@@ -73,23 +78,28 @@ def _delete_station_dataset(
             getattr(campaign, "id", "unknown"),
         )
         return
-    dataset_slug = _slugify(f"{campaign.name}-{station.name}")
+    settings = get_settings()
+    dataset_identity = build_station_dataset_identity(settings=settings, campaign=campaign, station=station)
+    dataset_slug = dataset_identity["name"]
+    legacy_dataset_slug = _slugify(f"{campaign.name}-{station.name}")
     candidate_ids: List[str] = []
     if dataset_slug:
         candidate_ids.append(dataset_slug)
+    if legacy_dataset_slug and legacy_dataset_slug != dataset_slug:
+        candidate_ids.append(legacy_dataset_slug)
     matches: List[Dict[str, Any]] = []
     find_fn = getattr(ckan_client, "find_datasets_by_extra", None)
     if callable(find_fn) and tapis_token:
-        try:
-            result = find_fn(
-                token=tapis_token,
-                key="station_id",
-                value=str(station.id),
-            )
-            if isinstance(result, list):
-                matches = [entry for entry in result if isinstance(entry, dict)]
-        except CKANError as exc:  # pragma: no cover - best effort search
-            logger.warning("Failed to search CKAN datasets for station %s: %s", station.id, exc)
+        for key, value in (
+            (DATASET_HASH_EXTRA_KEY, dataset_identity["hash"]),
+            ("source", dataset_identity["source_url"]),
+        ):
+            try:
+                result = find_fn(token=tapis_token, key=key, value=value)
+                if isinstance(result, list):
+                    matches.extend(entry for entry in result if isinstance(entry, dict))
+            except CKANError as exc:  # pragma: no cover - best effort search
+                logger.warning("Failed to search CKAN datasets for station %s by %s: %s", station.id, key, exc)
     for match in matches:
         dataset_id = match.get("id") or match.get("name")
         if dataset_id:
@@ -660,6 +670,8 @@ async def publish_station(
     )
 
     if ckan_client and settings.CKAN_URL and tapis_token and errors:
+        dataset_identity = build_station_dataset_identity(settings=settings, campaign=campaign, station=station)
+        dataset_url = f"{settings.CKAN_URL.rstrip('/')}/dataset/{dataset_identity['name']}"
         response = PublishResponse(
             success=False,
             message=f"Station {station.name} not published due to CKAN errors",
@@ -670,6 +682,11 @@ async def publish_station(
             is_published=False,
             published_at=None,
             cascaded_items=[],
+            error_code="CKAN_PUBLISH_FAILED",
+            error_title="CKAN publish failed",
+            error_detail=errors[0] if errors else None,
+            ckan_dataset_name=dataset_identity["name"],
+            ckan_dataset_url=dataset_url,
         )
         logger.warning(
             "station_publish_complete extra=%s",
@@ -789,8 +806,14 @@ async def unpublish_station(
     if ckan_client and settings.CKAN_URL and tapis_token:
         try:
             ckan_branch = "dataset_visibility_private"
-            dataset_name = _slugify(f"{campaign.name}-{station.name}")
-            dataset = ckan_client.get_dataset(token=tapis_token, name_or_id=dataset_name)
+            dataset_identity = build_station_dataset_identity(settings=settings, campaign=campaign, station=station)
+            dataset_name = dataset_identity["name"]
+            try:
+                dataset = ckan_client.get_dataset(token=tapis_token, name_or_id=dataset_name)
+            except CKANError:
+                legacy_dataset_name = _slugify(f"{campaign.name}-{station.name}")
+                dataset = ckan_client.get_dataset(token=tapis_token, name_or_id=legacy_dataset_name)
+                dataset_name = legacy_dataset_name
             dataset_id = dataset.get("id") or dataset_name
             if dataset_id:
                 ckan_client.ensure_dataset_visibility(token=tapis_token, dataset_id=str(dataset_id), private=True)

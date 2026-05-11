@@ -32,7 +32,7 @@
       "default": {
         "protocol": "postgres",
         "port": 5432,
-        "url": "{{BASE}}postgres.pods.tacc.tapis.io"
+        "url": "{{BASE}}postgres.pods.portals.tapis.io"
       }
     },
     "resources": {

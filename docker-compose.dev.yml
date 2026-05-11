@@ -11,4 +11,4 @@ services:
     ports:
       - 8000:8000
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://fastapi_traefik:fastapi_traefik@disasterpostgres.pods.tacc.tapis.io:443/fastapi_traefik?sslmode=require}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://fastapi_traefik:fastapi_traefik@disasterpostgres.pods.portals.tapis.io:443/fastapi_traefik?sslmode=require}

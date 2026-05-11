@@ -66,7 +66,7 @@ The service is mounted at `/api/v1`. Common read operations:
 - `GET /api/v1/campaigns/{campaign_id}/stations/{station_id}/sensors` — enumerate sensors (filtering and sorting available)
 - `GET /api/v1/campaigns/{campaign_id}/stations/{station_id}/sensors/{sensor_id}/measurements` — retrieve measurements for a sensor
 
-An interactive schema browser is available at `https://<host>/docs` (for example `https://infordisaster.pods.tacc.tapis.io/docs`).
+An interactive schema browser is available at `https://<host>/docs` (for example `https://infordisaster.pods.portals.tapis.io/docs`).
 
 ## On-premise Environment
 
@@ -75,7 +75,7 @@ An interactive schema browser is available at `https://<host>/docs` (for example
 1. SSH to the VM with your TACC credentials:
 
    ```bash
-   ssh <tacc_username>@upstream.pods.tacc.tapis.io
+   ssh <tacc_username>@upstream.pods.portals.tapis.io
    ```
 
 2. Switch to root:
@@ -105,10 +105,10 @@ An interactive schema browser is available at `https://<host>/docs` (for example
 
 ## Deployment
 
-There are two instances running on upstream.pods.tacc.tapis.io:
+There are two instances running on upstream.pods.portals.tapis.io:
 
-- **Production**: https://upstreamapi.pods.tacc.tapis.io/docs/
-- **Development**: https://upstreamapi.pods.tacc.tapis.io/dev/docs/
+- **Production**: https://upstreamapi.pods.portals.tapis.io/docs/
+- **Development**: https://upstreamapi.pods.portals.tapis.io/dev/docs/
 
 ## Database Migrations
 

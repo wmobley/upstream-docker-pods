@@ -61,3 +61,21 @@ def test_build_bundle_grants_admin_permissions(monkeypatch):
     assert created["permissions"]["pods"]["snifferpostgres"]["tasclient_dsso"]["level"] == "ADMIN"
     assert created["permissions"]["pods"]["snifferapi"]["tasclient_dsso"]["level"] == "ADMIN"
     assert created["permissions"]["pods"]["sniffer"]["tasclient_dsso"]["level"] == "ADMIN"
+
+    pod_payloads = {
+        pod_id: payload
+        for action, pod_id, payload in calls
+        if action == "create_pod" and isinstance(payload, dict)
+    }
+    assert pod_payloads["snifferpostgres"]["networking"]["default"]["url"] == (
+        "snifferpostgres.pods.portals.tapis.io"
+    )
+    assert pod_payloads["snifferapi"]["environment_variables"]["DATABASE_URL"] == (
+        "postgresql+psycopg://pguser:pgpass@snifferpostgres.pods.portals.tapis.io:443/pguser"
+    )
+    assert pod_payloads["snifferapi"]["environment_variables"]["API_BASE_URL"] == (
+        "https://snifferapi.pods.portals.tapis.io"
+    )
+    assert pod_payloads["sniffer"]["environment_variables"]["VITE_UPSTREAM_API_URL"] == (
+        "https://snifferapi.pods.portals.tapis.io"
+    )

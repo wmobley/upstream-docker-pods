@@ -7,10 +7,10 @@
     "pod_template": "",
     "description": "Upstream UI frontend",
     "environment_variables": {
-      "VITE_UPSTREAM_API_URL": "https://{{BASE}}api.pods.tacc.tapis.io",
+      "VITE_UPSTREAM_API_URL": "https://{{BASE}}api.pods.portals.tapis.io",
       "VITE_CKAN_URL": "https://ckan.tacc.utexas.edu",
-      "VITE_TAPIS_BASE_URL": "https://tacc.tapis.io",
-      "VITE_TAPIS_PODS_BASE_URL": "https://tacc.tapis.io",
+      "VITE_TAPIS_BASE_URL": "https://portals.tapis.io",
+      "VITE_TAPIS_PODS_BASE_URL": "https://portals.tapis.io",
       "UPSTREAM_RELEASE": "{{IMAGE_TAG}}"
     },
     "status_requested": "ON",
@@ -20,7 +20,7 @@
       "default": {
         "protocol": "http",
         "port": 80,
-        "url": "{{BASE}}.pods.tacc.tapis.io"
+        "url": "{{BASE}}.pods.portals.tapis.io"
       }
     },
     "resources": {

@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-from app.services.ckan_publish import ensure_station_dataset, sync_sensor_resources
+from app.services.ckan_publish import (
+    DATASET_HASH_EXTRA_KEY,
+    DATASET_KEY_EXTRA_KEY,
+    ensure_station_dataset,
+    sync_sensor_resources,
+)
 
 
 def test_ensure_station_dataset_maps_campaign_top_level_metadata() -> None:
@@ -68,8 +73,13 @@ def test_ensure_station_dataset_maps_campaign_top_level_metadata() -> None:
 
     kwargs = captured["create_or_update_dataset"]
     assert isinstance(kwargs, dict)
+    assert str(kwargs["name"]).startswith("campaign-alpha-station-bravo-")
+    assert len(str(kwargs["name"]).rsplit("-", 1)[-1]) == 10
     assert kwargs["extra_fields"]["maintainer"] == "Funding Team"
     extras = kwargs["extras"]
+    assert {"key": DATASET_KEY_EXTRA_KEY, "value": "https://ui.example.com/campaigns/7/stations/11"} in extras
+    hash_extra = next(item for item in extras if item["key"] == DATASET_HASH_EXTRA_KEY)
+    assert len(hash_extra["value"]) == 10
     assert {"key": "meta:station:local_code", "value": "SB-01"} in extras
 
 

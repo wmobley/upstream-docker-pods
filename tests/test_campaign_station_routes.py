@@ -20,7 +20,7 @@ from app.api.dependencies import auth
 from app.api.dependencies.auth import get_current_user, get_edit_user
 from app.api.dependencies.pytas import get_user_allocations
 from app.db.session import get_db
-from app.services.ckan_service import _slugify
+from app.services.ckan_publish import build_station_dataset_identity
 
 # Mock data for testing
 MOCK_USER = User(
@@ -228,6 +228,7 @@ class TestCampaignStationRoutes:
 
         mock_settings = Mock()
         mock_settings.CKAN_URL = "https://ckan.example.com"
+        mock_settings.UI_BASE_URL = "https://ui.example.com"
 
         with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=True), \
              patch('app.services.campaign_service.CampaignService.get_campaign_with_summary', return_value=campaign_response) as mock_get_campaign, \
@@ -250,7 +251,11 @@ class TestCampaignStationRoutes:
             mock_delete_sensors.assert_called_once_with(station_id=self.station_id)
             mock_delete_station.assert_called_once_with(self.station_id)
 
-            expected_slug = _slugify("Test Campaign-Test Station Alpha")
+            expected_slug = build_station_dataset_identity(
+                settings=mock_settings,
+                campaign=campaign_response,
+                station=station_response,
+            )["name"]
             mock_ckan_client.delete_dataset.assert_called_once_with(
                 token="fake-token",
                 name_or_id=expected_slug,
@@ -435,6 +440,47 @@ class TestCampaignStationRoutes:
             assert body["is_published"] is True
             assert "published with some errors" in body["message"]
             assert "station 102: CKAN dataset sync failed" in body["errors"]
+
+    def test_publish_campaign_returns_child_station_application_errors(self, client_with_auth):
+        campaign_response = GetCampaignResponse(
+            id=self.campaign_id,
+            name="Test Campaign",
+            summary=SummaryGetCampaign(
+                station_count=1,
+                sensor_count=0,
+                sensor_types=[],
+                sensor_variables=[],
+            ),
+            stations=[],
+        )
+        station_one = Mock(stationid=101)
+
+        with patch('app.api.v1.routes.campaigns.root.check_allocation_permission', return_value=True), \
+             patch('app.services.campaign_service.CampaignService.get_campaign_with_summary', return_value=campaign_response), \
+             patch('app.db.repositories.station_repository.StationRepository.get_stations_by_campaign_id', return_value=[station_one]), \
+             patch('app.api.v1.routes.campaigns.campaign_stations.publish_station', autospec=True) as mock_publish_station:
+            mock_publish_station.return_value = PublishResponse(
+                success=False,
+                message="Station not published due to CKAN errors",
+                published_count=0,
+                errors=["CKAN dataset sync failed"],
+                id=101,
+                type="station",
+                is_published=False,
+                cascaded_items=[],
+            )
+
+            response = client_with_auth.post(
+                f"/api/v1/campaigns/{self.campaign_id}/publish",
+                json={"cascade": True},
+                headers={"X-TAPIS-TOKEN": "fake-token", "X-Request-ID": "req-campaign-app-failure"},
+            )
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["success"] is False
+            assert "station 101: CKAN dataset sync failed" in body["errors"]
+            assert "station:101" not in body["cascaded_items"]
 
     def test_partial_update_station_not_found_error_message(self, client_with_auth):
         with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=True), \

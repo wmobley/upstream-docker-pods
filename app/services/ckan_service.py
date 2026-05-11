@@ -43,6 +43,38 @@ def _slugify(value: str) -> str:
     return result or "dataset"
 
 
+def _extras_to_map(extras: Any) -> Dict[str, str]:
+    if isinstance(extras, dict):
+        return {str(key): str(value) for key, value in extras.items()}
+    if not isinstance(extras, list):
+        return {}
+
+    mapped: Dict[str, str] = {}
+    for item in extras:
+        if not isinstance(item, dict):
+            continue
+        key = item.get("key")
+        if key is None:
+            continue
+        mapped[str(key)] = str(item.get("value", ""))
+    return mapped
+
+
+def _dataset_matches_expected_extras(existing: Dict[str, Any], payload: Dict[str, Any]) -> bool:
+    expected_extras = _extras_to_map(payload.get("extras"))
+    existing_extras = _extras_to_map(existing.get("extras"))
+    for key in ("campaign_id", "station_id"):
+        expected = expected_extras.get(key)
+        if expected is not None and existing_extras.get(key) != expected:
+            return False
+    for key in ("upstream_dataset_hash", "upstream_dataset_key"):
+        expected = expected_extras.get(key)
+        existing = existing_extras.get(key)
+        if expected is not None and existing is not None and existing != expected:
+            return False
+    return True
+
+
 class CKANService:
     def __init__(self, *, base_url: str, timeout: int = 30) -> None:
         self.base_url = base_url.rstrip("/")
@@ -249,27 +281,44 @@ class CKANService:
                 raise CKANError("Unexpected CKAN response format when creating dataset")
             return cast(Dict[str, Any], result)
         except CKANError as exc:
+            original_error = exc
             message = str(exc).lower()
             should_patch = (
                 "already exists" in message
                 or "already in use" in message
                 or "url is already" in message
             )
-            if not should_patch:
-                try:
-                    self.get_dataset(token=token, name_or_id=name)
-                except CKANError:
-                    raise
+            existing_dataset: Dict[str, Any] | None = None
+            try:
+                candidate = self.get_dataset(token=token, name_or_id=name)
+                if isinstance(candidate, dict):
+                    existing_dataset = candidate
+            except CKANError:
+                if not should_patch:
+                    raise original_error
+            if existing_dataset is not None:
+                if not _dataset_matches_expected_extras(existing_dataset, payload):
+                    raise CKANError(
+                        f"CKAN dataset name '{name}' already exists but does not match this Upstream station."
+                    ) from original_error
                 should_patch = True
             if not should_patch:
-                raise
+                raise original_error
             payload["id"] = name
-            result = self._request(
-                method="POST",
-                path="/api/3/action/package_patch",
-                token=token,
-                json=payload,
-            )
+            try:
+                result = self._request(
+                    method="POST",
+                    path="/api/3/action/package_patch",
+                    token=token,
+                    json=payload,
+                )
+            except CKANError as patch_error:
+                patch_message = str(patch_error).lower()
+                if "not authorized" in patch_message or "access denied" in patch_message:
+                    raise CKANError(
+                        f"CKAN dataset '{name}' already exists, but you are not authorized to edit it: {patch_error}"
+                    ) from patch_error
+                raise
             if not isinstance(result, dict):
                 raise CKANError("Unexpected CKAN response format when updating dataset")
             return cast(Dict[str, Any], result)
