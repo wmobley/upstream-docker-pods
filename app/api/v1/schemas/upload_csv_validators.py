@@ -10,7 +10,6 @@ from dateutil.parser import parse
 
 
 class SensorCSV(BaseModel):
-
     alias: str
     variablename: str | None = Field(alias='BestGuessFormula', default=None)
     postprocess: bool | None = Field(default=True)
