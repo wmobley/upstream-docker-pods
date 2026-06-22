@@ -4,7 +4,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
-from app.api.dependencies.pytas import check_allocation_permission, get_user_allocations
+from app.api.dependencies.pytas import (
+    check_allocation_permission,
+    get_user_allocations,
+    get_user_allocations_optional,
+)
 
 from app.api.dependencies.auth import (
     get_viewer_user,
@@ -70,7 +74,7 @@ async def list_campaigns(
         list[str] | None, Query(description="List of sensor variables to filter by")
     ] = None,
     current_user: User = Depends(get_viewer_user),
-    allocations: list[str] = Depends(get_user_allocations),
+    allocations: list[str] = Depends(get_user_allocations_optional),
     db: Session = Depends(get_db),
 ) -> ListCampaignsResponsePagination:
     campaign_service = CampaignService(CampaignRepository(db))

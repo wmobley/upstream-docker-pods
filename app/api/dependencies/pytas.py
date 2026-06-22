@@ -39,7 +39,7 @@ def _org_identifiers(org: Dict[str, Any]) -> Iterable[str]:
     )
 
 
-def _fetch_user_organizations(*, token: str, username: str) -> List[str]:
+def _fetch_user_organizations(*, token: str, username: str, strict: bool = True) -> List[str]:
     ckan_client = get_ckan_service()
     if not ckan_client or not settings.CKAN_URL:
         logger.debug("CKAN integration disabled; treating allocations as unrestricted for %s", username)
@@ -49,7 +49,15 @@ def _fetch_user_organizations(*, token: str, username: str) -> List[str]:
         organizations = ckan_client.list_user_organizations(token=token)
     except CKANError as exc:
         logger.warning("Failed to retrieve CKAN organizations for %s: %s", username, exc)
-        raise HTTPException(status_code=502, detail="Unable to retrieve CKAN organizations.") from exc
+        if strict:
+            raise HTTPException(status_code=502, detail="Unable to retrieve CKAN organizations.") from exc
+        # Read-only paths degrade gracefully: a CKAN outage falls back to
+        # "unrestricted" (same behaviour as CKAN being disabled) rather than
+        # blocking the request. Write paths keep raising so they fail closed.
+        logger.info(
+            "Proceeding without allocation restrictions for %s due to CKAN error", username
+        )
+        return []
 
     identifiers: set[str] = set()
     for org in organizations:
@@ -89,14 +97,33 @@ async def get_user_allocations(
 ) -> List[str]:
     """
     Resolve allowed allocations dynamically from the CKAN organizations the user belongs to.
+
+    Strict variant for write/publish endpoints: a CKAN outage raises 502 so the
+    request fails closed rather than mutating data without an allocation check.
     """
     return resolve_user_allocations(current_user, tapis_token)
 
 
-def resolve_user_allocations(user: User | None, tapis_token: str | None) -> List[str]:
+async def get_user_allocations_optional(
+    current_user: User = Depends(get_viewer_user),
+    tapis_token: str | None = Depends(get_tapis_token_header_optional),
+) -> List[str]:
+    """
+    Lenient variant for read-only endpoints.
+
+    If CKAN is unreachable, this returns an empty allocation list (treated as
+    "unrestricted" by ``check_allocation_permission``) instead of raising 502,
+    so viewing campaigns/stations is not blocked by a CKAN outage.
+    """
+    return resolve_user_allocations(current_user, tapis_token, strict=False)
+
+
+def resolve_user_allocations(
+    user: User | None, tapis_token: str | None, *, strict: bool = True
+) -> List[str]:
     if not user or not tapis_token:
         return []
-    return _fetch_user_organizations(token=tapis_token, username=user.username)
+    return _fetch_user_organizations(token=tapis_token, username=user.username, strict=strict)
 
 
 def check_allocation_permission(

@@ -70,7 +70,9 @@ def _ensure_sensor_access(
     is_public = False
 
     if current_user is not None:
-        allocations = resolve_user_allocations(current_user, tapis_token)
+        # Read-only access check: degrade gracefully if CKAN is unreachable so a
+        # CKAN outage does not block viewing measurements.
+        allocations = resolve_user_allocations(current_user, tapis_token, strict=False)
         allowed = check_allocation_permission(current_user, campaign_id, allocations)
         if not allowed:
             raise HTTPException(status_code=404, detail="Allocation is incorrect")

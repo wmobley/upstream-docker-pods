@@ -16,6 +16,7 @@ from app.api.dependencies.auth import (
 from app.api.dependencies.pytas import (
     check_allocation_permission,
     get_user_allocations,
+    get_user_allocations_optional,
     user_has_ckan_organization,
 )
 from app.api.v1.schemas.station import (
@@ -205,7 +206,7 @@ async def list_stations(
     page: int = 1,
     limit: int = 20,
     current_user: User = Depends(get_viewer_user),
-    allocations: list[str] = Depends(get_user_allocations),
+    allocations: list[str] = Depends(get_user_allocations_optional),
     db: Session = Depends(get_db),
 ) -> ListStationsResponsePagination:
     if not check_allocation_permission(current_user, campaign_id, allocations):
@@ -230,7 +231,7 @@ async def get_station(
     station_id: int,
     campaign_id: int,
     current_user: User = Depends(get_viewer_user),
-    allocations: list[str] = Depends(get_user_allocations),
+    allocations: list[str] = Depends(get_user_allocations_optional),
     db: Session = Depends(get_db),
 ) -> GetStationResponse:
     request_id = request.headers.get("X-Request-ID") or request.query_params.get("_request_id", "")
@@ -385,7 +386,7 @@ async def export_sensors_csv(
     campaign_id: int,
     station_id: int,
     current_user: User = Depends(get_viewer_user),
-    allocations: list[str] = Depends(get_user_allocations),
+    allocations: list[str] = Depends(get_user_allocations_optional),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """Export sensors for a station as CSV with streaming support."""
@@ -419,7 +420,7 @@ async def export_measurements_csv(
     ] = None,
     end_date: Annotated[datetime | None, Query(description="End date filter")] = None,
     current_user: User = Depends(get_viewer_user),
-    allocations: list[str] = Depends(get_user_allocations),
+    allocations: list[str] = Depends(get_user_allocations_optional),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """Export measurements for a station as CSV with streaming support."""

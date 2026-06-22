@@ -4,7 +4,11 @@ from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from app.api.dependencies.auth import get_viewer_user, get_edit_user
-from app.api.dependencies.pytas import check_allocation_permission, get_user_allocations
+from app.api.dependencies.pytas import (
+    check_allocation_permission,
+    get_user_allocations,
+    get_user_allocations_optional,
+)
 from app.api.v1.schemas.sensor import SensorItem, GetSensorResponse, ListSensorsResponsePagination, SensorStatistics, SensorCreateResponse, SensorUpdate, ForceUpdateSensorStatisticsResponse, UpdateSensorStatisticsResponse
 from app.api.v1.schemas.campaign import PublishRequest, PublishResponse
 from app.api.v1.schemas.user import User
@@ -35,7 +39,7 @@ async def list_sensors(
     description_contains: str | None = Query(None, description="Filter sensors by text in description (partial match)"),
     postprocess: Optional[bool] = Query(None, description="Filter sensors by postprocess flag"),
     current_user: User = Depends(get_viewer_user),
-    allocations: list[str] = Depends(get_user_allocations),
+    allocations: list[str] = Depends(get_user_allocations_optional),
     db: Session = Depends(get_db),
     sort_by: Optional[SortField] = Query(None, description="Sort sensors by field"),
     sort_order: str = Query("asc", description="Sort order (asc or desc)"),
@@ -75,7 +79,7 @@ async def get_sensor(
     sensor_id: int,
     campaign_id: int,
     current_user: User = Depends(get_viewer_user),
-    allocations: list[str] = Depends(get_user_allocations),
+    allocations: list[str] = Depends(get_user_allocations_optional),
     db: Session = Depends(get_db)
 ) -> GetSensorResponse:
     if not check_allocation_permission(current_user, campaign_id, allocations):
