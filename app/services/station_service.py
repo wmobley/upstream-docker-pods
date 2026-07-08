@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime
 from app.api.v1.schemas.sensor import SensorItem
-from app.api.v1.schemas.station import GetStationResponse,  StationItemWithSummary, StationCreate, StationCreateResponse, StationUpdate
+from app.api.v1.schemas.station import GetStationResponse, StationItemWithSummary, StationCreate, StationCreateResponse, StationUpdate, StationType
 from app.db.repositories.station_repository import StationRepository
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ class StationService:
                 id=row[0].stationid,
                 name=row[0].stationname,
                 description=row[0].description,
-                station_type=row[0].station_type,
+                station_type=StationType(row[0].station_type) if row[0].station_type else StationType.STATIC,
                 geometry=geometry,
                 sensor_types=[x for x in sensor_types if x is not None],
                 sensor_variables=[x for x in sensor_variables if x is not None],
@@ -89,7 +89,7 @@ class StationService:
             contact_email=row.contactemail,
             active=row.active,
             start_date=row.startdate,
-            station_type=row.station_type,
+            station_type=StationType(row.station_type) if row.station_type else StationType.STATIC,
             geometry=geometry,
             is_published=bool(getattr(row, "published", False)),
             published_at=getattr(row, "published_at", None),
