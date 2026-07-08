@@ -30,6 +30,7 @@ class StationItem(BaseModel):
     contact_email: str | None = None
     active: bool | None = None
     start_date: datetime | None = None
+    station_type: StationType = StationType.STATIC
     geometry: dict = Field(default_factory=dict, nullable=True)  # type: ignore[call-overload,type-arg]
     is_published: bool = False
     published_at: datetime | None = None
