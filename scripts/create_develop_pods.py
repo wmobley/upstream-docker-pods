@@ -39,10 +39,10 @@ UI_IMAGE = os.environ.get(
     "ghcr.io/wmobley/upstream-ui-pods:feature-unified-ui-tapis-auth",
 )
 
-VOLUME_ID     = "upstream-developvolume"
-POSTGRES_ID   = "upstream-developpostgres"
-API_ID        = "upstream-developapi"
-UI_ID         = "upstream-develop"
+VOLUME_ID     = "upstreamdevelopvolume"
+POSTGRES_ID   = "upstreamdeveloppostgres"
+API_ID        = "upstreamdevelopapi"
+UI_ID         = "upstreamdevelop"
 
 ADMIN_USERS = ["wmobley", "tasclient_dsso"]
 
