@@ -80,6 +80,19 @@ def pods_put(path: str, payload: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Show allowed images (helpful for debugging allowlist issues)
+# ---------------------------------------------------------------------------
+print("\nFetching allowed images …")
+images_resp = requests.get(f"{BASE_URL}/v3/pods/images", headers=headers, timeout=30)
+if images_resp.ok:
+    images = images_resp.json().get("result", [])
+    for img in images:
+        image_val = img if isinstance(img, str) else img.get("image_id") or img.get("name") or str(img)
+        print(f"  {image_val}")
+else:
+    print(f"  (could not fetch: {images_resp.status_code})")
+
+# ---------------------------------------------------------------------------
 # Volume
 # ---------------------------------------------------------------------------
 print(f"\nCreating volume {VOLUME_ID} …")
