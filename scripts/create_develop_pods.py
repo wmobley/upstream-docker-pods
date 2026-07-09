@@ -86,8 +86,8 @@ print(f"\nCreating volume {VOLUME_ID} …")
 try:
     pods_post("/pods/volumes", {"volume_id": VOLUME_ID, "description": "Postgres data for upstream-develop"})
     print("  Created.")
-except requests.HTTPError as e:
-    if "already exists" in str(e.response.text).lower():
+except RuntimeError as e:
+    if "already exists" in str(e).lower() or "uniqueviolation" in str(e).lower():
         print("  Already exists — skipping.")
     else:
         raise
@@ -126,8 +126,8 @@ postgres_payload = {
 try:
     pods_post("/pods", postgres_payload)
     print("  Created.")
-except requests.HTTPError as e:
-    if "already exists" in str(e.response.text).lower():
+except RuntimeError as e:
+    if "already exists" in str(e).lower() or "uniqueviolation" in str(e).lower():
         print("  Already exists — skipping.")
     else:
         raise
@@ -177,8 +177,8 @@ api_payload = {
 try:
     pods_post("/pods", api_payload)
     print("  Created.")
-except requests.HTTPError as e:
-    if "already exists" in str(e.response.text).lower():
+except RuntimeError as e:
+    if "already exists" in str(e).lower() or "uniqueviolation" in str(e).lower():
         print("  Already exists — skipping.")
     else:
         raise
@@ -209,8 +209,8 @@ ui_payload = {
 try:
     pods_post("/pods", ui_payload)
     print("  Created.")
-except requests.HTTPError as e:
-    if "already exists" in str(e.response.text).lower():
+except RuntimeError as e:
+    if "already exists" in str(e).lower() or "uniqueviolation" in str(e).lower():
         print("  Already exists — skipping.")
     else:
         raise
@@ -224,13 +224,13 @@ for user in ADMIN_USERS:
         try:
             pods_post(f"/pods/{pod_id}/permissions", {"user": user, "level": "ADMIN"})
             print(f"  {pod_id}: {user} → ADMIN")
-        except requests.HTTPError:
+        except RuntimeError:
             print(f"  {pod_id}: {user} → (already set or skipped)")
 
     try:
         pods_post(f"/pods/volumes/{VOLUME_ID}/permissions", {"user": user, "level": "ADMIN"})
         print(f"  {VOLUME_ID}: {user} → ADMIN")
-    except requests.HTTPError:
+    except RuntimeError:
         print(f"  {VOLUME_ID}: {user} → (already set or skipped)")
 
 print("\nDone! Pod URLs:")
