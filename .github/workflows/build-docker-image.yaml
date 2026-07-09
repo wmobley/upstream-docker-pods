@@ -93,12 +93,20 @@ jobs:
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           IMAGE="ghcr.io/${{ env.IMAGE_NAME }}:sha-${SHORT_SHA}"
 
-          TAPIS_TOKEN=$(curl -sf -X POST "${TAPIS_BASE_URL}/v3/oauth2/tokens" \
+          echo "Authenticating as user: ${TAPIS_SERVICE_USERNAME:0:3}*** to ${TAPIS_BASE_URL}"
+          TOKEN_RESP=$(curl -s -w "\n%{http_code}" -X POST "${TAPIS_BASE_URL}/v3/oauth2/tokens" \
             -H "Content-Type: application/json" \
-            -d "{\"username\":\"${TAPIS_SERVICE_USERNAME}\",\"password\":\"${TAPIS_SERVICE_PASSWORD}\",\"grant_type\":\"password\"}" \
-            | jq -r '.result.access_token.access_token')
-          if [ -z "$TAPIS_TOKEN" ] || [ "$TAPIS_TOKEN" = "null" ]; then
+            -d "{\"username\":\"${TAPIS_SERVICE_USERNAME}\",\"password\":\"${TAPIS_SERVICE_PASSWORD}\",\"grant_type\":\"password\"}")
+          HTTP_CODE=$(echo "$TOKEN_RESP" | tail -1)
+          TOKEN_BODY=$(echo "$TOKEN_RESP" | head -n -1)
+          echo "Token endpoint HTTP status: ${HTTP_CODE}"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Token response (credentials redacted): $(echo "$TOKEN_BODY" | jq 'del(.result.access_token.access_token, .result.refresh_token.refresh_token)' 2>/dev/null || echo "$TOKEN_BODY")"
             echo "ERROR: Failed to obtain Tapis token from ${TAPIS_BASE_URL}" && exit 1
+          fi
+          TAPIS_TOKEN=$(echo "$TOKEN_BODY" | jq -r '.result.access_token.access_token')
+          if [ -z "$TAPIS_TOKEN" ] || [ "$TAPIS_TOKEN" = "null" ]; then
+            echo "ERROR: Token response did not contain access_token" && exit 1
           fi
 
           POD=$(curl -sf "${TAPIS_BASE_URL}/v3/pods/${TAPIS_POD_ID}" \
