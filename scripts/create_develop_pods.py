@@ -172,7 +172,7 @@ api_payload = {
     "image": API_IMAGE,
     "description": "Upstream develop API",
     "stack_id": STACK_ID,
-    "command": ["/bin/bash", "-c", "alembic upgrade heads && uvicorn app.main:app --reload --host 0.0.0.0"],
+    "command": ["/bin/bash", "-c", "until alembic upgrade heads; do echo 'DB not ready, retrying in 10s...'; sleep 10; done && uvicorn app.main:app --reload --host 0.0.0.0"],
     "environment_variables": {
         "DATABASE_URL": f"postgresql+psycopg://{PG_USER}:{PG_PASSWORD}@{POSTGRES_ID}.{PODS_DOMAIN}:443/{PG_USER}",
         "POSTGRES_PASSWORD": PG_PASSWORD,

@@ -211,7 +211,7 @@ class PodsService:
             "command": [
                 "/bin/bash",
                 "-c",
-                "alembic upgrade heads && uvicorn app.main:app --reload --host 0.0.0.0",
+                "until alembic upgrade heads; do echo 'DB not ready, retrying in 10s...'; sleep 10; done && uvicorn app.main:app --reload --host 0.0.0.0",
             ],
             "environment_variables": {
                 "DATABASE_URL": f"postgresql+psycopg://{pg_user}:{pg_password}@{base_clean}postgres.pods.portals.tapis.io:443/{pg_user}",
