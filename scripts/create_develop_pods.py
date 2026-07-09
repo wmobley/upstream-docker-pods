@@ -101,8 +101,12 @@ try:
     pods_post("/pods/stacks", {"stack_id": STACK_ID, "description": "Upstream develop"})
     print("  Created.")
 except RuntimeError as e:
-    if "already exists" in str(e).lower() or "uniqueviolation" in str(e).lower():
+    msg = str(e).lower()
+    if "already exists" in msg or "uniqueviolation" in msg:
         print("  Already exists — skipping.")
+    elif "responsevalidationerror" in msg:
+        # Tapis Pods server bug: stack created OK but response serialization fails.
+        print("  Created (server returned 500 ResponseValidationError — stack exists).")
     else:
         raise
 

@@ -69,6 +69,10 @@ class PodsService:
             if "already exists" in message or "uniqueviolation" in message:
                 logger.info("Stack %s already exists; continuing.", stack_id)
                 return {"status": "exists", "stack_id": stack_id}
+            # Tapis Pods server bug: stack is created but response serialization fails.
+            if "responsevalidationerror" in message:
+                logger.warning("Stack %s created but server returned ResponseValidationError; continuing.", stack_id)
+                return {"status": "created", "stack_id": stack_id}
             raise
 
     def create_volume(self, *, volume_id: str, description: str) -> Dict[str, Any]:
