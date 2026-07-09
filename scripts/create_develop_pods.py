@@ -22,7 +22,7 @@ from tapipy.tapis import Tapis
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-BASE_URL = os.environ.get("TAPIS_BASE_URL", "https://portals.develop.tapis.io")
+BASE_URL = os.environ.get("TAPIS_BASE_URL", "https://portals.tapis.io")
 PODS_DOMAIN = BASE_URL.replace("https://", "pods.")
 
 USERNAME = os.environ["TAPIS_USERNAME"]
@@ -172,7 +172,7 @@ api_payload = {
         "CKAN_ADMIN_API_KEY": os.environ.get("CKAN_ADMIN_API_KEY", ""),
         "UI_BASE_URL": f"https://{UI_ID}.{PODS_DOMAIN}",
         "API_BASE_URL": f"https://{API_ID}.{PODS_DOMAIN}",
-        "TAPIS_BASE_URL": BASE_URL,
+        "TAPIS_BASE_URL": "https://portals.tapis.io",
         "TAPIS_TENANT_ID": "portals",
     },
     "status_requested": "ON",

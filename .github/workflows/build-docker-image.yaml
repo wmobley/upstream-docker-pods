@@ -84,7 +84,7 @@ jobs:
     env:
       TAPIS_SERVICE_USERNAME: ${{ secrets.TAPIS_DEVELOP_USERNAME }}
       TAPIS_SERVICE_PASSWORD: ${{ secrets.TAPIS_DEVELOP_PASSWORD }}
-      TAPIS_BASE_URL: https://portals.develop.tapis.io
+      TAPIS_BASE_URL: https://portals.tapis.io
       TAPIS_POD_ID: upstreamdevelopapi
 
     steps:
