@@ -88,28 +88,30 @@ jobs:
       TAPIS_POD_ID: upstream-developapi
 
     steps:
+      - name: Set up Python for Tapis auth
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get Tapis token via tapipy
+        id: tapis_token
+        run: |
+          pip install tapipy==1.8.5 --quiet
+          TAPIS_TOKEN=$(python3 .github/scripts/get_tapis_token.py)
+          if [ -z "$TAPIS_TOKEN" ]; then
+            echo "ERROR: Failed to obtain Tapis token" && exit 1
+          fi
+          echo "::add-mask::$TAPIS_TOKEN"
+          echo "token=$TAPIS_TOKEN" >> "$GITHUB_OUTPUT"
+
       - name: Deploy to Tapis Pods (develop)
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           IMAGE="ghcr.io/${{ env.IMAGE_NAME }}:sha-${SHORT_SHA}"
-
-          echo "Authenticating as user: ${TAPIS_SERVICE_USERNAME:0:3}*** to ${TAPIS_BASE_URL}"
-          TOKEN_RESP=$(curl -s -w "\n%{http_code}" -X POST "${TAPIS_BASE_URL}/v3/oauth2/tokens" \
-            -H "Content-Type: application/x-www-form-urlencoded" \
-            --data-urlencode "grant_type=password" \
-            --data-urlencode "username=${TAPIS_SERVICE_USERNAME}" \
-            --data-urlencode "password=${TAPIS_SERVICE_PASSWORD}")
-          HTTP_CODE=$(echo "$TOKEN_RESP" | tail -1)
-          TOKEN_BODY=$(echo "$TOKEN_RESP" | head -n -1)
-          echo "Token endpoint HTTP status: ${HTTP_CODE}"
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "Token response: $(echo "$TOKEN_BODY" | jq 'del(.result.access_token.access_token, .result.refresh_token.refresh_token)' 2>/dev/null || echo "$TOKEN_BODY")"
-            echo "ERROR: Failed to obtain Tapis token from ${TAPIS_BASE_URL}" && exit 1
-          fi
-          TAPIS_TOKEN=$(echo "$TOKEN_BODY" | jq -r '.result.access_token.access_token')
-          if [ -z "$TAPIS_TOKEN" ] || [ "$TAPIS_TOKEN" = "null" ]; then
-            echo "ERROR: Token response did not contain access_token" && exit 1
-          fi
+          TAPIS_TOKEN="${{ steps.tapis_token.outputs.token }}"
 
           POD=$(curl -sf "${TAPIS_BASE_URL}/v3/pods/${TAPIS_POD_ID}" \
             -H "X-Tapis-Token: ${TAPIS_TOKEN}" | jq '.result')
