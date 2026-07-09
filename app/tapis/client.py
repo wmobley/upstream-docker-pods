@@ -285,7 +285,7 @@ class TapisTokenVerifier:
         username = claims.get("tapis/username")
         if username:
             return str(username)
-        sub = claims.get("sub", "")
+        sub: str = str(claims.get("sub") or "")
         if sub and "@" in sub:
             return sub.split("@")[0]
-        return str(sub) if sub else None
+        return sub or None
