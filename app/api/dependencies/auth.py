@@ -11,7 +11,7 @@ from app.core.config import get_settings, Settings
 from app.core.roles import ROLE_RANK, UserRole as UserRoleEnum, normalize_role as normalize_role_value
 from app.db.repositories.user_role_repository import UserRoleRepository
 from app.db.session import SessionLocal
-from app.tapis import TapisAuthClient
+from app.tapis import TapisAuthClient, TapisTokenVerifier
 from app.services.ckan_service import CKANError, get_ckan_service
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token", auto_error=False)
@@ -26,8 +26,13 @@ logger.setLevel(logging.INFO)
 logger.propagate = False
 
 tapis_auth_client: TapisAuthClient | None = None
+tapis_token_verifier: TapisTokenVerifier | None = None
 if settings.TAPIS_BASE_URL and settings.TAPIS_TENANT_ID:
     tapis_auth_client = TapisAuthClient(
+        base_url=settings.TAPIS_BASE_URL,
+        tenant_id=settings.TAPIS_TENANT_ID,
+    )
+    tapis_token_verifier = TapisTokenVerifier(
         base_url=settings.TAPIS_BASE_URL,
         tenant_id=settings.TAPIS_TENANT_ID,
     )
@@ -176,26 +181,40 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> User:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Try internal HS256 JWT first.
     try:
         user_dict = unhash(token)
+        username = user_dict.get("username") or user_dict.get("sub")
+        if not username:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return User(
+            username=username,
+            role=normalize_role_value(user_dict.get("role"), default=UserRoleEnum.NONE),
+        )
     except jwt.InvalidTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        pass
 
-    username = user_dict.get("username") or user_dict.get("sub")
-    if not username:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    # Fall back to Tapis RS256 JWT verification.
+    # See https://tapis.readthedocs.io/en/latest/technical/authentication.html#id2
+    if tapis_token_verifier is not None:
+        try:
+            claims = tapis_token_verifier.verify(token)
+            username = TapisTokenVerifier.username_from_claims(claims)
+            if username:
+                role = resolve_user_role(username, token)
+                logger.info("Tapis JWT authentication succeeded for username=%s", username)
+                return User(username=username, role=role)
+        except Exception as exc:
+            logger.debug("Tapis JWT verification failed: %s", exc)
 
-    return User(
-        username=username,
-        role=normalize_role_value(user_dict.get("role"), default=UserRoleEnum.NONE),
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid authentication credentials",
+        headers={"WWW-Authenticate": "Bearer"},
     )
 
 

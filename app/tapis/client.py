@@ -1,9 +1,12 @@
 import logging
 import json
+import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional, cast
+from typing import Any, ClassVar, Dict, Optional, cast
 
+import jwt
+import requests
 from tapipy.errors import BaseTapyException  # type: ignore[import-untyped]
 from tapipy.tapis import Tapis  # type: ignore[import-untyped]
 
@@ -234,3 +237,55 @@ class TapisAuthClient:
                 "expires_at": coerce_expiration(expires_at),
             }
         )
+
+
+class TapisTokenVerifier:
+    """Verify RS256-signed Tapis JWTs using the tenant's public key.
+
+    The public key is fetched from the Tenants API and cached for _KEY_TTL seconds.
+    See https://tapis.readthedocs.io/en/latest/technical/authentication.html#id2
+    """
+
+    _KEY_TTL: ClassVar[float] = 3600.0  # re-fetch public key after 1 hour
+
+    def __init__(self, base_url: str, tenant_id: str) -> None:
+        self.base_url = base_url
+        self.tenant_id = tenant_id
+        self._public_key: Optional[str] = None
+        self._key_fetched_at: float = 0.0
+
+    def _fetch_public_key(self) -> str:
+        url = f"{self.base_url.rstrip('/')}/v3/tenants/{self.tenant_id}"
+        logger.debug("Fetching Tapis public key from %s", url)
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        result = data.get("result") or data
+        public_key: Optional[str] = result.get("public_key") if isinstance(result, dict) else None
+        if not public_key:
+            raise ValueError(f"No public_key in tenant response for {self.tenant_id}")
+        logger.info("Fetched Tapis public key for tenant=%s", self.tenant_id)
+        return public_key
+
+    def _get_public_key(self) -> str:
+        now = time.monotonic()
+        if self._public_key is None or (now - self._key_fetched_at) > self._KEY_TTL:
+            self._public_key = self._fetch_public_key()
+            self._key_fetched_at = now
+        return self._public_key
+
+    def verify(self, token: str) -> Dict[str, Any]:
+        """Decode and verify a Tapis RS256 JWT. Raises jwt.InvalidTokenError on failure."""
+        public_key = self._get_public_key()
+        return cast(Dict[str, Any], jwt.decode(token, public_key, algorithms=["RS256"]))
+
+    @staticmethod
+    def username_from_claims(claims: Dict[str, Any]) -> Optional[str]:
+        """Extract the Tapis username from decoded JWT claims."""
+        username = claims.get("tapis/username")
+        if username:
+            return str(username)
+        sub = claims.get("sub", "")
+        if sub and "@" in sub:
+            return sub.split("@")[0]
+        return str(sub) if sub else None

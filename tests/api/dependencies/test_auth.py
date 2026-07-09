@@ -1,4 +1,7 @@
+import jwt
+import pytest
 from app.api.dependencies import auth
+from app.tapis.client import TapisTokenVerifier
 
 
 def test_authenticate_user_dev_env_skips_credentials(monkeypatch):
@@ -139,3 +142,132 @@ def test_ensure_ckan_membership_skips_ineligible_role(monkeypatch):
 
     auth.ensure_ckan_membership("alice", "READ")
     assert calls["count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# TapisTokenVerifier tests
+# ---------------------------------------------------------------------------
+
+def _make_rsa_keypair():
+    """Generate a throwaway RSA key pair for testing."""
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.hazmat.backends import default_backend
+
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+        backend=default_backend(),
+    )
+    return private_key, private_key.public_key()
+
+
+def _pem(public_key) -> str:
+    from cryptography.hazmat.primitives import serialization
+
+    return public_key.public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode()
+
+
+def _sign_token(private_key, payload: dict) -> str:
+    from cryptography.hazmat.primitives import serialization
+
+    pem = private_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.TraditionalOpenSSL,
+        serialization.NoEncryption(),
+    ).decode()
+    return jwt.encode(payload, pem, algorithm="RS256")
+
+
+def test_tapis_token_verifier_valid_token(monkeypatch):
+    private_key, public_key = _make_rsa_keypair()
+    public_pem = _pem(public_key)
+
+    verifier = TapisTokenVerifier(base_url="https://portals.tapis.io", tenant_id="portals")
+    monkeypatch.setattr(verifier, "_fetch_public_key", lambda: public_pem)
+
+    token = _sign_token(private_key, {"tapis/username": "alice", "sub": "alice@portals"})
+    claims = verifier.verify(token)
+    assert claims["tapis/username"] == "alice"
+
+
+def test_tapis_token_verifier_invalid_signature(monkeypatch):
+    _, public_key = _make_rsa_keypair()
+    other_private_key, _ = _make_rsa_keypair()
+    public_pem = _pem(public_key)
+
+    verifier = TapisTokenVerifier(base_url="https://portals.tapis.io", tenant_id="portals")
+    monkeypatch.setattr(verifier, "_fetch_public_key", lambda: public_pem)
+
+    token = _sign_token(other_private_key, {"tapis/username": "eve"})
+    with pytest.raises(jwt.InvalidSignatureError):
+        verifier.verify(token)
+
+
+def test_tapis_token_verifier_caches_public_key(monkeypatch):
+    private_key, public_key = _make_rsa_keypair()
+    public_pem = _pem(public_key)
+    fetch_calls = {"count": 0}
+
+    verifier = TapisTokenVerifier(base_url="https://portals.tapis.io", tenant_id="portals")
+
+    def fake_fetch():
+        fetch_calls["count"] += 1
+        return public_pem
+
+    monkeypatch.setattr(verifier, "_fetch_public_key", fake_fetch)
+
+    token = _sign_token(private_key, {"tapis/username": "alice"})
+    verifier.verify(token)
+    verifier.verify(token)
+    assert fetch_calls["count"] == 1  # second call uses cache
+
+
+def test_username_from_claims_tapis_field():
+    assert TapisTokenVerifier.username_from_claims({"tapis/username": "alice"}) == "alice"
+
+
+def test_username_from_claims_sub_at_tenant():
+    assert TapisTokenVerifier.username_from_claims({"sub": "alice@portals"}) == "alice"
+
+
+def test_username_from_claims_sub_plain():
+    assert TapisTokenVerifier.username_from_claims({"sub": "alice"}) == "alice"
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_accepts_tapis_jwt(monkeypatch):
+    private_key, public_key = _make_rsa_keypair()
+    public_pem = _pem(public_key)
+
+    monkeypatch.setattr(auth.settings, "ENV", "prod")
+
+    verifier = TapisTokenVerifier(base_url="https://portals.tapis.io", tenant_id="portals")
+    monkeypatch.setattr(verifier, "_fetch_public_key", lambda: public_pem)
+    monkeypatch.setattr(auth, "tapis_token_verifier", verifier)
+
+    token = _sign_token(private_key, {"tapis/username": "alice", "sub": "alice@portals"})
+    user = await auth.get_current_user(token=token)
+    assert user.username == "alice"
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_rejects_bad_tapis_jwt(monkeypatch):
+    from fastapi import HTTPException
+
+    _, public_key = _make_rsa_keypair()
+    other_private_key, _ = _make_rsa_keypair()
+    public_pem = _pem(public_key)
+
+    monkeypatch.setattr(auth.settings, "ENV", "prod")
+
+    verifier = TapisTokenVerifier(base_url="https://portals.tapis.io", tenant_id="portals")
+    monkeypatch.setattr(verifier, "_fetch_public_key", lambda: public_pem)
+    monkeypatch.setattr(auth, "tapis_token_verifier", verifier)
+
+    token = _sign_token(other_private_key, {"tapis/username": "eve"})
+    with pytest.raises(HTTPException) as exc_info:
+        await auth.get_current_user(token=token)
+    assert exc_info.value.status_code == 401
