@@ -93,6 +93,20 @@ else:
     print(f"  (could not fetch: {images_resp.status_code})")
 
 # ---------------------------------------------------------------------------
+# Stack (must exist before pods can reference it)
+# ---------------------------------------------------------------------------
+STACK_ID = "upstreamdevelop"
+print(f"Creating stack {STACK_ID} …")
+try:
+    pods_post("/pods/stacks", {"stack_id": STACK_ID, "description": "Upstream develop"})
+    print("  Created.")
+except RuntimeError as e:
+    if "already exists" in str(e).lower() or "uniqueviolation" in str(e).lower():
+        print("  Already exists — skipping.")
+    else:
+        raise
+
+# ---------------------------------------------------------------------------
 # Volume
 # ---------------------------------------------------------------------------
 print(f"\nCreating volume {VOLUME_ID} …")
@@ -153,7 +167,7 @@ api_payload = {
     "pod_id": API_ID,
     "image": API_IMAGE,
     "description": "Upstream develop API",
-    "stack_id": "upstream-develop",
+    "stack_id": STACK_ID,
     "command": ["/bin/bash", "-c", "alembic upgrade heads && uvicorn app.main:app --reload --host 0.0.0.0"],
     "environment_variables": {
         "DATABASE_URL": f"postgresql+psycopg://{PG_USER}:{PG_PASSWORD}@{POSTGRES_ID}.{PODS_DOMAIN}:443/{PG_USER}",

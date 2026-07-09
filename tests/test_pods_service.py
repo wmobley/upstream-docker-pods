@@ -46,6 +46,7 @@ def test_build_bundle_grants_admin_permissions(monkeypatch):
         calls.append(("set_pod_permission", pod_id, f"{user}:{level}"))
         return {"pod_id": pod_id, "user": user, "level": level}
 
+    service.create_stack = lambda *, stack_id, description="": {"stack_id": stack_id}
     service.create_volume = fake_create_volume
     service.create_pod = fake_create_pod
     service.set_volume_permission = fake_set_volume_permission
@@ -53,6 +54,7 @@ def test_build_bundle_grants_admin_permissions(monkeypatch):
 
     created = service.build_bundle(base="sniffer", pg_user="pguser", pg_password="pgpass")
 
+    assert created["stack"] == {"stack_id": "sniffer"}
     assert created["volume"] == {"volume_id": "sniffervolume"}
     assert created["postgres"] == {"pod_id": "snifferpostgres"}
     assert created["api"] == {"pod_id": "snifferapi"}
@@ -121,6 +123,7 @@ def test_build_bundle_custom_description(monkeypatch):
         captured.append(dict(payload))
         return {"pod_id": payload["pod_id"]}
 
+    service.create_stack = lambda *, stack_id, description="": {"stack_id": stack_id}
     service.create_volume = fake_create_volume
     service.create_pod = fake_create_pod
     service.grant_default_admin_permissions = lambda **kw: {}

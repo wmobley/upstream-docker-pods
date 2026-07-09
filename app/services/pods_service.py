@@ -60,6 +60,17 @@ class PodsService:
             raise RuntimeError(response.text or f"Pods API request failed ({response.status_code})")
         return cast(Dict[str, Any], response.json())
 
+    def create_stack(self, *, stack_id: str, description: str = "") -> Dict[str, Any]:
+        payload = {"stack_id": stack_id, "description": description}
+        try:
+            return self._request(method="POST", path="/v3/pods/stacks", json=payload)
+        except RuntimeError as exc:
+            message = str(exc).lower()
+            if "already exists" in message or "uniqueviolation" in message:
+                logger.info("Stack %s already exists; continuing.", stack_id)
+                return {"status": "exists", "stack_id": stack_id}
+            raise
+
     def create_volume(self, *, volume_id: str, description: str) -> Dict[str, Any]:
         payload = {"volume_id": volume_id, "description": description}
         try:
@@ -236,6 +247,7 @@ class PodsService:
         }
 
         created = {
+            "stack": self.create_stack(stack_id=base_clean, description=description or base_clean),
             "volume": self.create_volume(volume_id=volume_id, description=f"Volume for {base_clean}"),
             "postgres": self.create_pod(postgres_payload),
             "api": self.create_pod(api_payload),
