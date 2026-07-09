@@ -231,7 +231,7 @@ ui_payload = {
             "url": f"{UI_ID}.{PODS_DOMAIN}",
         }
     },
-    "resources": {"cpu_request": 125, "cpu_limit": 500, "mem_request": 128, "mem_limit": 512, "gpus": 0},
+    "resources": {"cpu_request": 250, "cpu_limit": 500, "mem_request": 256, "mem_limit": 512, "gpus": 0},
 }
 try:
     pods_post("/pods", ui_payload)
