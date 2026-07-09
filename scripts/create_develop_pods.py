@@ -67,8 +67,7 @@ def pods_post(path: str, payload: dict) -> dict:
     url = f"{BASE_URL}/v3{path}"
     r = requests.post(url, headers=headers, json=payload, timeout=30)
     if not r.ok:
-        print(f"  ERROR {r.status_code}: {r.text[:400]}")
-        r.raise_for_status()
+        raise RuntimeError(f"POST {path} → {r.status_code}: {r.text}")
     return r.json()
 
 
@@ -76,8 +75,7 @@ def pods_put(path: str, payload: dict) -> dict:
     url = f"{BASE_URL}/v3{path}"
     r = requests.put(url, headers=headers, json=payload, timeout=30)
     if not r.ok:
-        print(f"  ERROR {r.status_code}: {r.text[:400]}")
-        r.raise_for_status()
+        raise RuntimeError(f"PUT {path} → {r.status_code}: {r.text}")
     return r.json()
 
 
@@ -102,12 +100,6 @@ postgres_payload = {
     "pod_id": POSTGRES_ID,
     "image": "postgis/postgis:17-3.5",
     "description": "Postgres for upstream-develop",
-    "command": ["docker-entrypoint.sh"],
-    "arguments": [
-        "-c", "ssl=on",
-        "-c", "ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem",
-        "-c", "ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key",
-    ],
     "environment_variables": {
         "POSTGRES_USER": PG_USER,
         "POSTGRES_PASSWORD": PG_PASSWORD,
