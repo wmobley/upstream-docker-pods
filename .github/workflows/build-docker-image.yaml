@@ -80,6 +80,7 @@ jobs:
     needs: build-and-push
     if: github.ref == 'refs/heads/feature/unified-ui-tapis-auth' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    environment: Tapis Configure
     env:
       TAPIS_SERVICE_USERNAME: ${{ secrets.TAPIS_DEVELOP_USERNAME }}
       TAPIS_SERVICE_PASSWORD: ${{ secrets.TAPIS_DEVELOP_PASSWORD }}
