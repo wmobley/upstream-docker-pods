@@ -2,9 +2,9 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches: ['main']
+    branches: ['main', 'feature/unified-ui-tapis-auth']
   pull_request:
-    branches: ['main']
+    branches: ['main', 'feature/unified-ui-tapis-auth']
 
 env:
   REGISTRY: ghcr.io
@@ -61,7 +61,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -75,3 +75,52 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  deploy-develop:
+    needs: build-and-push
+    if: github.ref == 'refs/heads/feature/unified-ui-tapis-auth' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      TAPIS_SERVICE_USERNAME: ${{ secrets.TAPIS_DEVELOP_USERNAME }}
+      TAPIS_SERVICE_PASSWORD: ${{ secrets.TAPIS_DEVELOP_PASSWORD }}
+      TAPIS_BASE_URL: https://portals.develop.tapis.io
+      TAPIS_POD_ID: upstream-developapi
+
+    steps:
+      - name: Deploy to Tapis Pods (develop)
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          IMAGE="ghcr.io/${{ env.IMAGE_NAME }}:sha-${SHORT_SHA}"
+
+          TAPIS_TOKEN=$(curl -sf -X POST "${TAPIS_BASE_URL}/v3/oauth2/tokens" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"${TAPIS_SERVICE_USERNAME}\",\"password\":\"${TAPIS_SERVICE_PASSWORD}\",\"grant_type\":\"password\"}" \
+            | jq -r '.result.access_token.access_token')
+          if [ -z "$TAPIS_TOKEN" ] || [ "$TAPIS_TOKEN" = "null" ]; then
+            echo "ERROR: Failed to obtain Tapis token from ${TAPIS_BASE_URL}" && exit 1
+          fi
+
+          POD=$(curl -sf "${TAPIS_BASE_URL}/v3/pods/${TAPIS_POD_ID}" \
+            -H "X-Tapis-Token: ${TAPIS_TOKEN}" | jq '.result')
+
+          PAYLOAD=$(echo "$POD" | jq --arg img "$IMAGE" '{
+            image: $img,
+            description: .description,
+            command: .command,
+            arguments: .arguments,
+            environment_variables: (.environment_variables // {}),
+            secret_map: (.secret_map // {}),
+            status_requested: "RESTART",
+            volume_mounts: (.volume_mounts // {}),
+            time_to_stop_default: (.time_to_stop_default // -1),
+            time_to_stop_instance: .time_to_stop_instance,
+            networking: (.networking // {}),
+            resources: (.resources // {}),
+            compute_queue: (.compute_queue // "default")
+          }')
+
+          STATUS=$(curl -sf -X PUT "${TAPIS_BASE_URL}/v3/pods/${TAPIS_POD_ID}" \
+            -H "X-Tapis-Token: ${TAPIS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" | jq -r '.status')
+          echo "Tapis Pods update status: ${STATUS}"
