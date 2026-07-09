@@ -141,7 +141,7 @@ class PodsService:
                 pod_grants[user] = self.set_pod_permission(pod_id=pod_id, user=user, level="ADMIN")
         return grants
 
-    def build_bundle(self, *, base: str, pg_user: str, pg_password: str) -> Dict[str, Any]:
+    def build_bundle(self, *, base: str, pg_user: str, pg_password: str, description: str = "") -> Dict[str, Any]:
         base_clean = _sanitize_base(base)
         volume_id = f"{base_clean}volume"
 
@@ -191,7 +191,8 @@ class PodsService:
         api_payload = {
             "pod_id": f"{base_clean}api",
             "image": "ghcr.io/wmobley/upstream-docker-pods:main",
-            "description": "Upstream API connected to postgres pod",
+            "description": description or f"Upstream API for {base_clean}",
+            "stack_id": base_clean,
             "command": [
                 "/bin/bash",
                 "-c",
@@ -199,7 +200,6 @@ class PodsService:
             ],
             "environment_variables": {
                 "DATABASE_URL": f"postgresql+psycopg://{pg_user}:{pg_password}@{base_clean}postgres.pods.portals.tapis.io:443/{pg_user}",
-                "VITE_UPSTREAM_API_URL": f"https://{base_clean}.pods.portals.tapis.io",
                 "POSTGRES_PASSWORD": pg_password,
                 "TAS_USER": self.settings.TAS_USER,
                 "TAS_SECRET": self.settings.TAS_SECRET,
@@ -235,44 +235,14 @@ class PodsService:
             },
         }
 
-        ui_payload = {
-            "pod_id": base_clean,
-            "image": "ghcr.io/wmobley/upstream-ui-pods:main",
-            "description": "Upstream UI frontend",
-            "environment_variables": {
-                "VITE_UPSTREAM_API_URL": f"https://{base_clean}api.pods.portals.tapis.io",
-                "VITE_CKAN_URL": self.settings.CKAN_URL,
-                "VITE_TAPIS_BASE_URL": self.settings.TAPIS_BASE_URL,
-                "VITE_TAPIS_PODS_BASE_URL": self.settings.TAPIS_BASE_URL,
-            },
-            "status_requested": "ON",
-            "volume_mounts": {},
-            "time_to_stop_default": -1,
-            "networking": {
-                "default": {
-                    "protocol": "http",
-                    "port": 80,
-                    "url": f"{base_clean}.pods.portals.tapis.io",
-                }
-            },
-            "resources": {
-                "cpu_request": 250,
-                "cpu_limit": 2000,
-                "mem_request": 256,
-                "mem_limit": 3072,
-                "gpus": 0,
-            },
-        }
-
         created = {
             "volume": self.create_volume(volume_id=volume_id, description=f"Volume for {base_clean}"),
             "postgres": self.create_pod(postgres_payload),
             "api": self.create_pod(api_payload),
-            "ui": self.create_pod(ui_payload),
         }
         created["permissions"] = self.grant_default_admin_permissions(
             volume_id=volume_id,
-            pod_ids=[f"{base_clean}postgres", f"{base_clean}api", base_clean],
+            pod_ids=[f"{base_clean}postgres", f"{base_clean}api"],
         )
         return created
 
