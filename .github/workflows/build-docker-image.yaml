@@ -116,10 +116,12 @@ jobs:
           POD=$(curl -sf "${TAPIS_BASE_URL}/v3/pods/${TAPIS_POD_ID}" \
             -H "X-Tapis-Token: ${TAPIS_TOKEN}" | jq '.result')
 
-          PAYLOAD=$(echo "$POD" | jq --arg img "$IMAGE" '{
+          STARTUP_CMD='["/bin/bash","-c","until alembic upgrade heads; do echo Waiting for DB...; sleep 10; done && uvicorn app.main:app --reload --host 0.0.0.0"]'
+
+          PAYLOAD=$(echo "$POD" | jq --arg img "$IMAGE" --argjson cmd "$STARTUP_CMD" '{
             image: $img,
             description: .description,
-            command: .command,
+            command: $cmd,
             arguments: .arguments,
             environment_variables: (.environment_variables // {}),
             secret_map: (.secret_map // {}),
