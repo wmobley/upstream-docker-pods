@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-Register the upstream-ui OAuth2 client on a Tapis tenant.
+Register or update the upstream-ui OAuth2 client on a Tapis tenant.
 
-Creates (or reports on) the client that the unified UI uses for the
-authorization-code login flow.  Run this once per tenant before the
-OAuth2 login button will work.
+If the client already exists it is deleted and recreated with the current
+callback URL list (idempotent update).
 
 Usage:
     export TAPIS_USERNAME=<your-username>
@@ -28,13 +27,13 @@ CLIENT_ID = os.environ.get("CLIENT_ID", "upstream-ui")
 CLIENT_KEY = os.environ.get("CLIENT_KEY") or secrets.token_urlsafe(32)
 
 DEFAULT_CALLBACKS = ",".join([
-    # develop pod
+    # deployed pods
     "https://upstreamdevelop.pods.portals.tapis.io/callback",
-    # local Vite dev server (common ports)
+    "https://upstream.pods.portals.tapis.io/callback",
+    # local dev servers (common ports)
+    "http://localhost:3000/callback",
     "http://localhost:5173/callback",
     "http://localhost:5174/callback",
-    # production pod (add when ready)
-    # "https://upstream.pods.portals.tapis.io/callback",
 ])
 CALLBACK_URLS = os.environ.get("CALLBACK_URLS", DEFAULT_CALLBACKS)
 
@@ -54,26 +53,26 @@ headers = {
 }
 
 # ---------------------------------------------------------------------------
-# Check if client already exists
+# Delete existing client if present (so we can recreate with updated URLs)
 # ---------------------------------------------------------------------------
 r = requests.get(f"{BASE_URL}/v3/oauth2/clients/{CLIENT_ID}", headers=headers, timeout=30)
 if r.ok:
     existing = r.json().get("result", {})
-    print(f"Client '{CLIENT_ID}' already exists:")
-    print(f"  client_id:    {existing.get('client_id')}")
-    print(f"  callback_url: {existing.get('callback_url')}")
-    print(f"  display_name: {existing.get('display_name')}")
-    print()
-    print("To add new redirect URIs, delete and recreate:")
-    print(f"  DELETE {BASE_URL}/v3/oauth2/clients/{CLIENT_ID}")
-    print("Then re-run this script with CALLBACK_URLS set to the full list.")
-    sys.exit(0)
+    print(f"Client '{CLIENT_ID}' exists — deleting to recreate with updated callback URLs.")
+    print(f"  Old callback_url: {existing.get('callback_url')}")
+    d = requests.delete(f"{BASE_URL}/v3/oauth2/clients/{CLIENT_ID}", headers=headers, timeout=30)
+    if not d.ok:
+        print(f"  ERROR deleting client {d.status_code}: {d.text}")
+        sys.exit(1)
+    print("  Deleted.\n")
 
 # ---------------------------------------------------------------------------
 # Create client
 # ---------------------------------------------------------------------------
 print(f"Creating OAuth2 client '{CLIENT_ID}' ...")
-print(f"  Callback URLs: {CALLBACK_URLS}")
+print(f"  Callback URLs:")
+for url in CALLBACK_URLS.split(","):
+    print(f"    {url.strip()}")
 print()
 
 payload = {
