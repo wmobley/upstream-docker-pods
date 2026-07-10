@@ -18,6 +18,7 @@ Optional env vars (defaults shown):
 """
 import os
 import sys
+import time
 import secrets
 import requests
 from tapipy.tapis import Tapis
@@ -83,9 +84,21 @@ payload = {
     "description": "Upstream data platform unified UI — authorization code flow",
 }
 
-r = requests.post(f"{BASE_URL}/v3/oauth2/clients", headers=headers, json=payload, timeout=30)
-if not r.ok:
+# Retry with backoff — Tapis delete is not immediately consistent.
+r = None
+for attempt in range(1, 7):
+    r = requests.post(f"{BASE_URL}/v3/oauth2/clients", headers=headers, json=payload, timeout=30)
+    if r.ok:
+        break
+    if "already exists" in r.text.lower() or "uniqueness" in r.text.lower():
+        print(f"  (attempt {attempt}/6) Tapis still has the old record — waiting 3s ...")
+        time.sleep(3)
+        continue
     print(f"ERROR {r.status_code}: {r.text}")
+    sys.exit(1)
+
+if not r or not r.ok:
+    print(f"ERROR: client still exists after 6 attempts. Try again in a few seconds.")
     sys.exit(1)
 
 result = r.json().get("result", {})
