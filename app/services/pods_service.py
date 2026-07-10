@@ -146,10 +146,22 @@ class PodsService:
         payload = {"user": user, "level": level}
         return self._request(method="POST", path=f"/v3/pods/{pod_id}/permissions", json=payload)
 
-    def grant_default_admin_permissions(self, *, volume_id: str, pod_ids: list[str]) -> dict[str, Any]:
+    def set_stack_permission(self, *, stack_id: str, user: str, level: str = "ADMIN") -> Dict[str, Any]:
+        payload = {"user": user, "level": level}
+        return self._request(method="POST", path=f"/v3/pods/stacks/{stack_id}/permissions", json=payload)
+
+    def grant_default_admin_permissions(
+        self,
+        *,
+        stack_id: str | None = None,
+        volume_id: str,
+        pod_ids: list[str],
+    ) -> dict[str, Any]:
         admin_users = [user for user in (self.settings.DEFAULT_ADMIN_USERS or []) if user]
-        grants: dict[str, Any] = {"volume": {}, "pods": {}}
+        grants: dict[str, Any] = {"stack": {}, "volume": {}, "pods": {}}
         for user in admin_users:
+            if stack_id:
+                grants["stack"][user] = self.set_stack_permission(stack_id=stack_id, user=user, level="ADMIN")
             grants["volume"][user] = self.set_volume_permission(volume_id=volume_id, user=user, level="ADMIN")
             for pod_id in pod_ids:
                 pod_grants = grants["pods"].setdefault(pod_id, {})
@@ -257,6 +269,7 @@ class PodsService:
             "api": self.create_pod(api_payload),
         }
         created["permissions"] = self.grant_default_admin_permissions(
+            stack_id=base_clean,
             volume_id=volume_id,
             pod_ids=[f"{base_clean}postgres", f"{base_clean}api"],
         )

@@ -46,11 +46,16 @@ def test_build_bundle_grants_admin_permissions(monkeypatch):
         calls.append(("set_pod_permission", pod_id, f"{user}:{level}"))
         return {"pod_id": pod_id, "user": user, "level": level}
 
+    def fake_set_stack_permission(*, stack_id: str, user: str, level: str = "ADMIN"):
+        calls.append(("set_stack_permission", stack_id, f"{user}:{level}"))
+        return {"stack_id": stack_id, "user": user, "level": level}
+
     service.create_stack = lambda *, stack_id, description="": {"stack_id": stack_id}
     service.create_volume = fake_create_volume
     service.create_pod = fake_create_pod
     service.set_volume_permission = fake_set_volume_permission
     service.set_pod_permission = fake_set_pod_permission
+    service.set_stack_permission = fake_set_stack_permission
 
     created = service.build_bundle(base="sniffer", pg_user="pguser", pg_password="pgpass")
 
@@ -59,6 +64,7 @@ def test_build_bundle_grants_admin_permissions(monkeypatch):
     assert created["postgres"] == {"pod_id": "snifferpostgres"}
     assert created["api"] == {"pod_id": "snifferapi"}
     assert "ui" not in created
+    assert created["permissions"]["stack"]["tasclient_dsso"]["level"] == "ADMIN"
     assert created["permissions"]["volume"]["tasclient_dsso"]["level"] == "ADMIN"
     assert created["permissions"]["pods"]["snifferpostgres"]["tasclient_dsso"]["level"] == "ADMIN"
     assert created["permissions"]["pods"]["snifferapi"]["tasclient_dsso"]["level"] == "ADMIN"
