@@ -24,7 +24,7 @@ import requests
 from tapipy.tapis import Tapis
 
 BASE_URL = os.environ.get("TAPIS_BASE_URL", "https://portals.tapis.io")
-CLIENT_ID = os.environ.get("CLIENT_ID", "upstream-dev")
+CLIENT_ID = os.environ.get("CLIENT_ID", "upstream-devui")
 CLIENT_KEY = os.environ.get("CLIENT_KEY") or secrets.token_urlsafe(32)
 
 DEFAULT_CALLBACKS = ",".join([
