@@ -224,6 +224,8 @@ ui_payload = {
     "description": "Upstream unified UI (develop)",
     "environment_variables": {
         "VITE_TAPIS_PODS_BASE_URL": BASE_URL,
+        # Point directly at the API pod — avoids CORS when calling Tapis from the browser.
+        "VITE_UPSTREAM_API_URL": f"https://{API_ID}.{PODS_DOMAIN}",
         "VITE_TAPIS_OAUTH_CLIENT_ID": os.environ.get("VITE_TAPIS_OAUTH_CLIENT_ID", "upstream-develop"),
         **({
             "VITE_TAPIS_OAUTH_CLIENT_KEY": os.environ["VITE_TAPIS_OAUTH_CLIENT_KEY"]

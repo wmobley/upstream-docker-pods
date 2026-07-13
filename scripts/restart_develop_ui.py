@@ -19,9 +19,14 @@ import requests
 from tapipy.tapis import Tapis
 
 BASE_URL = os.environ.get("TAPIS_BASE_URL", "https://portals.tapis.io")
+PODS_DOMAIN = BASE_URL.replace("https://", "pods.")
 UI_POD_ID = os.environ.get("UI_POD_ID", "upstreamdevelop")
+API_POD_ID = os.environ.get("API_POD_ID", f"{UI_POD_ID}api")
 CLIENT_ID = os.environ.get("VITE_TAPIS_OAUTH_CLIENT_ID", "upstream-develop")
 CLIENT_KEY = os.environ.get("VITE_TAPIS_OAUTH_CLIENT_KEY", "")
+# Setting VITE_UPSTREAM_API_URL disables browser-side discovery and routes
+# API calls directly to the develop API pod (avoids CORS on Tapis endpoints).
+API_URL = os.environ.get("VITE_UPSTREAM_API_URL", f"https://{API_POD_ID}.{PODS_DOMAIN}")
 
 print(f"Authenticating as {os.environ['TAPIS_USERNAME']} to {BASE_URL} ...")
 t = Tapis(base_url=BASE_URL, username=os.environ["TAPIS_USERNAME"], password=os.environ["TAPIS_PASSWORD"])
@@ -46,6 +51,7 @@ env = pod.get("environment_variables") or {}
 
 # Patch env vars
 env["VITE_TAPIS_OAUTH_CLIENT_ID"] = CLIENT_ID
+env["VITE_UPSTREAM_API_URL"] = API_URL
 if CLIENT_KEY:
     env["VITE_TAPIS_OAUTH_CLIENT_KEY"] = CLIENT_KEY
 
