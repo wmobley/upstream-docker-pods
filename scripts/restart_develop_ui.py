@@ -20,7 +20,7 @@ from tapipy.tapis import Tapis
 
 BASE_URL = os.environ.get("TAPIS_BASE_URL", "https://portals.tapis.io")
 UI_POD_ID = os.environ.get("UI_POD_ID", "upstreamdevelop")
-CLIENT_ID = os.environ.get("VITE_TAPIS_OAUTH_CLIENT_ID", "upstream-devui")
+CLIENT_ID = os.environ.get("VITE_TAPIS_OAUTH_CLIENT_ID", "upstream-develop")
 CLIENT_KEY = os.environ.get("VITE_TAPIS_OAUTH_CLIENT_KEY", "")
 
 print(f"Authenticating as {os.environ['TAPIS_USERNAME']} to {BASE_URL} ...")
