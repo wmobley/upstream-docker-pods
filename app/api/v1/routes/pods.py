@@ -15,6 +15,7 @@ class BundleRequest(BaseModel):
     base: str = Field(..., description="Base name for the pod bundle (e.g., sniffer)")
     pg_user: str = Field(..., description="Postgres username")
     pg_password: str = Field(..., description="Postgres password")
+    display_name: str = Field(default="", description="Human-readable name shown in the project dropdown")
 
 
 @router.post("/bundle", status_code=status.HTTP_201_CREATED)
@@ -34,6 +35,7 @@ def create_pod_bundle(
             base=payload.base,
             pg_user=payload.pg_user,
             pg_password=payload.pg_password,
+            display_name=payload.display_name,
         )
         return {"status": "requested", "created": created}
     except ValueError as exc:

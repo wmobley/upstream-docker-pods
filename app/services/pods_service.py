@@ -168,7 +168,7 @@ class PodsService:
                 pod_grants[user] = self.set_pod_permission(pod_id=pod_id, user=user, level="ADMIN")
         return grants
 
-    def build_bundle(self, *, base: str, pg_user: str, pg_password: str, description: str = "") -> Dict[str, Any]:
+    def build_bundle(self, *, base: str, pg_user: str, pg_password: str, display_name: str = "", description: str = "") -> Dict[str, Any]:
         base_clean = _sanitize_base(base)
         volume_id = f"{base_clean}volume"
 
@@ -215,10 +215,13 @@ class PodsService:
             },
         }
 
+        friendly_name = display_name.strip() or description.strip() or base_clean
+        ui_origin = self.settings.UI_BASE_URL.rstrip("/")
+
         api_payload = {
             "pod_id": f"{base_clean}api",
             "image": "ghcr.io/wmobley/upstream-docker-pods:main",
-            "description": description or f"Upstream API for {base_clean}",
+            "description": f"[upstream] {friendly_name}",
             "stack_id": base_clean,
             "command": [
                 "/bin/bash",
@@ -235,6 +238,8 @@ class PodsService:
                 "TAS_URL": self.settings.TAS_URL,
                 "ENVIRONMENT": self.settings.ENVIRONMENT,
                 "ENV": self.settings.ENV,
+                "TAPIS_BASE_URL": self.settings.TAPIS_BASE_URL,
+                "TAPIS_TENANT_ID": self.settings.TAPIS_TENANT_ID,
                 "CKAN_URL": self.settings.CKAN_URL,
                 "CKAN_TIMEOUT": str(self.settings.CKAN_TIMEOUT),
                 "CKAN_ORGANIZATION": self.settings.CKAN_ORGANIZATION or "upstream",
@@ -251,6 +256,17 @@ class PodsService:
                     "protocol": "http",
                     "port": 8000,
                     "url": f"{base_clean}api.pods.portals.tapis.io",
+                    "cors_allow_origins": [ui_origin],
+                    "cors_allow_methods": ["GET", "POST", "OPTIONS", "DELETE", "PUT", "HEAD", "PATCH"],
+                    "cors_allow_headers": [
+                        "content-type",
+                        "authorization",
+                        "x-tapis-token",
+                        "x-tapis-tenant",
+                        "x-tapis-username",
+                        "x-tapis-site",
+                    ],
+                    "cors_allow_credentials": False,
                 }
             },
             "resources": {
