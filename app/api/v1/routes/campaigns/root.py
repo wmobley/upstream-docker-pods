@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
-from app.api.dependencies.pytas import (
+from app.api.dependencies.ckan import (
     check_allocation_permission,
     get_user_allocations,
     get_user_allocations_optional,

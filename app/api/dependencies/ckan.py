@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Dict, Iterable, List
 
 from fastapi import Depends, HTTPException
@@ -19,6 +20,11 @@ from app.services.ckan_service import CKANError, get_ckan_service
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# Cache CKAN org lookups keyed by token to avoid a live CKAN call on every request.
+# Entries expire after _CACHE_TTL_SECONDS seconds.
+_CACHE_TTL_SECONDS = 300
+_org_cache: dict[str, tuple[float, List[str]]] = {}
 
 
 def _normalize(value: str | None) -> str | None:
@@ -40,6 +46,14 @@ def _org_identifiers(org: Dict[str, Any]) -> Iterable[str]:
 
 
 def _fetch_user_organizations(*, token: str, username: str, strict: bool = True) -> List[str]:
+    cached = _org_cache.get(token)
+    if cached is not None:
+        expires_at, orgs = cached
+        if time.monotonic() < expires_at:
+            logger.debug("CKAN org cache hit for %s", username)
+            return orgs
+        del _org_cache[token]
+
     ckan_client = get_ckan_service()
     if not ckan_client or not settings.CKAN_URL:
         logger.debug("CKAN integration disabled; treating allocations as unrestricted for %s", username)
@@ -51,18 +65,17 @@ def _fetch_user_organizations(*, token: str, username: str, strict: bool = True)
         logger.warning("Failed to retrieve CKAN organizations for %s: %s", username, exc)
         if strict:
             raise HTTPException(status_code=502, detail="Unable to retrieve CKAN organizations.") from exc
-        # Read-only paths degrade gracefully: a CKAN outage falls back to
-        # "unrestricted" (same behaviour as CKAN being disabled) rather than
-        # blocking the request. Write paths keep raising so they fail closed.
-        logger.info(
-            "Proceeding without allocation restrictions for %s due to CKAN error", username
-        )
+        logger.info("Proceeding without allocation restrictions for %s due to CKAN error", username)
         return []
 
     identifiers: set[str] = set()
     for org in organizations:
         identifiers.update(filter(None, _org_identifiers(org)))
-    return sorted(identifiers)
+    result = sorted(identifiers)
+
+    _org_cache[token] = (time.monotonic() + _CACHE_TTL_SECONDS, result)
+    logger.debug("CKAN org cache populated for %s (%d orgs)", username, len(result))
+    return result
 
 
 def user_has_ckan_organization(
@@ -96,8 +109,6 @@ async def get_user_allocations(
     tapis_token: str | None = Depends(get_tapis_token_header_optional),
 ) -> List[str]:
     """
-    Resolve allowed allocations dynamically from the CKAN organizations the user belongs to.
-
     Strict variant for write/publish endpoints: a CKAN outage raises 502 so the
     request fails closed rather than mutating data without an allocation check.
     """
@@ -109,11 +120,8 @@ async def get_user_allocations_optional(
     tapis_token: str | None = Depends(get_tapis_token_header_optional),
 ) -> List[str]:
     """
-    Lenient variant for read-only endpoints.
-
-    If CKAN is unreachable, this returns an empty allocation list (treated as
-    "unrestricted" by ``check_allocation_permission``) instead of raising 502,
-    so viewing campaigns/stations is not blocked by a CKAN outage.
+    Lenient variant for read-only endpoints: a CKAN outage falls back to
+    unrestricted rather than blocking the request.
     """
     return resolve_user_allocations(current_user, tapis_token, strict=False)
 
