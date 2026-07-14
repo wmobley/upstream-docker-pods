@@ -129,8 +129,14 @@ except RuntimeError as e:
 print(f"Creating pod {POSTGRES_ID} …")
 postgres_payload = {
     "pod_id": POSTGRES_ID,
-    "image": "postgis/postgis:17-3.5",
+    "pod_template": "postgres:17postgis3.5@2025-10-13-20:41:16",
     "description": "Postgres for upstream-develop",
+    "command": ["docker-entrypoint.sh"],
+    "arguments": [
+        "-c", "ssl=on",
+        "-c", "ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem",
+        "-c", "ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key",
+    ],
     "environment_variables": {
         "POSTGRES_USER": PG_USER,
         "POSTGRES_PASSWORD": PG_PASSWORD,
@@ -201,6 +207,17 @@ api_payload = {
             "protocol": "http",
             "port": 8000,
             "url": f"{API_ID}.{PODS_DOMAIN}",
+            "cors_allow_origins": [f"https://{UI_ID}.{PODS_DOMAIN}"],
+            "cors_allow_methods": ["GET", "POST", "OPTIONS", "DELETE", "PUT", "HEAD", "PATCH"],
+            "cors_allow_headers": [
+                "content-type",
+                "authorization",
+                "x-tapis-token",
+                "x-tapis-tenant",
+                "x-tapis-username",
+                "x-tapis-site",
+            ],
+            "cors_allow_credentials": False,
         }
     },
     "resources": {"cpu_request": 250, "cpu_limit": 2000, "mem_request": 256, "mem_limit": 3072, "gpus": 0},
