@@ -9,6 +9,7 @@ def test_build_bundle_grants_admin_permissions(monkeypatch):
         {
             "TAPIS_PODS_BASE_URL": "https://portals.tapis.io",
             "TAPIS_BASE_URL": "https://portals.tapis.io",
+            "TAPIS_TENANT_ID": "portals",
             "TAS_USER": "user",
             "TAS_SECRET": "secret",
             "JWT_SECRET": "jwt",
@@ -90,8 +91,8 @@ def test_build_bundle_grants_admin_permissions(monkeypatch):
     assert "VITE_UPSTREAM_API_URL" not in pod_payloads["snifferapi"]["environment_variables"]
     # stack_id must be present in api payload
     assert pod_payloads["snifferapi"]["stack_id"] == "sniffer"
-    # description defaults to generated name when not provided
-    assert pod_payloads["snifferapi"]["description"] == "Upstream API for sniffer"
+    # description defaults to '[upstream] <base>' when no display_name provided
+    assert pod_payloads["snifferapi"]["description"] == "[upstream] sniffer"
 
 
 def test_build_bundle_custom_description(monkeypatch):
@@ -102,6 +103,7 @@ def test_build_bundle_custom_description(monkeypatch):
         {
             "TAPIS_PODS_BASE_URL": "https://portals.tapis.io",
             "TAPIS_BASE_URL": "https://portals.tapis.io",
+            "TAPIS_TENANT_ID": "portals",
             "TAS_USER": "user",
             "TAS_SECRET": "secret",
             "JWT_SECRET": "jwt",
@@ -142,4 +144,4 @@ def test_build_bundle_custom_description(monkeypatch):
     )
 
     api_payload = next(p for p in captured if p["pod_id"] == "myprojectapi")
-    assert api_payload["description"] == "My Project API"
+    assert api_payload["description"] == "[upstream] My Project API"
