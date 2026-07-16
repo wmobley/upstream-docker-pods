@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_edit_user
-from app.api.v1.schemas.note import NoteCreate, NoteCreateResponse, ListNotesResponse
+from app.api.v1.schemas.note import NoteCreate, NoteCreateResponse, NoteItem, NoteUpdate, ListNotesResponse
 from app.api.v1.schemas.user import User
 from app.db.session import get_db
 from app.db.repositories.note_repository import NoteRepository
@@ -42,6 +42,20 @@ def create_measurement_note(
     return service.create_measurement_note(
         request, campaign_id, station_id, measurement_id, current_user.username
     )
+
+
+@router.patch("/{note_id}", response_model=NoteItem)
+def update_measurement_note(
+    campaign_id: int,
+    station_id: int,
+    sensor_id: int,
+    measurement_id: int,
+    note_id: int,
+    request: NoteUpdate,
+    current_user: User = Depends(get_edit_user),
+    service: NoteService = Depends(_service),
+) -> NoteItem:
+    return service.update(note_id, request, current_user.username)
 
 
 @router.delete("/{note_id}", status_code=204)

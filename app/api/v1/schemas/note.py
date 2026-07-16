@@ -10,6 +10,10 @@ class NoteCreate(BaseModel):
     content: str
 
 
+class NoteUpdate(BaseModel):
+    content: str
+
+
 class NoteItem(BaseModel):
     id: int
     scope: NoteScope

@@ -61,6 +61,24 @@ class NoteRepository:
         ).order_by(Note.created_at.desc())
         return q.all(), q.count()
 
+    def update(self, note_id: int, content: str) -> Note | None:
+        note = self.db.query(Note).filter(Note.noteid == note_id).first()
+        if not note:
+            return None
+        note.content = content
+        self.db.commit()
+        self.db.refresh(note)
+        return note
+
+    def list_all_by_station(self, station_id: int) -> list[Note]:
+        """Return all notes associated with a station (station-scoped and measurement-scoped)."""
+        return (
+            self.db.query(Note)
+            .filter(Note.station_id == station_id)
+            .order_by(Note.scope, Note.created_at)
+            .all()
+        )
+
     def delete(self, note_id: int) -> bool:
         note = self.db.query(Note).filter(Note.noteid == note_id).first()
         if not note:

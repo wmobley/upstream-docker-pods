@@ -2,7 +2,7 @@ from typing import Optional
 
 from fastapi import HTTPException, status
 
-from app.api.v1.schemas.note import NoteCreate, NoteCreateResponse, NoteItem, ListNotesResponse
+from app.api.v1.schemas.note import NoteCreate, NoteCreateResponse, NoteItem, NoteUpdate, ListNotesResponse
 from app.db.models.note import NoteScope
 from app.db.repositories.note_repository import NoteRepository
 
@@ -77,6 +77,17 @@ class NoteService:
     ) -> ListNotesResponse:
         notes, total = self.repo.list_by_measurement(campaign_id, station_id, measurement_id)
         return ListNotesResponse(items=[self._to_item(n) for n in notes], total=total)
+
+    def update(self, note_id: int, request: NoteUpdate, username: str) -> NoteItem:
+        note = self.repo.get(note_id)
+        if not note:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
+        if note.created_by != username:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot edit another user's note")
+        updated = self.repo.update(note_id, request.content)
+        if not updated:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
+        return self._to_item(updated)
 
     def delete(self, note_id: int, username: str) -> None:
         note = self.repo.get(note_id)
