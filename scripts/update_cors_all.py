@@ -12,7 +12,7 @@ Usage:
 
 Optional env vars:
     TAPIS_BASE_URL=https://portals.tapis.io
-    CORS_ORIGIN=https://upstreamdevelop.pods.portals.tapis.io
+    CORS_ORIGIN=https://upstream.pods.portals.tapis.io
     DRY_RUN=1   (print what would be changed without applying)
 """
 import os
@@ -22,7 +22,7 @@ from tapipy.tapis import Tapis
 
 BASE_URL = os.environ.get("TAPIS_BASE_URL", "https://portals.tapis.io")
 PODS_DOMAIN = BASE_URL.replace("https://", "pods.")
-CORS_ORIGIN = os.environ.get("CORS_ORIGIN", "https://upstreamdevelop.pods.portals.tapis.io")
+CORS_ORIGIN = os.environ.get("CORS_ORIGIN", "https://upstream.pods.portals.tapis.io")
 DRY_RUN = os.environ.get("DRY_RUN", "").strip() in ("1", "true", "yes")
 UPSTREAM_API_IMAGE = "upstream-docker-pods"
 
@@ -51,12 +51,18 @@ if not r.ok:
     sys.exit(1)
 
 all_pods = r.json().get("result", [])
+pod_ids = {p["pod_id"] for p in all_pods}
+# Upstream API pods: description starts with '[upstream]' (preferred),
+# or image+postgres fallback for pods that predate the convention.
 api_pods = [
     p for p in all_pods
     if p.get("pod_id", "").endswith("api")
     and (
-        p.get("image") is None
-        or UPSTREAM_API_IMAGE in (p.get("image") or "")
+        (p.get("description") or "").startswith("[upstream]")
+        or (
+            UPSTREAM_API_IMAGE in (p.get("image") or "")
+            and p["pod_id"][:-3] + "postgres" in pod_ids
+        )
     )
 ]
 

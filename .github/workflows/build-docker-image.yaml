@@ -2,9 +2,9 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches: ['main', 'feature/unified-ui-tapis-auth']
+    branches: ['main', 'feature/**']
   pull_request:
-    branches: ['main', 'feature/unified-ui-tapis-auth']
+    branches: ['main', 'feature/**']
 
 env:
   REGISTRY: ghcr.io
@@ -78,7 +78,7 @@ jobs:
 
   deploy-develop:
     needs: build-and-push
-    if: github.ref == 'refs/heads/feature/unified-ui-tapis-auth' && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/feature/')) && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: Tapis Configure
     env:
