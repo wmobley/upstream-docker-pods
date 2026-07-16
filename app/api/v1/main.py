@@ -22,6 +22,7 @@ from app.api.v1.routes.metadata_schema import router as metadata_schema_router
 from app.api.v1.routes.campaigns.campaign_notes import router as campaign_notes_router
 from app.api.v1.routes.campaigns.campaign_station_notes import router as campaign_station_notes_router
 from app.api.v1.routes.campaigns.campaign_station_sensor_measurement_notes import router as campaign_station_sensor_measurement_notes_router
+from app.api.v1.routes.campaigns.campaign_station_sensor_notes import router as campaign_station_sensor_notes_router
 
 api_router = APIRouter()
 api_router.include_router(root_router)
@@ -37,4 +38,5 @@ api_router.include_router(user_roles_router)
 api_router.include_router(metadata_schema_router)
 api_router.include_router(campaign_notes_router)
 api_router.include_router(campaign_station_notes_router)
+api_router.include_router(campaign_station_sensor_notes_router)
 api_router.include_router(campaign_station_sensor_measurement_notes_router)

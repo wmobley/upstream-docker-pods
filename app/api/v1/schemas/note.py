@@ -22,6 +22,7 @@ class NoteItem(BaseModel):
     created_at: datetime
     campaign_id: int
     station_id: int | None = None
+    sensor_id: int | None = None
     measurement_id: int | None = None
 
     model_config = {"from_attributes": True}

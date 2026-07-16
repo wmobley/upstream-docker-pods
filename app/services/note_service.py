@@ -20,6 +20,7 @@ class NoteService:
             created_at=note.created_at,  # type: ignore[attr-defined]
             campaign_id=note.campaign_id,  # type: ignore[attr-defined]
             station_id=note.station_id,  # type: ignore[attr-defined]
+            sensor_id=note.sensor_id,  # type: ignore[attr-defined]
             measurement_id=note.measurement_id,  # type: ignore[attr-defined]
         )
 
@@ -43,6 +44,19 @@ class NoteService:
             created_by=username,
             campaign_id=campaign_id,
             station_id=station_id,
+        )
+        return NoteCreateResponse(id=note.noteid)
+
+    def create_sensor_note(
+        self, request: NoteCreate, campaign_id: int, station_id: int, sensor_id: int, username: str
+    ) -> NoteCreateResponse:
+        note = self.repo.create(
+            scope=NoteScope.SENSOR,
+            content=request.content,
+            created_by=username,
+            campaign_id=campaign_id,
+            station_id=station_id,
+            sensor_id=sensor_id,
         )
         return NoteCreateResponse(id=note.noteid)
 
@@ -70,6 +84,10 @@ class NoteService:
 
     def list_station_notes(self, campaign_id: int, station_id: int) -> ListNotesResponse:
         notes, total = self.repo.list_by_station(campaign_id, station_id)
+        return ListNotesResponse(items=[self._to_item(n) for n in notes], total=total)
+
+    def list_sensor_notes(self, campaign_id: int, station_id: int, sensor_id: int) -> ListNotesResponse:
+        notes, total = self.repo.list_by_sensor(campaign_id, station_id, sensor_id)
         return ListNotesResponse(items=[self._to_item(n) for n in notes], total=total)
 
     def list_measurement_notes(

@@ -18,6 +18,7 @@ class NoteRepository:
         created_by: str,
         campaign_id: int,
         station_id: Optional[int] = None,
+        sensor_id: Optional[int] = None,
         measurement_id: Optional[int] = None,
     ) -> Note:
         note = Note(
@@ -27,6 +28,7 @@ class NoteRepository:
             created_at=datetime.now(timezone.utc),
             campaign_id=campaign_id,
             station_id=station_id,
+            sensor_id=sensor_id,
             measurement_id=measurement_id,
         )
         self.db.add(note)
@@ -58,6 +60,15 @@ class NoteRepository:
             Note.station_id == station_id,
             Note.measurement_id == measurement_id,
             Note.scope == NoteScope.MEASUREMENT,
+        ).order_by(Note.created_at.desc())
+        return q.all(), q.count()
+
+    def list_by_sensor(self, campaign_id: int, station_id: int, sensor_id: int) -> tuple[list[Note], int]:
+        q = self.db.query(Note).filter(
+            Note.campaign_id == campaign_id,
+            Note.station_id == station_id,
+            Note.sensor_id == sensor_id,
+            Note.scope == NoteScope.SENSOR,
         ).order_by(Note.created_at.desc())
         return q.all(), q.count()
 

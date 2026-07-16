@@ -12,6 +12,7 @@ from app.db.base import Base
 class NoteScope(str, PyEnum):
     CAMPAIGN = "campaign"
     STATION = "station"
+    SENSOR = "sensor"
     MEASUREMENT = "measurement"
 
 
@@ -30,9 +31,13 @@ class Note(Base):
     station_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("stations.stationid", ondelete="CASCADE"), nullable=True
     )
+    sensor_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("sensors.sensorid", ondelete="CASCADE"), nullable=True
+    )
     measurement_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("measurements.measurementid", ondelete="CASCADE"), nullable=True
     )
 
     campaign: Mapped["Campaign"] = relationship(back_populates="notes")
     station: Mapped[Optional["Station"]] = relationship(back_populates="notes")
+    sensor: Mapped[Optional["Sensor"]] = relationship(back_populates="notes")
