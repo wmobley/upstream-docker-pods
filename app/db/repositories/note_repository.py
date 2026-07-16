@@ -1,0 +1,70 @@
+from datetime import datetime, timezone
+from typing import Optional
+
+from sqlalchemy.orm import Session
+
+from app.db.models.note import Note, NoteScope
+
+
+class NoteRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def create(
+        self,
+        *,
+        scope: NoteScope,
+        content: str,
+        created_by: str,
+        campaign_id: int,
+        station_id: Optional[int] = None,
+        measurement_id: Optional[int] = None,
+    ) -> Note:
+        note = Note(
+            scope=scope,
+            content=content,
+            created_by=created_by,
+            created_at=datetime.now(timezone.utc),
+            campaign_id=campaign_id,
+            station_id=station_id,
+            measurement_id=measurement_id,
+        )
+        self.db.add(note)
+        self.db.commit()
+        self.db.refresh(note)
+        return note
+
+    def get(self, note_id: int) -> Note | None:
+        return self.db.query(Note).filter(Note.noteid == note_id).first()
+
+    def list_by_campaign(self, campaign_id: int) -> tuple[list[Note], int]:
+        q = self.db.query(Note).filter(
+            Note.campaign_id == campaign_id,
+            Note.scope == NoteScope.CAMPAIGN,
+        ).order_by(Note.created_at.desc())
+        return q.all(), q.count()
+
+    def list_by_station(self, campaign_id: int, station_id: int) -> tuple[list[Note], int]:
+        q = self.db.query(Note).filter(
+            Note.campaign_id == campaign_id,
+            Note.station_id == station_id,
+            Note.scope == NoteScope.STATION,
+        ).order_by(Note.created_at.desc())
+        return q.all(), q.count()
+
+    def list_by_measurement(self, campaign_id: int, station_id: int, measurement_id: int) -> tuple[list[Note], int]:
+        q = self.db.query(Note).filter(
+            Note.campaign_id == campaign_id,
+            Note.station_id == station_id,
+            Note.measurement_id == measurement_id,
+            Note.scope == NoteScope.MEASUREMENT,
+        ).order_by(Note.created_at.desc())
+        return q.all(), q.count()
+
+    def delete(self, note_id: int) -> bool:
+        note = self.db.query(Note).filter(Note.noteid == note_id).first()
+        if not note:
+            return False
+        self.db.delete(note)
+        self.db.commit()
+        return True
