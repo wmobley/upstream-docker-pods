@@ -4,7 +4,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.main import app
-from app.api.dependencies.auth import get_admin_user
+from app.api.dependencies import auth as auth_module
+from app.api.dependencies.auth import get_admin_user, get_current_user
 from app.api.v1.schemas.user import User
 from app.db.models.user_role import UserRole as UserRoleModel
 from app.db.session import get_db
@@ -65,3 +66,39 @@ def test_delete_user_role(client: TestClient):
 
     missing = client.delete("/api/v1/user-roles/example")
     assert missing.status_code == 404
+
+
+def test_get_my_role_returns_caller_role(client: TestClient):
+    app.dependency_overrides[get_current_user] = lambda: User(username="alice", role="USER")
+    try:
+        response = client.get("/api/v1/user-roles/me")
+    finally:
+        del app.dependency_overrides[get_current_user]
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["username"] == "alice"
+    assert data["role"] == "USER"
+
+
+def test_get_my_role_does_not_require_admin(client: TestClient):
+    # A caller with role NONE (no admin) must still be able to look up their
+    # own role — this endpoint has no admin gate, unlike GET /user-roles.
+    app.dependency_overrides[get_current_user] = lambda: User(username="bob", role="NONE")
+    try:
+        response = client.get("/api/v1/user-roles/me")
+    finally:
+        del app.dependency_overrides[get_current_user]
+
+    assert response.status_code == 200
+    assert response.json()["role"] == "NONE"
+
+
+def test_get_my_role_requires_authentication(client: TestClient, monkeypatch):
+    # No get_current_user override here — the real dependency runs. This repo's
+    # .env defaults to ENV=dev, which would otherwise hit get_current_user's
+    # dev-mode bypass and return a fake user with no token at all — force
+    # enforcement on so this test actually exercises the auth check.
+    monkeypatch.setattr(auth_module.settings, "TAPIS_ENFORCE_AUTH_IN_DEV", True)
+    response = client.get("/api/v1/user-roles/me")
+    assert response.status_code == 401
