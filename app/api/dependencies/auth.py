@@ -169,7 +169,7 @@ def _role_allows(role: str | None, minimum: str) -> bool:
 
 # Async function to get the current user based on the provided OAuth2 token
 async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> User:
-    if settings.ENV == "dev":
+    if settings.ENV == "dev" and not settings.TAPIS_ENFORCE_AUTH_IN_DEV:
         return User(
             username="test",
             role=_default_role(),

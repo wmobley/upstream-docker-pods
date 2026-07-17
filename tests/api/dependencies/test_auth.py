@@ -238,6 +238,27 @@ def test_username_from_claims_sub_plain():
 
 
 @pytest.mark.asyncio
+async def test_get_current_user_dev_bypass_when_not_enforced(monkeypatch):
+    monkeypatch.setattr(auth.settings, "ENV", "dev")
+    monkeypatch.setattr(auth.settings, "TAPIS_ENFORCE_AUTH_IN_DEV", False)
+
+    user = await auth.get_current_user(token=None)
+    assert user.username == "test"
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_dev_bypass_disabled_when_enforced(monkeypatch):
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(auth.settings, "ENV", "dev")
+    monkeypatch.setattr(auth.settings, "TAPIS_ENFORCE_AUTH_IN_DEV", True)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await auth.get_current_user(token=None)
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_get_current_user_accepts_tapis_jwt(monkeypatch):
     private_key, public_key = _make_rsa_keypair()
     public_pem = _pem(public_key)

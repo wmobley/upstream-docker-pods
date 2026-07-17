@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_admin_user
+from app.api.dependencies.auth import get_admin_user, get_current_user
 from app.api.v1.schemas.user import User
 from app.api.v1.schemas.user_role import UserRoleResponse, UserRoleUpdate
 from app.db.repositories.user_role_repository import UserRoleRepository
@@ -11,6 +11,12 @@ from app.db.session import get_db
 
 
 router = APIRouter(prefix="/user-roles", tags=["user-roles"])
+
+
+@router.get("/me", response_model=User)
+def get_my_role(current_user: User = Depends(get_current_user)) -> User:
+    """Self-lookup of the caller's own role in this project's DB. No admin gate."""
+    return current_user
 
 
 @router.get("", response_model=list[UserRoleResponse])
