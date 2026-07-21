@@ -17,8 +17,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE TYPE note_scope AS ENUM ('campaign', 'station', 'measurement')")
-
+    # Do not also issue a raw CREATE TYPE here: the sa.Enum column below already
+    # emits CREATE TYPE note_scope as part of create_table()'s DDL. Doing both
+    # raises psycopg.errors.DuplicateObject on a fresh database.
     op.create_table(
         "notes",
         sa.Column("noteid", sa.Integer(), nullable=False),
