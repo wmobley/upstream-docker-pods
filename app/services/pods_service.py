@@ -251,6 +251,24 @@ class PodsService:
                     "protocol": "http",
                     "port": 8000,
                     "url": f"{base_clean}api.pods.portals.tapis.io",
+                    # Set at creation time so the bundle's own UI can call its API
+                    # immediately. Doing this in the create payload (rather than a
+                    # later PUT) avoids the APPROVEDADMIN permission gate that
+                    # blocks CORS edits on existing pods.
+                    "cors_allow_origins": [
+                        f"https://{base_clean}.pods.portals.tapis.io",
+                        "https://*.tapis.io",
+                    ],
+                    "cors_allow_methods": ["GET", "POST", "OPTIONS", "DELETE", "PUT", "HEAD", "PATCH"],
+                    "cors_allow_headers": [
+                        "content-type",
+                        "authorization",
+                        "x-tapis-token",
+                        "x-tapis-tenant",
+                        "x-tapis-username",
+                        "x-tapis-site",
+                    ],
+                    "cors_allow_credentials": False,
                 }
             },
             "resources": {

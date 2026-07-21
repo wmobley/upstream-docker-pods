@@ -92,6 +92,15 @@ def test_build_bundle_grants_admin_permissions(monkeypatch):
     assert pod_payloads["snifferapi"]["stack_id"] == "sniffer"
     # description defaults to generated name when not provided
     assert pod_payloads["snifferapi"]["description"] == "Upstream API for sniffer"
+    # CORS must be set at creation time so the bundle's own UI can call its API
+    # immediately, without needing a later APPROVEDADMIN-gated networking update.
+    api_cors = pod_payloads["snifferapi"]["networking"]["default"]
+    assert api_cors["cors_allow_origins"] == [
+        "https://sniffer.pods.portals.tapis.io",
+        "https://*.tapis.io",
+    ]
+    assert "OPTIONS" in api_cors["cors_allow_methods"]
+    assert "authorization" in api_cors["cors_allow_headers"]
 
 
 def test_build_bundle_custom_description(monkeypatch):
