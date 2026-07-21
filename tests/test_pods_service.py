@@ -32,6 +32,58 @@ def test_create_pod_reraises_unrelated_errors():
         assert "unrelated failure" in str(exc)
 
 
+def test_build_bundle_grants_admin_permissions_before_cors_bootstrap():
+    # The service account has no access to a brand-new pod until the owning
+    # user's grant_default_admin_permissions() gives it ADMIN — so that must
+    # run before _bootstrap_pod_cors() attempts to self-elevate to APPROVEDADMIN.
+    service = PodsService.__new__(PodsService)
+    service.settings = type(
+        "Settings",
+        (),
+        {
+            "TAPIS_PODS_BASE_URL": "https://portals.tapis.io",
+            "TAPIS_BASE_URL": "https://portals.tapis.io",
+            "TAPIS_TENANT_ID": "portals",
+            "TAS_USER": "user",
+            "TAS_SECRET": "secret",
+            "JWT_SECRET": "jwt",
+            "ALG": "HS256",
+            "TAS_URL": "https://tas.example",
+            "ENVIRONMENT": "dev",
+            "ENV": "dev",
+            "CKAN_URL": None,
+            "CKAN_TIMEOUT": 30,
+            "CKAN_ORGANIZATION": None,
+            "CKAN_ADMIN_USERNAME": "dso_test",
+            "CKAN_ADMIN_API_KEY": "",
+            "UI_BASE_URL": "https://ui.example",
+            "API_BASE_URL": "https://api.example",
+            "DEFAULT_ADMIN_USERS": ["tasclient_dsso"],
+        },
+    )()
+
+    call_order: list[str] = []
+
+    service.create_stack = lambda *, stack_id, description="": {"stack_id": stack_id}
+    service.create_volume = lambda *, volume_id, description: {"volume_id": volume_id}
+    service.create_pod = lambda payload: {"pod_id": payload["pod_id"]}
+
+    def fake_grant_default_admin_permissions(*, stack_id, volume_id, pod_ids):
+        call_order.append("permissions")
+        return {}
+
+    def fake_bootstrap_pod_cors(*, pod_id, cors_config):
+        call_order.append("cors")
+        return {"status": "configured"}
+
+    service.grant_default_admin_permissions = fake_grant_default_admin_permissions
+    service._bootstrap_pod_cors = fake_bootstrap_pod_cors
+
+    service.build_bundle(base="sniffer", pg_user="pguser", pg_password="pgpass")
+
+    assert call_order == ["permissions", "cors"]
+
+
 def test_build_bundle_grants_admin_permissions(monkeypatch):
     service = PodsService.__new__(PodsService)
     service.settings = type(
