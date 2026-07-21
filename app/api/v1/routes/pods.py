@@ -37,7 +37,8 @@ def create_pod_bundle(
             pg_password=payload.pg_password,
             display_name=payload.display_name,
         )
-        return {"status": "requested", "created": created}
+        cors_status = created.get("cors", {}).get("status", "pending_manual_approval")
+        return {"status": "requested", "created": created, "cors_status": cors_status}
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover - defensive

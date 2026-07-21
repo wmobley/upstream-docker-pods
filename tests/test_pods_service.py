@@ -1,6 +1,37 @@
 from app.services.pods_service import PodsService
 
 
+def test_create_pod_treats_already_exists_as_success():
+    service = PodsService.__new__(PodsService)
+
+    def fake_request(*, method, path, json=None, token=None):
+        raise RuntimeError(
+            '{"detail":"{\\"status\\":\\"error\\",\\"message\\":\\"Got IntegrityError - '
+            'psycopg2.errors.UniqueViolation : Key (pod_id)=(snifferpostgres) already exists.\\"}"}'
+        )
+
+    service._request = fake_request
+
+    result = service.create_pod({"pod_id": "snifferpostgres"})
+
+    assert result == {"status": "exists", "pod_id": "snifferpostgres"}
+
+
+def test_create_pod_reraises_unrelated_errors():
+    service = PodsService.__new__(PodsService)
+
+    def fake_request(*, method, path, json=None, token=None):
+        raise RuntimeError("Some other unrelated failure")
+
+    service._request = fake_request
+
+    try:
+        service.create_pod({"pod_id": "snifferpostgres"})
+        assert False, "expected RuntimeError to propagate"
+    except RuntimeError as exc:
+        assert "unrelated failure" in str(exc)
+
+
 def test_build_bundle_grants_admin_permissions(monkeypatch):
     service = PodsService.__new__(PodsService)
     service.settings = type(
@@ -57,6 +88,7 @@ def test_build_bundle_grants_admin_permissions(monkeypatch):
     service.set_volume_permission = fake_set_volume_permission
     service.set_pod_permission = fake_set_pod_permission
     service.set_stack_permission = fake_set_stack_permission
+    service._bootstrap_pod_cors = lambda *, pod_id, cors_config: {"status": "configured"}
 
     created = service.build_bundle(base="sniffer", pg_user="pguser", pg_password="pgpass")
 
@@ -93,6 +125,13 @@ def test_build_bundle_grants_admin_permissions(monkeypatch):
     assert pod_payloads["snifferapi"]["stack_id"] == "sniffer"
     # description defaults to '[upstream] <base>' when no display_name provided
     assert pod_payloads["snifferapi"]["description"] == "[upstream] sniffer"
+    # CORS must NOT be in the create payload — Tapis gates cors_* writes behind
+    # APPROVEDADMIN, which the creating user's own token never holds. CORS is
+    # configured by a separate post-creation bootstrap step (see below).
+    api_networking = pod_payloads["snifferapi"]["networking"]["default"]
+    assert "cors_allow_origins" not in api_networking
+    assert "cors_allow_methods" not in api_networking
+    assert created["cors"] == {"status": "configured"}
 
 
 def test_build_bundle_custom_description(monkeypatch):
@@ -135,6 +174,7 @@ def test_build_bundle_custom_description(monkeypatch):
     service.create_volume = fake_create_volume
     service.create_pod = fake_create_pod
     service.grant_default_admin_permissions = lambda **kw: {}
+    service._bootstrap_pod_cors = lambda *, pod_id, cors_config: {"status": "configured"}
 
     service.build_bundle(
         base="myproject",
@@ -145,3 +185,79 @@ def test_build_bundle_custom_description(monkeypatch):
 
     api_payload = next(p for p in captured if p["pod_id"] == "myprojectapi")
     assert api_payload["description"] == "[upstream] My Project API"
+
+
+def test_bootstrap_pod_cors_success():
+    service = PodsService.__new__(PodsService)
+    service.settings = type(
+        "Settings", (), {"TAPIS_SERVICE_USERNAME": "svc_account", "TAS_USER": "user"}
+    )()
+    service._fetch_service_token = lambda: "svc-token"
+
+    calls: list[tuple[str, str, dict | None, str | None]] = []
+
+    def fake_request(*, method, path, json=None, token=None):
+        calls.append((method, path, json, token))
+        return {"result": "ok"}
+
+    service._request = fake_request
+
+    result = service._bootstrap_pod_cors(
+        pod_id="snifferapi",
+        cors_config={
+            "protocol": "http",
+            "port": 8000,
+            "url": "snifferapi.pods.portals.tapis.io",
+            "cors_allow_origins": ["https://sniffer.pods.portals.tapis.io"],
+        },
+    )
+
+    assert result == {"status": "configured"}
+    assert calls[0] == (
+        "POST",
+        "/v3/pods/snifferapi/permissions",
+        {"user": "svc_account", "level": "APPROVEDADMIN"},
+        "svc-token",
+    )
+    method, path, json_body, token = calls[1]
+    assert (method, path, token) == ("PUT", "/v3/pods/snifferapi", "svc-token")
+    assert json_body["networking"]["default"]["cors_allow_origins"] == [
+        "https://sniffer.pods.portals.tapis.io"
+    ]
+
+
+def test_bootstrap_pod_cors_grant_failure_does_not_raise():
+    service = PodsService.__new__(PodsService)
+    service.settings = type(
+        "Settings", (), {"TAPIS_SERVICE_USERNAME": "svc_account", "TAS_USER": "user"}
+    )()
+    service._fetch_service_token = lambda: "svc-token"
+
+    def fake_request(*, method, path, json=None, token=None):
+        raise RuntimeError("No user has APPROVEDADMIN permission to configure CORS settings")
+
+    service._request = fake_request
+
+    result = service._bootstrap_pod_cors(pod_id="snifferapi", cors_config={"protocol": "http"})
+
+    assert result["status"] == "pending_manual_approval"
+    assert "APPROVEDADMIN" in result["error"]
+
+
+def test_bootstrap_pod_cors_no_service_credentials():
+    service = PodsService.__new__(PodsService)
+    service.settings = type(
+        "Settings",
+        (),
+        {
+            "TAPIS_SERVICE_USERNAME": None,
+            "TAPIS_SERVICE_PASSWORD": None,
+            "TAS_USER": None,
+            "TAS_SECRET": None,
+        },
+    )()
+
+    result = service._bootstrap_pod_cors(pod_id="snifferapi", cors_config={"protocol": "http"})
+
+    assert result["status"] == "pending_manual_approval"
+    assert "not configured" in result["error"]

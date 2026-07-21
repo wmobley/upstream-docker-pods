@@ -40,3 +40,6 @@ class Station(Base):
     sensors: Mapped[List["Sensor"]] = relationship(
         back_populates="station"
     )
+    notes: Mapped[List["Note"]] = relationship(
+        back_populates="station", cascade="all, delete-orphan"
+    )

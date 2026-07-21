@@ -34,6 +34,7 @@ from app.db.repositories.metadata_schema_repository import MetadataSchemaReposit
 from app.db.repositories.campaign_repository import CampaignRepository
 from app.db.repositories.sensor_repository import SensorRepository
 from app.db.repositories.measurement_repository import MeasurementRepository
+from app.db.repositories.note_repository import NoteRepository
 from app.services.station_service import StationService
 from app.services.export_service import ExportService
 from app.services.campaign_service import CampaignService
@@ -434,7 +435,7 @@ async def export_measurements_csv(
         raise HTTPException(status_code=404, detail="Station not found")
 
     # Initialize export service
-    export_service = ExportService(SensorRepository(db), MeasurementRepository(db))
+    export_service = ExportService(SensorRepository(db), MeasurementRepository(db), NoteRepository(db))
 
     return StreamingResponse(
         export_service.export_measurements_csv(station_id, start_date, end_date),

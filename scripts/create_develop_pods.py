@@ -176,7 +176,7 @@ print(f"Creating pod {API_ID} …")
 api_payload = {
     "pod_id": API_ID,
     "image": API_IMAGE,
-    "description": "Upstream develop API",
+    "description": "[upstream] Upstream develop API",
     "stack_id": STACK_ID,
     "command": ["/bin/bash", "-c", "until alembic upgrade heads; do echo 'DB not ready, retrying in 10s...'; sleep 10; done && uvicorn app.main:app --reload --host 0.0.0.0"],
     "environment_variables": {

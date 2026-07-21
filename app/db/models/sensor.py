@@ -32,3 +32,4 @@ class Sensor(Base):
     measurements: Mapped[List["Measurement"]] = relationship("Measurement", back_populates="sensor", lazy="dynamic")
     upload_file_event: Mapped["UploadFileEvent"] = relationship("UploadFileEvent")
     statistics: Mapped["SensorStatistics"] = relationship("SensorStatistics", back_populates="sensor")
+    notes: Mapped[List["Note"]] = relationship(back_populates="sensor", cascade="all, delete-orphan")

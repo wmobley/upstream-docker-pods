@@ -28,3 +28,6 @@ class Campaign(Base):
     stations: Mapped[List["Station"]] = relationship(
         back_populates="campaign"
     )
+    notes: Mapped[List["Note"]] = relationship(
+        back_populates="campaign", cascade="all, delete-orphan"
+    )
