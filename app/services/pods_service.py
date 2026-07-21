@@ -347,14 +347,21 @@ class PodsService:
             "postgres": self.create_pod(postgres_payload),
             "api": self.create_pod(api_payload),
         }
-        created["cors"] = self._bootstrap_pod_cors(
-            pod_id=f"{base_clean}api",
-            cors_config=api_cors_config,
-        )
+        # Grant admin permissions (using the creating user's own token, which owns
+        # the new pod) before the CORS bootstrap step: the service account has no
+        # access at all to a pod it didn't create, and Tapis rejects
+        # POST /pods/{pod_id}/permissions from a caller with zero existing
+        # permission on that pod — not just a missing APPROVEDADMIN tier. If the
+        # service account is among DEFAULT_ADMIN_USERS, this grant is what gives
+        # it the baseline access it needs before it can self-elevate.
         created["permissions"] = self.grant_default_admin_permissions(
             stack_id=base_clean,
             volume_id=volume_id,
             pod_ids=[f"{base_clean}postgres", f"{base_clean}api"],
+        )
+        created["cors"] = self._bootstrap_pod_cors(
+            pod_id=f"{base_clean}api",
+            cors_config=api_cors_config,
         )
         return created
 
