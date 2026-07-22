@@ -144,6 +144,83 @@ def test_ensure_ckan_membership_skips_ineligible_role(monkeypatch):
     assert calls["count"] == 0
 
 
+def test_elevate_role_for_tas_allocation_no_op_when_not_primary(monkeypatch):
+    monkeypatch.setattr(auth.settings, "IS_PRIMARY_INSTANCE", False)
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("user_has_allocation must not be called when not primary")
+
+    monkeypatch.setattr(auth, "user_has_allocation", fail_if_called)
+
+    assert auth.elevate_role_for_tas_allocation("alice", "READ") == "READ"
+
+
+def test_elevate_role_for_tas_allocation_never_downgrades(monkeypatch):
+    monkeypatch.setattr(auth.settings, "IS_PRIMARY_INSTANCE", True)
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("user_has_allocation must not be called for an already-elevated role")
+
+    monkeypatch.setattr(auth, "user_has_allocation", fail_if_called)
+
+    assert auth.elevate_role_for_tas_allocation("alice", "ADMIN") == "ADMIN"
+    assert auth.elevate_role_for_tas_allocation("alice", "APPROVEDADMIN") == "APPROVEDADMIN"
+    assert auth.elevate_role_for_tas_allocation("alice", "USER") == "USER"
+
+
+def _make_test_session_local(tmp_path):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db.models.user_role import UserRole as UserRoleModel
+
+    engine = create_engine(f"sqlite:///{tmp_path}/test_elevate.db", connect_args={"check_same_thread": False})
+    UserRoleModel.__table__.create(bind=engine)
+    return sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def test_elevate_role_for_tas_allocation_elevates_on_match(monkeypatch, tmp_path):
+    from app.db.repositories.user_role_repository import UserRoleRepository
+
+    test_session_local = _make_test_session_local(tmp_path)
+
+    monkeypatch.setattr(auth.settings, "IS_PRIMARY_INSTANCE", True)
+    monkeypatch.setattr(auth.settings, "PRIMARY_ALLOCATION_CHARGE_CODE", "PT2050-DataX")
+    monkeypatch.setattr(auth, "SessionLocal", test_session_local)
+    monkeypatch.setattr(
+        auth,
+        "user_has_allocation",
+        lambda username, charge_code: username == "alice" and charge_code == "PT2050-DataX",
+    )
+
+    assert auth.elevate_role_for_tas_allocation("alice", "READ") == "USER"
+
+    with test_session_local() as db:
+        record = UserRoleRepository(db).get_by_username("alice")
+        assert record is not None
+        assert record.role == "USER"
+
+
+def test_elevate_role_for_tas_allocation_no_match_leaves_role_unchanged(monkeypatch, tmp_path):
+    test_session_local = _make_test_session_local(tmp_path)
+
+    monkeypatch.setattr(auth.settings, "IS_PRIMARY_INSTANCE", True)
+    monkeypatch.setattr(auth, "SessionLocal", test_session_local)
+    monkeypatch.setattr(auth, "user_has_allocation", lambda *_args, **_kwargs: False)
+
+    assert auth.elevate_role_for_tas_allocation("alice", "READ") == "READ"
+
+
+def test_elevate_role_for_tas_allocation_fails_safe_on_tas_error(monkeypatch):
+    monkeypatch.setattr(auth.settings, "IS_PRIMARY_INSTANCE", True)
+
+    def raise_error(*_args, **_kwargs):
+        raise RuntimeError("TAS unavailable")
+
+    monkeypatch.setattr(auth, "user_has_allocation", raise_error)
+
+    assert auth.elevate_role_for_tas_allocation("alice", "READ") == "READ"
+
+
 # ---------------------------------------------------------------------------
 # TapisTokenVerifier tests
 # ---------------------------------------------------------------------------

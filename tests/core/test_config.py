@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 from app.core.config import get_settings, Settings
 import os
 from pathlib import Path
@@ -61,3 +62,21 @@ def test_settings_with_env_sample(monkeypatch):
     assert settings.TAPIS_BACKUP_SYSTEM_ID == "ptdatax.project.PTDATAX-284"
     assert settings.TAPIS_BACKUP_ROOT_PATH == "/upstream-postgres"
     assert settings.TAPIS_BACKUP_RETENTION_DAYS == 7
+
+
+def test_is_primary_instance_defaults_false() -> None:
+    settings = get_settings()
+    assert settings.IS_PRIMARY_INSTANCE is False
+    assert settings.PRIMARY_ALLOCATION_CHARGE_CODE == "PT2050-DataX"
+
+
+def test_primary_instance_rejects_placeholder_tas_credentials() -> None:
+    with pytest.raises(ValidationError):
+        Settings(IS_PRIMARY_INSTANCE=True, TAS_USER="test_user", TAS_SECRET="real_secret")
+    with pytest.raises(ValidationError):
+        Settings(IS_PRIMARY_INSTANCE=True, TAS_USER="real_user", TAS_SECRET="test_secret")
+
+
+def test_primary_instance_accepts_real_tas_credentials() -> None:
+    settings = Settings(IS_PRIMARY_INSTANCE=True, TAS_USER="real_user", TAS_SECRET="real_secret")
+    assert settings.IS_PRIMARY_INSTANCE is True

@@ -8,6 +8,7 @@ from typing import List
 import requests
 from requests.auth import HTTPBasicAuth
 
+from app.core.config import get_settings
 from app.pytas.models.schemas import PyTASProject, PyTASUser
 
 # from app.pytas.models import PyTASProject, PyTASUser
@@ -24,19 +25,15 @@ class TASClient:
     """
     Instantiate the API Object with a base URI and service account credentials.
     The credentials should be a hash with keys `username` and `password` for
-    BASIC Auth.
+    BASIC Auth. Defaults to TAS_URL/TAS_USER/TAS_SECRET from settings when not
+    passed explicitly.
     """
 
     def __init__(self, baseURL=None, credentials=None):
-        # if (baseURL == None):
-
-        #     baseURL =config['tasURL']
-
-        # if (credentials == None):
-
-        #     credentials = {'username':config['tasUser'], 'password':config['tasSecret']}
-
-        self.baseURL = baseURL
+        settings = get_settings()
+        self.baseURL = baseURL or settings.TAS_URL
+        if credentials is None:
+            credentials = {"username": settings.TAS_USER, "password": settings.TAS_SECRET}
         self.credentials = credentials
         self.auth = HTTPBasicAuth(credentials["username"], credentials["password"])
 
@@ -336,6 +333,7 @@ class TASClient:
             "{0}/v1/projects/username/{1}".format(self.baseURL, username),
             headers=headers,
             auth=self.auth,
+            timeout=10,
         )
         if r.status_code == 200:
             resp = r.json()

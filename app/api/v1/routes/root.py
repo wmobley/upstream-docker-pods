@@ -4,7 +4,13 @@ import jwt
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from app.api.dependencies.auth import AuthResult, authenticate_user, resolve_user_role, ensure_ckan_membership
+from app.api.dependencies.auth import (
+    AuthResult,
+    authenticate_user,
+    resolve_user_role,
+    ensure_ckan_membership,
+    elevate_role_for_tas_allocation,
+)
 from app.core.config import get_settings
 from pydantic import BaseModel
 
@@ -57,6 +63,7 @@ async def login(
     # Create jwt token
     tapis_tokens = auth_result.tapis_tokens or {}
     role = resolve_user_role(form_data.username, tapis_tokens.get("access_token"))
+    role = elevate_role_for_tas_allocation(form_data.username, role)
     try:
         ensure_ckan_membership(form_data.username, role)
     except Exception:  # pragma: no cover - defensive log
