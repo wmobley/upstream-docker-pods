@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import logging
 import re
-from typing import Any, Dict, Optional, cast
+from typing import Any, Callable, Dict, Optional, cast
 
 import requests
 
@@ -162,7 +162,9 @@ class PodsService:
         payload = {"user": user, "level": level}
         return self._request(method="POST", path=f"/v3/pods/stacks/{stack_id}/permissions", json=payload)
 
-    def _grant_or_log(self, *, kind: str, resource_id: str, user: str, grant_fn) -> Dict[str, Any]:
+    def _grant_or_log(
+        self, *, kind: str, resource_id: str, user: str, grant_fn: Callable[[], Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Run a single permission grant; log and return a failure marker instead
         of raising, so one bad grant doesn't block the rest of bundle creation."""
         try:
@@ -202,7 +204,7 @@ class PodsService:
                     kind="pod",
                     resource_id=pod_id,
                     user=user,
-                    grant_fn=lambda pod_id=pod_id: self.set_pod_permission(pod_id=pod_id, user=user, level="ADMIN"),
+                    grant_fn=lambda: self.set_pod_permission(pod_id=pod_id, user=user, level="ADMIN"),
                 )
         return grants
 
