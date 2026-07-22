@@ -162,6 +162,17 @@ class PodsService:
         payload = {"user": user, "level": level}
         return self._request(method="POST", path=f"/v3/pods/stacks/{stack_id}/permissions", json=payload)
 
+    def _grant_or_log(self, *, kind: str, resource_id: str, user: str, grant_fn) -> Dict[str, Any]:
+        """Run a single permission grant; log and return a failure marker instead
+        of raising, so one bad grant doesn't block the rest of bundle creation."""
+        try:
+            return grant_fn()
+        except RuntimeError as exc:
+            logger.warning(
+                "Permission grant failed: %s %s user=%s: %s", kind, resource_id, user, exc
+            )
+            return {"status": "failed", "error": str(exc)}
+
     def grant_default_admin_permissions(
         self,
         *,
@@ -173,11 +184,26 @@ class PodsService:
         grants: dict[str, Any] = {"stack": {}, "volume": {}, "pods": {}}
         for user in admin_users:
             if stack_id:
-                grants["stack"][user] = self.set_stack_permission(stack_id=stack_id, user=user, level="ADMIN")
-            grants["volume"][user] = self.set_volume_permission(volume_id=volume_id, user=user, level="ADMIN")
+                grants["stack"][user] = self._grant_or_log(
+                    kind="stack",
+                    resource_id=stack_id,
+                    user=user,
+                    grant_fn=lambda: self.set_stack_permission(stack_id=stack_id, user=user, level="ADMIN"),
+                )
+            grants["volume"][user] = self._grant_or_log(
+                kind="volume",
+                resource_id=volume_id,
+                user=user,
+                grant_fn=lambda: self.set_volume_permission(volume_id=volume_id, user=user, level="ADMIN"),
+            )
             for pod_id in pod_ids:
                 pod_grants = grants["pods"].setdefault(pod_id, {})
-                pod_grants[user] = self.set_pod_permission(pod_id=pod_id, user=user, level="ADMIN")
+                pod_grants[user] = self._grant_or_log(
+                    kind="pod",
+                    resource_id=pod_id,
+                    user=user,
+                    grant_fn=lambda pod_id=pod_id: self.set_pod_permission(pod_id=pod_id, user=user, level="ADMIN"),
+                )
         return grants
 
     def _bootstrap_pod_cors(self, *, pod_id: str, cors_config: Dict[str, Any]) -> Dict[str, Any]:

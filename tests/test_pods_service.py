@@ -32,6 +32,42 @@ def test_create_pod_reraises_unrelated_errors():
         assert "unrelated failure" in str(exc)
 
 
+def test_grant_default_admin_permissions_tolerates_partial_failure():
+    # One bad grant (e.g. "Not authorized") must not block the others, and must
+    # be reported instead of raised, so bundle creation still completes.
+    service = PodsService.__new__(PodsService)
+    service.settings = type(
+        "Settings", (), {"DEFAULT_ADMIN_USERS": ["wmobley", "tasclient_dsso"]}
+    )()
+
+    def fake_set_stack_permission(*, stack_id, user, level="ADMIN"):
+        return {"stack_id": stack_id, "user": user, "level": level}
+
+    def fake_set_volume_permission(*, volume_id, user, level="ADMIN"):
+        if user == "tasclient_dsso":
+            raise RuntimeError("Not authorized -- you do not have access to this endpoint")
+        return {"volume_id": volume_id, "user": user, "level": level}
+
+    def fake_set_pod_permission(*, pod_id, user, level="ADMIN"):
+        return {"pod_id": pod_id, "user": user, "level": level}
+
+    service.set_stack_permission = fake_set_stack_permission
+    service.set_volume_permission = fake_set_volume_permission
+    service.set_pod_permission = fake_set_pod_permission
+
+    grants = service.grant_default_admin_permissions(
+        stack_id="sniffer", volume_id="sniffervolume", pod_ids=["snifferapi"]
+    )
+
+    assert grants["stack"]["wmobley"]["level"] == "ADMIN"
+    assert grants["volume"]["wmobley"]["volume_id"] == "sniffervolume"
+    assert grants["volume"]["tasclient_dsso"]["status"] == "failed"
+    assert "Not authorized" in grants["volume"]["tasclient_dsso"]["error"]
+    # Pod grants for both users must still have run despite the volume failure
+    assert grants["pods"]["snifferapi"]["wmobley"]["level"] == "ADMIN"
+    assert grants["pods"]["snifferapi"]["tasclient_dsso"]["level"] == "ADMIN"
+
+
 def test_build_bundle_grants_admin_permissions_before_cors_bootstrap():
     # The service account has no access to a brand-new pod until the owning
     # user's grant_default_admin_permissions() gives it ADMIN — so that must
