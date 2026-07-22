@@ -13,6 +13,7 @@ from app.db.repositories.user_role_repository import UserRoleRepository
 from app.db.session import SessionLocal
 from app.tapis import TapisAuthClient, TapisTokenVerifier
 from app.services.ckan_service import CKANError, get_ckan_service
+from app.services.tas_service import user_has_allocation
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token", auto_error=False)
 settings: Settings = get_settings()
@@ -159,6 +160,49 @@ def ensure_ckan_membership(username: str, role: str) -> None:
         )
     except Exception:  # pragma: no cover - defensive log
         logger.exception("Unexpected error while ensuring CKAN membership for %s", normalized_username)
+
+
+def elevate_role_for_tas_allocation(username: str, current_role: str) -> str:
+    """Elevate a user to USER role if they hold the configured TAS allocation.
+
+    Only runs on the primary instance (IS_PRIMARY_INSTANCE=true) — bundle-created
+    project pods never set this env var, so this is a no-op there. Never
+    downgrades an existing USER/APPROVEDADMIN/ADMIN role, and fails safe
+    (returns current_role unchanged) if the TAS check or DB write errors.
+    """
+    if not settings.IS_PRIMARY_INSTANCE:
+        return current_role
+
+    normalized_username = (username or "").strip()
+    if not normalized_username:
+        return current_role
+
+    normalized_current = normalize_role_value(current_role, default=UserRoleEnum.NONE)
+    if ROLE_RANK.get(normalized_current, -1) >= ROLE_RANK[UserRoleEnum.USER.value]:
+        return current_role
+
+    try:
+        has_allocation = user_has_allocation(normalized_username, settings.PRIMARY_ALLOCATION_CHARGE_CODE)
+    except Exception:
+        logger.exception("TAS allocation check failed for %s", normalized_username)
+        return current_role
+
+    if not has_allocation:
+        return current_role
+
+    try:
+        with SessionLocal() as db:
+            UserRoleRepository(db).upsert_role(normalized_username, UserRoleEnum.USER.value)
+    except Exception:
+        logger.exception("Failed to persist TAS-elevated role for %s", normalized_username)
+        return current_role
+
+    logger.info(
+        "Elevated %s to USER via TAS allocation %s",
+        normalized_username,
+        settings.PRIMARY_ALLOCATION_CHARGE_CODE,
+    )
+    return UserRoleEnum.USER.value
 
 
 def _role_allows(role: str | None, minimum: str) -> bool:

@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -32,12 +32,28 @@ class Settings(BaseSettings):
     ALLOWED_ALLOCATIONS: list[str] | None = Field(default=None)
     DEFAULT_ADMIN_USERS: list[str] = Field(default_factory=lambda: ["wmobley", "tasclient_dsso"])
 
+    # Set to true only on the primary upstreamapi's own deployment — never on
+    # bundle-created project pods (build_bundle() never sets this, so it
+    # defaults to false there). Gates TAS-allocation-based role elevation.
+    IS_PRIMARY_INSTANCE: bool = Field(default=False)
+    PRIMARY_ALLOCATION_CHARGE_CODE: str = Field(default="PT2050-DataX")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"  # Ignore extra fields from .env (like dev-only settings)
     )
+
+    @model_validator(mode="after")
+    def _require_real_tas_credentials_on_primary(self) -> "Settings":
+        if self.IS_PRIMARY_INSTANCE and (self.TAS_USER == "test_user" or self.TAS_SECRET == "test_secret"):
+            raise ValueError(
+                "IS_PRIMARY_INSTANCE=true requires real TAS_USER/TAS_SECRET credentials, "
+                "not the placeholder defaults — TAS allocation checks would otherwise "
+                "silently authenticate with dummy credentials."
+            )
+        return self
 
 def get_settings() -> Settings:
     # BaseSettings pulls values from environment; mypy doesn't understand this constructor
