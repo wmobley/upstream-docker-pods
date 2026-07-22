@@ -8,7 +8,6 @@ from typing import Any, Callable, Dict, Optional, cast
 import requests
 
 from app.core.config import get_settings
-from app.tapis import TapisAuthClient
 
 logger = logging.getLogger(__name__)
 
@@ -31,32 +30,16 @@ class PodsService:
         else:
             raise RuntimeError("Tapis token required to create pods bundle")
 
-    def _fetch_service_token(self) -> str:
-        username = self.settings.TAPIS_SERVICE_USERNAME or self.settings.TAS_USER
-        password = self.settings.TAPIS_SERVICE_PASSWORD or self.settings.TAS_SECRET
-        if not username or not password:
-            raise RuntimeError("Tapis service credentials are not configured")
-        client = TapisAuthClient(
-            base_url=self.settings.TAPIS_BASE_URL,
-            tenant_id=self.settings.TAPIS_TENANT_ID,
-        )
-        result = client.authenticate(username, password)
-        if not result.tokens or not result.tokens.get("access_token"):
-            raise RuntimeError(f"Failed to obtain Tapis token for service user {username}")
-        return cast(str, result.tokens["access_token"])
-
-    def _headers(self, token: str | None = None) -> Dict[str, str]:
+    def _headers(self) -> Dict[str, str]:
         return {
             "Content-Type": "application/json",
-            "X-Tapis-Token": token or self._token,
+            "X-Tapis-Token": self._token,
             "Accept": "application/json",
         }
 
-    def _request(
-        self, *, method: str, path: str, json: Dict[str, Any] | None = None, token: str | None = None
-    ) -> Dict[str, Any]:
+    def _request(self, *, method: str, path: str, json: Dict[str, Any] | None = None) -> Dict[str, Any]:
         url = f"{self.base_url}{path}"
-        response = requests.request(method=method, url=url, headers=self._headers(token), json=json, timeout=30)
+        response = requests.request(method=method, url=url, headers=self._headers(), json=json, timeout=30)
         if not response.ok:
             logger.error("Pods API request failed (%s %s): %s %s", method, url, response.status_code, response.text)
             raise RuntimeError(response.text or f"Pods API request failed ({response.status_code})")
@@ -208,48 +191,6 @@ class PodsService:
                 )
         return grants
 
-    def _bootstrap_pod_cors(self, *, pod_id: str, cors_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Grant the service account APPROVEDADMIN on pod_id, then set its CORS config.
-
-        Uses the service account's own token, not the calling user's, since only the
-        service account is pre-approved (per-pod) to self-grant APPROVEDADMIN. This is
-        best-effort: any failure is logged and reported via the returned status rather
-        than raised, so bundle creation still succeeds even if CORS bootstrap fails.
-        """
-        try:
-            service_token = self._fetch_service_token()
-        except RuntimeError as exc:
-            logger.warning("CORS bootstrap for %s: could not obtain service token: %s", pod_id, exc)
-            return {"status": "pending_manual_approval", "error": str(exc)}
-
-        service_username = self.settings.TAPIS_SERVICE_USERNAME or self.settings.TAS_USER
-
-        try:
-            self._request(
-                method="POST",
-                path=f"/v3/pods/{pod_id}/permissions",
-                json={"user": service_username, "level": "APPROVEDADMIN"},
-                token=service_token,
-            )
-            logger.info("CORS bootstrap for %s: granted APPROVEDADMIN to %s.", pod_id, service_username)
-        except RuntimeError as exc:
-            logger.warning("CORS bootstrap for %s: APPROVEDADMIN grant failed: %s", pod_id, exc)
-            return {"status": "pending_manual_approval", "error": str(exc)}
-
-        try:
-            self._request(
-                method="PUT",
-                path=f"/v3/pods/{pod_id}",
-                json={"networking": {"default": cors_config}},
-                token=service_token,
-            )
-            logger.info("CORS bootstrap for %s: CORS configured.", pod_id)
-        except RuntimeError as exc:
-            logger.warning("CORS bootstrap for %s: CORS PUT failed: %s", pod_id, exc)
-            return {"status": "pending_manual_approval", "error": str(exc)}
-
-        return {"status": "configured"}
-
     def build_bundle(self, *, base: str, pg_user: str, pg_password: str, display_name: str = "", description: str = "") -> Dict[str, Any]:
         base_clean = _sanitize_base(base)
         volume_id = f"{base_clean}volume"
@@ -298,7 +239,6 @@ class PodsService:
         }
 
         friendly_name = display_name.strip() or description.strip() or base_clean
-        ui_origin = self.settings.UI_BASE_URL.rstrip("/")
 
         api_payload = {
             "pod_id": f"{base_clean}api",
@@ -349,55 +289,18 @@ class PodsService:
             },
         }
 
-        # CORS is configured via a follow-up PUT (see _bootstrap_pod_cors), not the
-        # create payload above: Tapis Pods gates any write to networking.<key>.cors_*
-        # behind an APPROVEDADMIN permission that the creating user's own token
-        # never holds. The service account is pre-approved to self-grant
-        # APPROVEDADMIN per-pod, so it performs the grant + CORS PUT after creation.
-        # Allow both the shared unified UI (UI_BASE_URL) and this bundle's own
-        # per-base origin, plus the general tapis.io wildcard.
-        api_cors_config = {
-            "protocol": "http",
-            "port": 8000,
-            "url": f"{base_clean}api.pods.portals.tapis.io",
-            "cors_allow_origins": [
-                ui_origin,
-                f"https://{base_clean}.pods.portals.tapis.io",
-                "https://*.tapis.io",
-            ],
-            "cors_allow_methods": ["GET", "POST", "OPTIONS", "DELETE", "PUT", "HEAD", "PATCH"],
-            "cors_allow_headers": [
-                "content-type",
-                "authorization",
-                "x-tapis-token",
-                "x-tapis-tenant",
-                "x-tapis-username",
-                "x-tapis-site",
-            ],
-            "cors_allow_credentials": False,
-        }
-
         created = {
             "stack": self.create_stack(stack_id=base_clean, description=description or base_clean),
             "volume": self.create_volume(volume_id=volume_id, description=f"Volume for {base_clean}"),
             "postgres": self.create_pod(postgres_payload),
             "api": self.create_pod(api_payload),
         }
-        # Grant admin permissions (using the creating user's own token, which owns
-        # the new pod) before the CORS bootstrap step: the service account has no
-        # access at all to a pod it didn't create, and Tapis rejects
-        # POST /pods/{pod_id}/permissions from a caller with zero existing
-        # permission on that pod — not just a missing APPROVEDADMIN tier. If the
-        # service account is among DEFAULT_ADMIN_USERS, this grant is what gives
-        # it the baseline access it needs before it can self-elevate.
+        # CORS and the APPROVEDADMIN permission it requires are configured
+        # manually (outside this app) after bundle creation.
         created["permissions"] = self.grant_default_admin_permissions(
             stack_id=base_clean,
             volume_id=volume_id,
             pod_ids=[f"{base_clean}postgres", f"{base_clean}api"],
-        )
-        created["cors"] = self._bootstrap_pod_cors(
-            pod_id=f"{base_clean}api",
-            cors_config=api_cors_config,
         )
         return created
 
