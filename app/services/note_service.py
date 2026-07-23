@@ -112,6 +112,18 @@ class NoteService:
         notes, total = self.repo.list_by_measurement(campaign_id, station_id, measurement_id)
         return ListNotesResponse(items=[self._to_item(n) for n in notes], total=total)
 
+    def list_note_locations_for_campaign(self, campaign_id: int) -> ListNotesResponse:
+        """Every note in the campaign that has its own location — for plotting
+        pins on the campaign coverage map. Only measurement notes populate
+        `location` today, but this isn't scope-restricted in case that changes."""
+        notes = [n for n in self.repo.list_all_by_campaign(campaign_id) if n.location is not None]
+        return ListNotesResponse(items=[self._to_item(n) for n in notes], total=len(notes))
+
+    def list_note_locations_for_station(self, campaign_id: int, station_id: int) -> ListNotesResponse:
+        """Same as above, scoped to one station's coverage map."""
+        notes = [n for n in self.repo.list_all_by_station(station_id) if n.location is not None]
+        return ListNotesResponse(items=[self._to_item(n) for n in notes], total=len(notes))
+
     def update(
         self,
         note_id: int,

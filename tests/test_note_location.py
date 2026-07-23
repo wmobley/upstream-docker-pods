@@ -135,3 +135,48 @@ def test_update_passes_location_to_repository():
     service.update(1, MeasurementNoteUpdate(content="new", location=WKT), username="alice", location=WKT)
 
     repo.update.assert_called_once_with(1, "new", location=WKT)
+
+
+def _note_with_location(noteid: int, has_location: bool) -> Note:
+    from datetime import datetime, timezone
+
+    note = Note(
+        noteid=noteid,
+        scope=NoteScope.MEASUREMENT,
+        content=f"note {noteid}",
+        created_by="alice",
+        created_at=datetime.now(timezone.utc),
+        campaign_id=1,
+    )
+    note.location = WKTElement(WKT, srid=4326) if has_location else None
+    return note
+
+
+def test_list_note_locations_for_campaign_filters_to_located_notes():
+    repo = MagicMock()
+    repo.list_all_by_campaign.return_value = [
+        _note_with_location(1, has_location=True),
+        _note_with_location(2, has_location=False),
+    ]
+    service = NoteService(repo)
+
+    result = service.list_note_locations_for_campaign(1)
+
+    assert result.total == 1
+    assert result.items[0].id == 1
+    assert result.items[0].location is not None
+
+
+def test_list_note_locations_for_station_filters_to_located_notes():
+    repo = MagicMock()
+    repo.list_all_by_station.return_value = [
+        _note_with_location(1, has_location=True),
+        _note_with_location(2, has_location=False),
+    ]
+    service = NoteService(repo)
+
+    result = service.list_note_locations_for_station(1, 2)
+
+    assert result.total == 1
+    assert result.items[0].id == 1
+    repo.list_all_by_station.assert_called_once_with(2)

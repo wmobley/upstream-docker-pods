@@ -28,6 +28,18 @@ def list_station_notes(
     return service.list_station_notes(campaign_id, station_id)
 
 
+@router.get("/locations", response_model=ListNotesResponse)
+def list_station_note_locations(
+    campaign_id: int,
+    station_id: int,
+    current_user: User = Depends(get_viewer_user),
+    service: NoteService = Depends(_service),
+) -> ListNotesResponse:
+    """Every note for this station (station-scoped and measurement-scoped)
+    that has its own location — for plotting pins on the station coverage map."""
+    return service.list_note_locations_for_station(campaign_id, station_id)
+
+
 @router.post("", response_model=NoteCreateResponse, status_code=201)
 def create_station_note(
     campaign_id: int,

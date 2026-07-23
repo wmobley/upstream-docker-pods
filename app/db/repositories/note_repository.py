@@ -94,6 +94,15 @@ class NoteRepository:
             .all()
         )
 
+    def list_all_by_campaign(self, campaign_id: int) -> list[Note]:
+        """Return every note in a campaign, across all scopes."""
+        return (
+            self.db.query(Note)
+            .filter(Note.campaign_id == campaign_id)
+            .order_by(Note.scope, Note.created_at)
+            .all()
+        )
+
     def delete(self, note_id: int) -> bool:
         note = self.db.query(Note).filter(Note.noteid == note_id).first()
         if not note:
