@@ -26,7 +26,7 @@ def upgrade() -> None:
                 geometry_type="POINT",
                 srid=4326,
                 from_text="ST_GeomFromEWKT",
-                name="location",
+                name="geometry",
             ),
             nullable=True,
         ),
