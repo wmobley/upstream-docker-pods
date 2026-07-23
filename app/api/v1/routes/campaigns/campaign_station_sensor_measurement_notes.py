@@ -1,8 +1,14 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_edit_user
-from app.api.v1.schemas.note import NoteCreate, NoteCreateResponse, NoteItem, NoteUpdate, ListNotesResponse
+from app.api.dependencies.auth import get_edit_user, get_viewer_user
+from app.api.v1.schemas.note import (
+    MeasurementNoteCreate,
+    MeasurementNoteUpdate,
+    NoteCreateResponse,
+    NoteItem,
+    ListNotesResponse,
+)
 from app.api.v1.schemas.user import User
 from app.db.session import get_db
 from app.db.repositories.note_repository import NoteRepository
@@ -24,6 +30,7 @@ def list_measurement_notes(
     station_id: int,
     sensor_id: int,
     measurement_id: int,
+    current_user: User = Depends(get_viewer_user),
     service: NoteService = Depends(_service),
 ) -> ListNotesResponse:
     return service.list_measurement_notes(campaign_id, station_id, measurement_id)
@@ -35,12 +42,17 @@ def create_measurement_note(
     station_id: int,
     sensor_id: int,
     measurement_id: int,
-    request: NoteCreate,
+    request: MeasurementNoteCreate,
     current_user: User = Depends(get_edit_user),
     service: NoteService = Depends(_service),
 ) -> NoteCreateResponse:
     return service.create_measurement_note(
-        request, campaign_id, station_id, measurement_id, current_user.username
+        request,
+        campaign_id,
+        station_id,
+        measurement_id,
+        current_user.username,
+        location=request.location,
     )
 
 
@@ -51,11 +63,11 @@ def update_measurement_note(
     sensor_id: int,
     measurement_id: int,
     note_id: int,
-    request: NoteUpdate,
+    request: MeasurementNoteUpdate,
     current_user: User = Depends(get_edit_user),
     service: NoteService = Depends(_service),
 ) -> NoteItem:
-    return service.update(note_id, request, current_user.username)
+    return service.update(note_id, request, current_user.username, location=request.location)
 
 
 @router.delete("/{note_id}", status_code=204)

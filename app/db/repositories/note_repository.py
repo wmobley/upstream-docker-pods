@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
+from geoalchemy2 import WKTElement
 from sqlalchemy.orm import Session
 
 from app.db.models.note import Note, NoteScope
@@ -20,6 +21,7 @@ class NoteRepository:
         station_id: Optional[int] = None,
         sensor_id: Optional[int] = None,
         measurement_id: Optional[int] = None,
+        location: Optional[str] = None,
     ) -> Note:
         note = Note(
             scope=scope,
@@ -30,6 +32,7 @@ class NoteRepository:
             station_id=station_id,
             sensor_id=sensor_id,
             measurement_id=measurement_id,
+            location=WKTElement(location, srid=4326) if location else None,
         )
         self.db.add(note)
         self.db.commit()
@@ -72,11 +75,12 @@ class NoteRepository:
         ).order_by(Note.created_at.desc())
         return q.all(), q.count()
 
-    def update(self, note_id: int, content: str) -> Note | None:
+    def update(self, note_id: int, content: str, *, location: Optional[str] = None) -> Note | None:
         note = self.db.query(Note).filter(Note.noteid == note_id).first()
         if not note:
             return None
         note.content = content
+        note.location = WKTElement(location, srid=4326) if location else None  # type: ignore[assignment]
         self.db.commit()
         self.db.refresh(note)
         return note
