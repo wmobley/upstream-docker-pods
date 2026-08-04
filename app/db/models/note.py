@@ -2,6 +2,7 @@ from datetime import datetime
 from enum import Enum as PyEnum
 from typing import Optional
 
+from geoalchemy2 import Geometry
 from sqlalchemy import DateTime, ForeignKey, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -20,10 +21,19 @@ class Note(Base):
     __tablename__ = "notes"
 
     noteid: Mapped[int] = mapped_column(primary_key=True, index=True)
-    scope: Mapped[NoteScope] = mapped_column(SAEnum(NoteScope, name="note_scope"), nullable=False)
+    scope: Mapped[NoteScope] = mapped_column(
+        SAEnum(NoteScope, name="note_scope", values_callable=lambda enum: [e.value for e in enum]),
+        nullable=False,
+    )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_by: Mapped[str] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Only ever populated for measurement-scope notes — see
+    # docs/design/2026-07-23-measurement-note-location.md. Independent of the
+    # measurement's own geometry (e.g. a plume traced back to a different spot).
+    location: Mapped[Optional[Geometry]] = mapped_column(
+        Geometry("POINT", srid=4326), nullable=True
+    )
 
     campaign_id: Mapped[int] = mapped_column(
         ForeignKey("campaigns.campaignid", ondelete="CASCADE"), nullable=False

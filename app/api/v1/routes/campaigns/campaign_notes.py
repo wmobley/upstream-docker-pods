@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_current_user_optional, get_edit_user
+from app.api.dependencies.auth import get_edit_user, get_viewer_user
 from app.api.v1.schemas.note import NoteCreate, NoteCreateResponse, NoteItem, NoteUpdate, ListNotesResponse
 from app.api.v1.schemas.user import User
 from app.db.session import get_db
@@ -18,9 +18,21 @@ def _service(db: Session = Depends(get_db)) -> NoteService:
 @router.get("", response_model=ListNotesResponse)
 def list_campaign_notes(
     campaign_id: int,
+    current_user: User = Depends(get_viewer_user),
     service: NoteService = Depends(_service),
 ) -> ListNotesResponse:
     return service.list_campaign_notes(campaign_id)
+
+
+@router.get("/locations", response_model=ListNotesResponse)
+def list_campaign_note_locations(
+    campaign_id: int,
+    current_user: User = Depends(get_viewer_user),
+    service: NoteService = Depends(_service),
+) -> ListNotesResponse:
+    """Every note in the campaign (any scope) that has its own location —
+    for plotting pins on the campaign coverage map."""
+    return service.list_note_locations_for_campaign(campaign_id)
 
 
 @router.post("", response_model=NoteCreateResponse, status_code=201)

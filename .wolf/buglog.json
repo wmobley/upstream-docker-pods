@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "bugs": [
+    {
+      "id": "bug-001",
+      "timestamp": "2026-07-17",
+      "error_message": "No way for the shared upstream-ui to look up a user's own per-project role without admin access; also get_current_user's dev-mode bypass ignored TAPIS_ENFORCE_AUTH_IN_DEV unlike authenticate_user",
+      "file": "app/api/dependencies/auth.py, app/api/v1/routes/user_roles.py",
+      "root_cause": "GET /user-roles (list) is admin-gated (get_admin_user) with no self-lookup alternative, so the frontend's multi-project dropdown had no legitimate way to resolve 'what's my role here' per discovered project — this is what led to InstanceContext.tsx hardcoding permission: 'ADMIN' (see upstream-ui bug-001). Separately, get_current_user's `if settings.ENV == 'dev'` bypass returned a fake ADMIN user with zero token check, inconsistent with authenticate_user which already respected TAPIS_ENFORCE_AUTH_IN_DEV for the same purpose — flagged by security review as higher-risk once the UI started auto-querying every discoverable project pod at login.",
+      "fix": "Added GET /api/v1/user-roles/me (depends on get_current_user, no admin gate, returns {username, role}). Changed get_current_user's dev bypass condition to `settings.ENV == 'dev' and not settings.TAPIS_ENFORCE_AUTH_IN_DEV`, matching authenticate_user's existing skip_enforcement logic.",
+      "tags": ["auth", "permissions", "user-roles", "dev-mode", "security-review"],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-07-17"
+    },
+    {
+      "id": "bug-002",
+      "timestamp": "2026-07-21",
+      "error_message": "{\"detail\":\"{\\\"result\\\":null,\\\"status\\\":\\\"error\\\",...\\\"message\\\":[\\\": Value error, No user has APPROVEDADMIN permission to configure CORS settings for networking object 'default', cors_allow_origins: [...]. Contact admin for approval.\\\"]...}\"} when creating a new pod bundle via the Upstream UI Admin page",
+      "file": "app/services/pods_service.py, app/api/v1/routes/pods.py, upstream-ui/src/app/Admin/index.tsx",
+      "root_cause": "Tapis Pods gates any write to networking.<key>.cors_allow_origins/methods/headers/credentials behind a separate APPROVEDADMIN permission tier (distinct from pod ADMIN/USER/READ) that can't be self-granted and must be approved by a real Tapis platform admin out-of-band. Commit 2c8932e (earlier this session) moved cors_allow_origins into build_bundle()'s create_pod() POST payload assuming the gate only applied to PUT-based edits of an existing pod, not initial creation. That assumption is false: create_pod() is called with the end user's own forwarded Tapis token (PodsService(token_override=tapis_token) in pods.py), which doesn't hold APPROVEDADMIN, so the entire bundle-creation POST now fails instead of just a later CORS PUT. grant_default_admin_permissions() only grants pod-level ADMIN, never APPROVEDADMIN, to DEFAULT_ADMIN_USERS.",
+      "fix": "Reverted the cors_allow_origins/methods/headers/credentials fields out of build_bundle()'s create-time api_payload (pod creation now succeeds using the end user's token as before). Added PodsService._bootstrap_pod_cors(), run after API pod creation, using the service account's token (_fetch_service_token(), now live) to POST /v3/pods/{pod_id}/permissions self-granting APPROVEDADMIN (confirmed per-pod scoped, and confirmed the user authorized this self-approval), then PUT /v3/pods/{pod_id} with the CORS config. Best-effort: any failure is logged and returned as {status: pending_manual_approval, error}, never raised, so bundle creation still succeeds. cors_status surfaced in the POST /api/v1/pods/bundle response. Security-reviewed before implementation (flagged scope/intent as blocking unknowns, both resolved by user before coding). 139/139 backend tests pass.",
+      "tags": ["pods", "cors", "permissions", "tapis", "approvedadmin", "bundle-creation"],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-07-21"
+    },
+    {
+      "id": "bug-003",
+      "timestamp": "2026-07-21",
+      "error_message": "{\"detail\":\"{...\\\"message\\\":\\\"Got IntegrityError - psycopg2.errors.UniqueViolation : Key (pod_id)=(snifferpostgres) already exists.\\\"...}\"} when retrying pod bundle creation via the Admin UI with a base name used in an earlier partial/failed attempt",
+      "file": "app/services/pods_service.py",
+      "root_cause": "create_stack() and create_volume() both already treat 'already exists'/'uniqueviolation' as success so bundle creation is idempotent, but create_pod() only special-cased specific volume_mounts payload-shape errors — any pre-existing pod_id (e.g. left over from an earlier attempt that failed partway through, such as the bug-002 CORS failure) caused create_pod() to raise, which pods.py's generic except Exception turned into a raw 502 with the Postgres IntegrityError text.",
+      "fix": "create_pod() now checks for 'already exists'/'uniqueviolation' in the error message (case-insensitive) before its volume_mounts-specific checks, and returns {status: 'exists', pod_id} instead of raising, mirroring create_stack()/create_volume()'s existing pattern.",
+      "tags": ["pods", "idempotency", "bundle-creation", "postgres", "integrity-error"],
+      "related_bugs": ["bug-002"],
+      "occurrences": 1,
+      "last_seen": "2026-07-21"
+    },
+    {
+      "id": "bug-004",
+      "timestamp": "2026-07-21",
+      "error_message": "sqlalchemy.exc.ProgrammingError: (psycopg.errors.DuplicateObject) type \"note_scope\" already exists — CREATE TYPE note_scope AS ENUM (...) — raised during `alembic upgrade heads` on pod startup, blocking the startup retry loop permanently",
+      "file": "alembic/versions/a1b2c3d4e5f6_add_notes_table.py",
+      "root_cause": "upgrade() issued a raw `op.execute(\"CREATE TYPE note_scope AS ENUM (...)\")` AND declared the notes.scope column as `sa.Enum(..., name=\"note_scope\")` inside the same create_table() call. sa.Enum's own DDL also emits CREATE TYPE as part of create_table, so both statements ran in the same transaction and Postgres rejected the second as a duplicate — deterministic on every fresh database, not an environment fluke. Since pod startup runs `until alembic upgrade heads; do ...; sleep 10; done`, this wedged startup in an infinite retry loop that could never succeed.",
+      "fix": "Removed the redundant raw CREATE TYPE statement; sa.Enum(...) inside create_table() already creates the type correctly on its own. Verified end-to-end against a fresh postgis/postgis:17-3.5 container: `alembic upgrade heads` now completes, and \\d notes / \\dT+ note_scope show the expected schema including the later 'sensor' enum value/column from b2c3d4e5f6a7.",
+      "tags": ["alembic", "migrations", "postgres", "enum", "notes", "pod-startup"],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-07-21"
+    },
+    {
+      "id": "bug-005",
+      "timestamp": "2026-07-21",
+      "error_message": "{\"detail\":\"{...\\\"message\\\":\\\"Not authorized -- you do not have access to this endpoint. POST /pods/{pod_id}/permissions\\\"...}\"} when creating a pod bundle via the Admin UI",
+      "file": "app/services/pods_service.py",
+      "root_cause": "build_bundle() called _bootstrap_pod_cors() (bug-002's fix) BEFORE grant_default_admin_permissions(). _bootstrap_pod_cors uses the service account's token to self-grant APPROVEDADMIN on the brand-new pod, but the service account has zero existing permission on a pod it didn't create — Tapis rejects POST /pods/{pod_id}/permissions from a caller with no prior access at all, a stricter check than just missing APPROVEDADMIN. The service account (tasclient_dsso) IS in DEFAULT_ADMIN_USERS, but grant_default_admin_permissions() — which grants it ADMIN using the pod-creating user's own authoritative token — ran AFTER the CORS bootstrap, too late to help.",
+      "fix": "Swapped the order in build_bundle(): grant_default_admin_permissions() now runs before _bootstrap_pod_cors(), so the service account has baseline ADMIN access before attempting to self-elevate to APPROVEDADMIN. Added test_build_bundle_grants_admin_permissions_before_cors_bootstrap to lock in the ordering. SUPERSEDED (2026-07-22): the same 'Not authorized' error persisted even with correct ordering, confirmed logged-in user (wmobley) and confirmed service username (tasclient_dsso) both matching assumptions. Root cause never fully confirmed. Per user decision, the whole APPROVEDADMIN self-elevation approach was abandoned rather than debugged further — see bug-006.",
+      "tags": ["pods", "permissions", "cors", "approvedadmin", "ordering", "bundle-creation"],
+      "related_bugs": ["bug-002", "bug-006"],
+      "occurrences": 1,
+      "last_seen": "2026-07-22"
+    },
+    {
+      "id": "bug-006",
+      "timestamp": "2026-07-22",
+      "error_message": "Not a bug fix — user decision to abandon the automated CORS/APPROVEDADMIN bootstrap (bug-002 through bug-005) after repeated attempts (create-payload baking, service-account self-grant, ordering fix) all failed to resolve 'Not authorized -- you do not have access to this endpoint' on POST /pods/{pod_id}/permissions.",
+      "file": "app/services/pods_service.py, app/api/v1/routes/pods.py, tests/test_pods_service.py",
+      "root_cause": "N/A — root cause of the underlying Tapis 'Not authorized' rejection was never conclusively identified despite ruling out create-vs-edit timing (bug-002), grant ordering (bug-005), tenant id (confirmed correct), and identity (confirmed wmobley/tasclient_dsso as expected). Continuing to debug blind against live Tapis behavior with no direct access to inspect the platform's own authorization logs was unproductive.",
+      "fix": "Removed _bootstrap_pod_cors(), _fetch_service_token(), the token-override plumbing in _headers()/_request(), and the ui_origin/api_cors_config construction entirely from build_bundle(). CORS configuration and the APPROVEDADMIN grant it requires are now purely manual/out-of-band (via update_cors_all.py, update_cors.py, or direct Tapis admin action) — build_bundle() only creates pods and grants ADMIN (not APPROVEDADMIN) via grant_default_admin_permissions(), which is unaffected and stays.",
+      "tags": ["pods", "cors", "approvedadmin", "revert", "bundle-creation", "user-decision"],
+      "related_bugs": ["bug-002", "bug-005"],
+      "occurrences": 1,
+      "last_seen": "2026-07-22"
+    },
+    {
+      "id": "bug-007",
+      "timestamp": "2026-08-04",
+      "error_message": "sqlalchemy.exc.DataError: (psycopg.errors.InvalidTextRepresentation) invalid input value for enum note_scope: \"CAMPAIGN\" / \"STATION\" on GET /campaigns/{id}/notes and /campaigns/{id}/stations/{id}/notes",
+      "file": "app/db/models/note.py",
+      "root_cause": "Note.scope is declared as SAEnum(NoteScope, name=\"note_scope\") with no values_callable. SQLAlchemy's default binding for a PEP-435 enum class uses the member's .name (e.g. \"CAMPAIGN\"), not .value (e.g. \"campaign\"). The actual Postgres enum type (created by migrations a1b2c3d4e5f6/b2c3d4e5f6a7) only contains the lowercase .value strings. Every filter/insert against notes.scope sent the uppercase name, which Postgres rejected.",
+      "fix": "Added values_callable=lambda enum: [e.value for e in enum] to the SAEnum column definition so SQLAlchemy binds/reads the lowercase .value strings matching the DB enum labels.",
+      "tags": ["sqlalchemy", "enum", "notes", "postgres", "note-scope"],
+      "related_bugs": ["bug-004"],
+      "occurrences": 1,
+      "last_seen": "2026-08-04"
+    }
+  ]
+}

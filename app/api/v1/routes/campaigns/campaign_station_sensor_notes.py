@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.auth import get_edit_user
+from app.api.dependencies.auth import get_edit_user, get_viewer_user
 from app.api.v1.schemas.note import NoteCreate, NoteCreateResponse, NoteItem, NoteUpdate, ListNotesResponse
 from app.api.v1.schemas.user import User
 from app.db.session import get_db
@@ -23,6 +23,7 @@ def list_sensor_notes(
     campaign_id: int,
     station_id: int,
     sensor_id: int,
+    current_user: User = Depends(get_viewer_user),
     service: NoteService = Depends(_service),
 ) -> ListNotesResponse:
     return service.list_sensor_notes(campaign_id, station_id, sensor_id)
