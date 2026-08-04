@@ -21,7 +21,10 @@ class Note(Base):
     __tablename__ = "notes"
 
     noteid: Mapped[int] = mapped_column(primary_key=True, index=True)
-    scope: Mapped[NoteScope] = mapped_column(SAEnum(NoteScope, name="note_scope"), nullable=False)
+    scope: Mapped[NoteScope] = mapped_column(
+        SAEnum(NoteScope, name="note_scope", values_callable=lambda enum: [e.value for e in enum]),
+        nullable=False,
+    )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_by: Mapped[str] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
