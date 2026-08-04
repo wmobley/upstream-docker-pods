@@ -841,6 +841,10 @@
 
 - `auth.py` — get_current_user (Tapis RS256 + internal JWT), resolve_user_role (per-project DB role), get_viewer_user/get_edit_user/get_admin_user role gates (~2200 tok)
 
+## examples/ (added 2026-08-04)
+
+- `upload_and_annotate_demo.py` — end-to-end upstream-sdk demo script: creates a test campaign+station, uploads examples/data/{sensors,measurements}.csv via client.sensors.upload_csv_files, then exercises notes (all 4 scopes + location listings) and metadata_schema.create_schema. Reads UPSTREAM_USERNAME/PASSWORD/BASE_URL env vars or prompts interactively. (~600 tok)
+
 ## app/api/v1/routes/ (added 2026-07-17)
 
 - `user_roles.py` — GET /user-roles/me (self-lookup, no admin gate), GET/PUT/DELETE /user-roles (admin-gated list/upsert/delete) (~350 tok)
