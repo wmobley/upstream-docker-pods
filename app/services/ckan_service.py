@@ -270,6 +270,30 @@ class CKANService:
         }
         if extra_fields:
             payload.update(extra_fields)
+
+        # Check for an existing dataset first rather than always attempting
+        # package_create and catching the resulting 409: dataset names are
+        # deterministic per station, so every re-upload to an already-published
+        # station is guaranteed to hit that conflict. Checking first avoids a
+        # guaranteed-to-fail request (and the ERROR-level log noise it
+        # produces) on the common path. The create-then-catch fallback below
+        # still runs if a concurrent request created the dataset between our
+        # check and our create call.
+        existing_dataset: Dict[str, Any] | None = None
+        try:
+            candidate = self.get_dataset(token=token, name_or_id=name)
+            if isinstance(candidate, dict):
+                existing_dataset = candidate
+        except CKANError:
+            existing_dataset = None
+
+        if existing_dataset is not None:
+            if not _dataset_matches_expected_extras(existing_dataset, payload):
+                raise CKANError(
+                    f"CKAN dataset name '{name}' already exists but does not match this Upstream station."
+                )
+            return self._patch_dataset(token=token, name=name, payload=payload)
+
         try:
             result = self._request(
                 method="POST",
@@ -288,40 +312,40 @@ class CKANService:
                 or "already in use" in message
                 or "url is already" in message
             )
-            existing_dataset: Dict[str, Any] | None = None
+            if not should_patch:
+                raise
+            # Race: another request created the dataset between our check and
+            # our create call above. Re-check and patch, same as the common path.
             try:
                 candidate = self.get_dataset(token=token, name_or_id=name)
-                if isinstance(candidate, dict):
-                    existing_dataset = candidate
             except CKANError:
-                if not should_patch:
-                    raise original_error
-            if existing_dataset is not None:
-                if not _dataset_matches_expected_extras(existing_dataset, payload):
-                    raise CKANError(
-                        f"CKAN dataset name '{name}' already exists but does not match this Upstream station."
-                    ) from original_error
-                should_patch = True
-            if not should_patch:
                 raise original_error
-            payload["id"] = name
-            try:
-                result = self._request(
-                    method="POST",
-                    path="/api/3/action/package_patch",
-                    token=token,
-                    json=payload,
-                )
-            except CKANError as patch_error:
-                patch_message = str(patch_error).lower()
-                if "not authorized" in patch_message or "access denied" in patch_message:
-                    raise CKANError(
-                        f"CKAN dataset '{name}' already exists, but you are not authorized to edit it: {patch_error}"
-                    ) from patch_error
-                raise
-            if not isinstance(result, dict):
-                raise CKANError("Unexpected CKAN response format when updating dataset")
-            return cast(Dict[str, Any], result)
+            if not isinstance(candidate, dict) or not _dataset_matches_expected_extras(candidate, payload):
+                raise CKANError(
+                    f"CKAN dataset name '{name}' already exists but does not match this Upstream station."
+                ) from original_error
+            return self._patch_dataset(token=token, name=name, payload=payload)
+
+    def _patch_dataset(self, *, token: str, name: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        patch_payload = dict(payload)
+        patch_payload["id"] = name
+        try:
+            result = self._request(
+                method="POST",
+                path="/api/3/action/package_patch",
+                token=token,
+                json=patch_payload,
+            )
+        except CKANError as patch_error:
+            patch_message = str(patch_error).lower()
+            if "not authorized" in patch_message or "access denied" in patch_message:
+                raise CKANError(
+                    f"CKAN dataset '{name}' already exists, but you are not authorized to edit it: {patch_error}"
+                ) from patch_error
+            raise
+        if not isinstance(result, dict):
+            raise CKANError("Unexpected CKAN response format when updating dataset")
+        return cast(Dict[str, Any], result)
 
     def ensure_dataset_visibility(self, *, token: str, dataset_id: str, private: bool) -> Dict[str, Any]:
         result = self._request(
