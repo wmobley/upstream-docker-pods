@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import elevate_role_for_tas_allocation, get_admin_user, get_current_user
 from app.api.v1.schemas.user import User
 from app.api.v1.schemas.user_role import UserRoleResponse, UserRoleUpdate
+from app.core.roles import normalize_role
 from app.db.repositories.user_role_repository import UserRoleRepository
 from app.db.session import get_db
 
@@ -51,13 +52,14 @@ def get_my_role(current_user: User = Depends(get_current_user)) -> User:
         return current_user
 
     _last_tas_check[current_user.username] = now
-    elevated_role = elevate_role_for_tas_allocation(current_user.username, current_user.role)
+    initial_role = normalize_role(current_user.role)
+    elevated_role = elevate_role_for_tas_allocation(current_user.username, initial_role)
     logger.info(
         "user_roles_me extra=%s",
         {
             "username": current_user.username,
             "authenticated": True,
-            "initial_role": current_user.role,
+            "initial_role": initial_role,
             "final_role": elevated_role,
             "tas_check": "ran",
         },
