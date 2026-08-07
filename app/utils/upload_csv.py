@@ -20,10 +20,23 @@ POSTGRES_MAX_BIND_PARAMS = 65535
 MEASUREMENT_INSERT_PARAM_COUNT = 7
 BATCH_SIZE = 9000
 DEFAULT_VARIABLE_NAME = 'No BestGuess Formula'
+# Older sensors.csv exports use 'BestGuessFormula' as the header for what the
+# API now calls 'variablename'. Accept both so legacy files keep working.
+LEGACY_SENSOR_FIELD_ALIASES = {'BestGuessFormula': 'variablename'}
 logger = logging.getLogger(__name__)
 
 
 MeasurementValue = int | datetime | float | str | WKTElement
+
+
+def normalize_legacy_sensor_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename legacy sensor CSV headers (e.g. BestGuessFormula) to their current field names."""
+    rename_map = {
+        legacy: current
+        for legacy, current in LEGACY_SENSOR_FIELD_ALIASES.items()
+        if legacy in df.columns and current not in df.columns
+    }
+    return df.rename(columns=rename_map) if rename_map else df
 
 
 def process_batch(batch: list[dict[str, MeasurementValue]], session: Session) -> int:
@@ -61,6 +74,7 @@ def process_sensors_file(file: UploadFile, station_id: int, upload_event_id: int
             "columns": df_sensors.columns.tolist(),
         },
     )
+    df_sensors = normalize_legacy_sensor_columns(df_sensors)
     sensor_maps : list[Sensor]= []
     existing_sensors : list[Sensor]= []
     validator = Pandantic(schema=SensorIn)
