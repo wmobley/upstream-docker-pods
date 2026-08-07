@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from app.services.ckan_publish import (
     DATASET_HASH_EXTRA_KEY,
     DATASET_KEY_EXTRA_KEY,
+    build_station_dataset_identity,
     ensure_station_dataset,
     sync_sensor_resources,
 )
@@ -23,7 +24,7 @@ def test_ensure_station_dataset_maps_campaign_top_level_metadata() -> None:
             captured["ensure_dataset_visibility"] = kwargs
             return {"id": "dataset-1"}
 
-    settings = SimpleNamespace(UI_BASE_URL="https://ui.example.com")
+    settings = SimpleNamespace(UI_BASE_URL="https://ui.example.com", STACK_ID=None)
     campaign = SimpleNamespace(
         id=7,
         name="Campaign Alpha",
@@ -83,6 +84,31 @@ def test_ensure_station_dataset_maps_campaign_top_level_metadata() -> None:
     assert {"key": "meta:station:local_code", "value": "SB-01"} in extras
 
 
+def test_build_station_dataset_identity_appends_project_param_when_stack_id_set() -> None:
+    campaign = SimpleNamespace(id=7, name="Campaign Alpha")
+    station = SimpleNamespace(id=11, name="Station Bravo")
+
+    without_stack = build_station_dataset_identity(
+        settings=SimpleNamespace(UI_BASE_URL="https://ui.example.com", STACK_ID=None),
+        campaign=campaign,
+        station=station,
+    )
+    with_stack = build_station_dataset_identity(
+        settings=SimpleNamespace(UI_BASE_URL="https://ui.example.com", STACK_ID="sniffer"),
+        campaign=campaign,
+        station=station,
+    )
+
+    assert without_stack["source_url"] == "https://ui.example.com/campaigns/7/stations/11"
+    assert with_stack["source_url"] == "https://ui.example.com/campaigns/7/stations/11?project=sniffer"
+
+    # Identity (key/hash/name) must not change with STACK_ID, so re-publishing
+    # an already-published station doesn't create a duplicate CKAN dataset.
+    assert without_stack["key"] == with_stack["key"]
+    assert without_stack["hash"] == with_stack["hash"]
+    assert without_stack["name"] == with_stack["name"]
+
+
 def test_sync_sensor_resources_maps_sensor_metadata_to_resource_fields() -> None:
     calls: list[dict[str, object]] = []
 
@@ -94,6 +120,7 @@ def test_sync_sensor_resources_maps_sensor_metadata_to_resource_fields() -> None
     settings = SimpleNamespace(
         UI_BASE_URL="https://ui.example.com",
         API_BASE_URL="https://api.example.com",
+        STACK_ID=None,
     )
     campaign = SimpleNamespace(id=7, name="Campaign Alpha")
     station = SimpleNamespace(id=11, name="Station Bravo")
@@ -137,6 +164,41 @@ def test_sync_sensor_resources_maps_sensor_metadata_to_resource_fields() -> None
         assert call["extra_fields"]["meta:sensor:calibrated"] == "True"
 
 
+def test_sync_sensor_resources_appends_project_param_to_ui_url_only() -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeCKANClient:
+        def ensure_resource(self, **kwargs):
+            calls.append(kwargs)
+            return {"id": kwargs.get("resource_id") or kwargs["name"], "name": kwargs["name"]}
+
+    settings = SimpleNamespace(
+        UI_BASE_URL="https://ui.example.com",
+        API_BASE_URL="https://api.example.com",
+        STACK_ID="sniffer",
+    )
+    campaign = SimpleNamespace(id=7, name="Campaign Alpha")
+    station = SimpleNamespace(id=11, name="Station Bravo")
+    sensors = [SimpleNamespace(id=5, alias="Air Temp", variablename="air_temperature", meta={})]
+
+    errors = sync_sensor_resources(
+        settings=settings,
+        ckan_client=FakeCKANClient(),
+        tapis_token="token",
+        campaign=campaign,
+        station=station,
+        dataset={"resources": []},
+        dataset_id="dataset-1",
+        sensors=sensors,
+    )
+
+    assert errors == []
+    ui_call = next(call for call in calls if call["name"].endswith("-ui"))
+    api_call = next(call for call in calls if call["name"].endswith("-measurements"))
+    assert ui_call["url"] == "https://ui.example.com/campaigns/7/stations/11/sensors/5?project=sniffer"
+    assert api_call["url"] == "https://api.example.com/api/v1/campaigns/7/stations/11/sensors/5/measurements"
+
+
 def test_ensure_station_dataset_uses_buffered_bbox_polygon_for_spatial() -> None:
     captured: dict[str, object] = {}
 
@@ -149,7 +211,7 @@ def test_ensure_station_dataset_uses_buffered_bbox_polygon_for_spatial() -> None
             captured["ensure_dataset_visibility"] = kwargs
             return {"id": "dataset-1"}
 
-    settings = SimpleNamespace(UI_BASE_URL="https://ui.example.com")
+    settings = SimpleNamespace(UI_BASE_URL="https://ui.example.com", STACK_ID=None)
     campaign = SimpleNamespace(
         id=7,
         name="Campaign Alpha",
