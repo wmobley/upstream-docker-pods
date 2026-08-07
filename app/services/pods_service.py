@@ -267,8 +267,14 @@ class PodsService:
                 "CKAN_ORGANIZATION": self.settings.CKAN_ORGANIZATION or "upstream",
                 "CKAN_ADMIN_USERNAME": self.settings.CKAN_ADMIN_USERNAME or "dso_test",
                 "CKAN_ADMIN_API_KEY": self.settings.CKAN_ADMIN_API_KEY or "",
-                "UI_BASE_URL": f"https://{base_clean}.pods.portals.tapis.io",
+                # Points at the shared multi-project discovery UI (not a per-stack
+                # UI pod — build_bundle() only provisions postgres + api), so
+                # CKAN-published links resolve to a real, reachable host.
+                "UI_BASE_URL": self.settings.UI_BASE_URL.rstrip("/"),
                 "API_BASE_URL": f"https://{base_clean}api.pods.portals.tapis.io",
+                # Identifies this stack in the shared UI so CKAN-published links
+                # can carry ?project=<STACK_ID> and land on the right project.
+                "STACK_ID": base_clean,
             },
             "status_requested": "ON",
             "volume_mounts": {},
