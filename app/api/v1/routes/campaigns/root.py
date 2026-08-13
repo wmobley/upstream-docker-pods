@@ -203,6 +203,7 @@ async def publish_campaign(
             "username": getattr(current_user, "username", None),
             "cascade": publish_request.cascade,
             "force": publish_request.force,
+            "patch_existing_ckan_dataset": publish_request.patch_existing_ckan_dataset,
             "has_tapis_token": bool(tapis_token),
         },
     )
@@ -242,6 +243,7 @@ async def publish_campaign(
                         cascade=publish_request.cascade,
                         force=publish_request.force,
                         organization=publish_request.organization,
+                        patch_existing_ckan_dataset=publish_request.patch_existing_ckan_dataset,
                     ),
                     current_user=current_user,
                     _token=_token,

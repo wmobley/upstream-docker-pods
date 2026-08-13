@@ -31,6 +31,23 @@ class CKANError(RuntimeError):
     """Raised when CKAN returns an error response."""
 
 
+class CKANDatasetNameConflict(CKANError):
+    """Raised when a CKAN dataset name is already taken."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        dataset_name: str,
+        suggested_name: str,
+        existing_dataset: Dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.dataset_name = dataset_name
+        self.suggested_name = suggested_name
+        self.existing_dataset = existing_dataset
+
+
 def _slugify(value: str) -> str:
     normalized = value.strip().lower().replace(" ", "-")
     slug = []
@@ -73,6 +90,19 @@ def _dataset_matches_expected_extras(existing: Dict[str, Any], payload: Dict[str
         if expected is not None and existing_value is not None and existing_value != expected:
             return False
     return True
+
+
+def _is_dataset_name_conflict(message: str) -> bool:
+    lowered = message.lower()
+    return (
+        "already exists" in lowered
+        or "already in use" in lowered
+        or "url is already" in lowered
+    )
+
+
+def _suggest_dataset_name(name: str) -> str:
+    return _slugify(f"{name}-2")
 
 
 class CKANService:
@@ -138,7 +168,8 @@ class CKANService:
         try:
             response.raise_for_status()
         except requests.HTTPError as exc:
-            logger.error(
+            log_method = logger.info if response.status_code == 409 and path == "/api/3/action/package_create" else logger.error
+            log_method(
                 "CKAN request failed (%s %s) status=%s body=%s",
                 method,
                 url,
@@ -258,6 +289,8 @@ class CKANService:
         extras: Iterable[Dict[str, str]],
         private: bool = True,
         extra_fields: Optional[Dict[str, Any]] = None,
+        allow_existing_patch: bool = True,
+        suggested_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "name": name,
@@ -282,27 +315,43 @@ class CKANService:
             return cast(Dict[str, Any], result)
         except CKANError as exc:
             original_error = exc
-            message = str(exc).lower()
-            should_patch = (
-                "already exists" in message
-                or "already in use" in message
-                or "url is already" in message
-            )
+            message = str(exc)
+            is_conflict = _is_dataset_name_conflict(message)
+            suggested_dataset_name = _slugify(suggested_name or _suggest_dataset_name(name))
             existing_dataset: Dict[str, Any] | None = None
             try:
                 candidate = self.get_dataset(token=token, name_or_id=name)
                 if isinstance(candidate, dict):
                     existing_dataset = candidate
             except CKANError:
-                if not should_patch:
+                if not is_conflict:
                     raise original_error
             if existing_dataset is not None:
                 if not _dataset_matches_expected_extras(existing_dataset, payload):
                     raise CKANError(
-                        f"CKAN dataset name '{name}' already exists but does not match this Upstream station."
+                        f"CKAN dataset name '{name}' already exists but does not match this Upstream station. "
+                        f"Suggested new dataset name: '{suggested_dataset_name}'. "
+                        "Choose a different ckan_dataset_name and retry."
                     ) from original_error
-                should_patch = True
-            if not should_patch:
+                if not allow_existing_patch:
+                    raise CKANDatasetNameConflict(
+                        f"CKAN dataset name '{name}' already exists for this Upstream station. "
+                        f"Suggested new dataset name: '{suggested_dataset_name}'. "
+                        "Retry with patch_existing_ckan_dataset=true to update the existing CKAN dataset instead.",
+                        dataset_name=name,
+                        suggested_name=suggested_dataset_name,
+                        existing_dataset=existing_dataset,
+                    ) from original_error
+            elif is_conflict:
+                raise CKANDatasetNameConflict(
+                    f"CKAN dataset name '{name}' already exists, but this token could not inspect it. "
+                    f"Suggested new dataset name: '{suggested_dataset_name}'. "
+                    "Choose a different ckan_dataset_name and retry.",
+                    dataset_name=name,
+                    suggested_name=suggested_dataset_name,
+                    existing_dataset=None,
+                ) from original_error
+            else:
                 raise original_error
             payload["id"] = name
             try:

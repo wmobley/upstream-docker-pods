@@ -176,6 +176,24 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-08-13T17:19:37Z"
+    },
+    {
+      "id": "bug-010",
+      "timestamp": "2026-08-13T18:12:25Z",
+      "error_message": "CKAN package_create status=409 {\"name\": [\"That URL is already in use.\"]} appears as repeated ERROR logs during SDK/API upload and publish flows",
+      "file": "app/services/ckan_service.py",
+      "root_cause": "CKAN dataset name conflicts were handled by a generic CKANError path that logged package_create 409 as an error before deciding whether the existing dataset could be patched. Station publish also had no request-level way to fail first with a new-name suggestion or explicitly patch a matching existing dataset.",
+      "fix": "Added CKANDatasetNameConflict with suggested dataset names, downgraded package_create 409 logging from error to info, made station publish pass ckan_dataset_name and patch_existing_ckan_dataset into CKAN sync, and kept upload/station-create idempotent patch behavior.",
+      "tags": [
+        "ckan",
+        "dataset-conflict",
+        "publish",
+        "sdk",
+        "fastapi"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-08-13T18:12:25Z"
     }
   ]
 }

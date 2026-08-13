@@ -15,13 +15,20 @@ DATASET_HASH_EXTRA_KEY = "upstream_dataset_hash"
 DATASET_KEY_EXTRA_KEY = "upstream_dataset_key"
 
 
-def build_station_dataset_identity(*, settings: Settings, campaign: Any, station: Any) -> dict[str, str]:
+def build_station_dataset_identity(
+    *,
+    settings: Settings,
+    campaign: Any,
+    station: Any,
+    dataset_name: str | None = None,
+) -> dict[str, str]:
     source_url = f"{settings.UI_BASE_URL.rstrip('/')}/campaigns/{campaign.id}/stations/{station.id}"
     dataset_key = source_url
     dataset_hash = hashlib.sha256(dataset_key.encode("utf-8")).hexdigest()[:10]
     base_name = _slugify(f"{campaign.name}-{station.name}")
+    resolved_name = _slugify(dataset_name) if dataset_name else _slugify(f"{base_name}-{dataset_hash}")
     return {
-        "name": _slugify(f"{base_name}-{dataset_hash}"),
+        "name": resolved_name,
         "hash": dataset_hash,
         "key": dataset_key,
         "source_url": source_url,
@@ -39,13 +46,20 @@ def ensure_station_dataset(
     private: bool,
     station_metadata_schema: Sequence[Any] | None = None,
     campaign_metadata_schema: Sequence[Any] | None = None,
+    dataset_name: str | None = None,
+    allow_existing_patch: bool = True,
 ) -> tuple[dict[str, Any] | None, str | None, list[str]]:
     """
     Ensure a CKAN dataset exists for the given station and return the dataset payload,
     dataset id, and any errors encountered.
     """
     errors: list[str] = []
-    dataset_identity = build_station_dataset_identity(settings=settings, campaign=campaign, station=station)
+    dataset_identity = build_station_dataset_identity(
+        settings=settings,
+        campaign=campaign,
+        station=station,
+        dataset_name=dataset_name,
+    )
     dataset_name = dataset_identity["name"]
     notes = station.description or f"Station {station.name} in campaign {campaign.name}"
     tags = {"upstream", _slugify(campaign.name), _slugify(station.name)}
@@ -125,6 +139,8 @@ def ensure_station_dataset(
             extras=extras,
             private=private,
             extra_fields={k: v for k, v in extra_fields.items() if v is not None},
+            allow_existing_patch=allow_existing_patch,
+            suggested_name=_slugify(f"{dataset_name}-2"),
         )
         dataset_id = str(dataset.get("id") or dataset.get("name") or dataset_name)
         if dataset_id:

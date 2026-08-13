@@ -470,6 +470,8 @@ async def publish_station(
             "cascade": publish_request.cascade,
             "force": publish_request.force,
             "organization": publish_request.organization,
+            "ckan_dataset_name": publish_request.ckan_dataset_name,
+            "patch_existing_ckan_dataset": publish_request.patch_existing_ckan_dataset,
             "has_tapis_token": bool(tapis_token),
             "tapis_token": _token_summary(tapis_token),
         },
@@ -620,6 +622,8 @@ async def publish_station(
                     private=False,
                     station_metadata_schema=station_schema,
                     campaign_metadata_schema=campaign_schema,
+                    dataset_name=publish_request.ckan_dataset_name,
+                    allow_existing_patch=publish_request.patch_existing_ckan_dataset,
                 )
                 errors.extend(dataset_errors)
                 if dataset_errors:
@@ -672,7 +676,12 @@ async def publish_station(
     )
 
     if ckan_client and settings.CKAN_URL and tapis_token and errors:
-        dataset_identity = build_station_dataset_identity(settings=settings, campaign=campaign, station=station)
+        dataset_identity = build_station_dataset_identity(
+            settings=settings,
+            campaign=campaign,
+            station=station,
+            dataset_name=publish_request.ckan_dataset_name,
+        )
         dataset_url = f"{settings.CKAN_URL.rstrip('/')}/dataset/{dataset_identity['name']}"
         response = PublishResponse(
             success=False,

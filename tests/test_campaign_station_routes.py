@@ -395,6 +395,68 @@ class TestCampaignStationRoutes:
             assert body["errors"]
             mock_set_publish_state.assert_not_called()
 
+    def test_publish_station_passes_ckan_conflict_options(self, client_with_auth):
+        campaign_response = GetCampaignResponse(
+            id=self.campaign_id,
+            name="Test Campaign",
+            allocation="restricted-org",
+            summary=SummaryGetCampaign(
+                station_count=1,
+                sensor_count=0,
+                sensor_types=[],
+                sensor_variables=[],
+            ),
+            stations=[],
+        )
+        station_response = GetStationResponse(
+            id=self.station_id,
+            name="Test Station Alpha",
+            description="Test description",
+            start_date=datetime.utcnow(),
+            geometry={},
+            sensors=[],
+        )
+
+        mock_settings = Mock()
+        mock_settings.CKAN_URL = "https://ckan.example.com"
+        mock_settings.CKAN_ORGANIZATION = None
+        mock_settings.UI_BASE_URL = "https://ui.example.com"
+        mock_settings.API_BASE_URL = "https://api.example.com"
+
+        with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=True), \
+             patch('app.services.station_service.StationService.get_station', return_value=station_response), \
+             patch('app.services.campaign_service.CampaignService.get_campaign_with_summary', return_value=campaign_response), \
+             patch('app.api.v1.routes.campaigns.campaign_stations.get_settings', return_value=mock_settings), \
+             patch('app.api.v1.routes.campaigns.campaign_stations.get_ckan_service') as mock_get_ckan_service, \
+             patch('app.db.repositories.metadata_schema_repository.MetadataSchemaRepository.list_schema', return_value=[]), \
+             patch('app.api.v1.routes.campaigns.campaign_stations.ensure_station_dataset') as mock_ensure_dataset, \
+             patch('app.api.v1.routes.campaigns.campaign_stations.sync_sensor_resources', return_value=[]), \
+             patch('app.services.station_service.StationService.set_publish_state', return_value=True):
+            mock_ckan_client = Mock()
+            mock_ckan_client.list_user_organizations.return_value = [{"name": "restricted-org"}]
+            mock_get_ckan_service.return_value = mock_ckan_client
+            mock_ensure_dataset.return_value = (
+                {"id": "dataset-1", "name": "custom-dataset-name", "resources": []},
+                "dataset-1",
+                [],
+            )
+
+            response = client_with_auth.post(
+                f"/api/v1/campaigns/{self.campaign_id}/stations/{self.station_id}/publish",
+                json={
+                    "cascade": False,
+                    "ckan_dataset_name": "Custom Dataset Name",
+                    "patch_existing_ckan_dataset": True,
+                },
+                headers={"X-TAPIS-TOKEN": "fake-token", "X-Request-ID": "req-station-options"},
+            )
+
+            assert response.status_code == 200
+            assert response.json()["success"] is True
+            kwargs = mock_ensure_dataset.call_args.kwargs
+            assert kwargs["dataset_name"] == "Custom Dataset Name"
+            assert kwargs["allow_existing_patch"] is True
+
     def test_publish_campaign_returns_child_station_errors(self, client_with_auth):
         campaign_response = GetCampaignResponse(
             id=self.campaign_id,
@@ -472,7 +534,7 @@ class TestCampaignStationRoutes:
 
             response = client_with_auth.post(
                 f"/api/v1/campaigns/{self.campaign_id}/publish",
-                json={"cascade": True},
+                json={"cascade": True, "patch_existing_ckan_dataset": True},
                 headers={"X-TAPIS-TOKEN": "fake-token", "X-Request-ID": "req-campaign-app-failure"},
             )
 
@@ -481,6 +543,8 @@ class TestCampaignStationRoutes:
             assert body["success"] is False
             assert "station 101: CKAN dataset sync failed" in body["errors"]
             assert "station:101" not in body["cascaded_items"]
+            delegated_request = mock_publish_station.call_args.kwargs["publish_request"]
+            assert delegated_request.patch_existing_ckan_dataset is True
 
     def test_partial_update_station_not_found_error_message(self, client_with_auth):
         with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=True), \

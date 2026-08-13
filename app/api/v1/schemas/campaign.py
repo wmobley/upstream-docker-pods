@@ -103,6 +103,14 @@ class PublishRequest(BaseModel):
         default=None,
         description="Optional CKAN organization to publish into when the campaign has none",
     )
+    ckan_dataset_name: str | None = Field(
+        default=None,
+        description="Optional CKAN dataset name override for station publish",
+    )
+    patch_existing_ckan_dataset: bool = Field(
+        default=False,
+        description="If true, update an existing matching CKAN dataset instead of failing on name conflict",
+    )
 
 
 class PublishResponse(BaseModel):
