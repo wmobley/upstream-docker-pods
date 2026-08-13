@@ -10,7 +10,7 @@ from app.api.dependencies.auth import (
     get_edit_user,
     get_tapis_token_header_optional,
 )
-from app.api.dependencies.pytas import (
+from app.api.dependencies.ckan import (
     check_allocation_permission,
     get_user_allocations,
     resolve_user_allocations,

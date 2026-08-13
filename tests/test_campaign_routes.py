@@ -95,7 +95,7 @@ class TestCampaignPutRoute:
         """Test successful campaign update via PUT"""
         campaign_id = 3
         
-        with patch('app.api.dependencies.pytas.check_allocation_permission', return_value=True), \
+        with patch('app.api.dependencies.ckan.check_allocation_permission', return_value=True), \
              patch('app.services.campaign_service.CampaignService.update_campaign') as mock_update:
             
             mock_update.return_value = CampaignCreateResponse(id=campaign_id)
@@ -128,7 +128,7 @@ class TestCampaignPutRoute:
         """Test PUT campaign when campaign doesn't exist"""
         campaign_id = 999
         
-        with patch('app.api.dependencies.pytas.check_allocation_permission', return_value=True), \
+        with patch('app.api.dependencies.ckan.check_allocation_permission', return_value=True), \
              patch('app.services.campaign_service.CampaignService.update_campaign') as mock_update:
             
             mock_update.return_value = None
@@ -152,7 +152,7 @@ class TestCampaignPutRoute:
     ])
     def test_put_campaign_various_ids(self, client_with_auth, campaign_id, expected_status):
         """Test PUT campaign with various campaign IDs"""
-        with patch('app.api.dependencies.pytas.check_allocation_permission', return_value=True), \
+        with patch('app.api.dependencies.ckan.check_allocation_permission', return_value=True), \
              patch('app.services.campaign_service.CampaignService.update_campaign') as mock_update:
             
             if expected_status == 200:
@@ -170,7 +170,7 @@ class TestCampaignPutRoute:
             "contact_email": "invalid-email"  # Invalid email format
         }
         
-        with patch('app.api.dependencies.pytas.check_allocation_permission', return_value=True):
+        with patch('app.api.dependencies.ckan.check_allocation_permission', return_value=True):
             response = client_with_auth.put(f"/api/v1/campaigns/{campaign_id}", json=invalid_data)
             
             assert response.status_code == 422  # Validation error
@@ -179,7 +179,7 @@ class TestCampaignPutRoute:
         """Test that the service is called with correct parameters"""
         campaign_id = 3
         
-        with patch('app.api.dependencies.pytas.check_allocation_permission', return_value=True), \
+        with patch('app.api.dependencies.ckan.check_allocation_permission', return_value=True), \
              patch('app.services.campaign_service.CampaignService.update_campaign') as mock_update:
             
             mock_update.return_value = CampaignCreateResponse(id=campaign_id)
@@ -224,7 +224,7 @@ class TestCampaignPatchRoute:
         """Test successful partial campaign update via PATCH"""
         campaign_id = 3
         
-        with patch('app.api.dependencies.pytas.check_allocation_permission', return_value=True), \
+        with patch('app.api.dependencies.ckan.check_allocation_permission', return_value=True), \
              patch('app.services.campaign_service.CampaignService.partial_update_campaign') as mock_partial_update:
             
             mock_partial_update.return_value = CampaignCreateResponse(id=campaign_id)
@@ -255,7 +255,7 @@ class TestCampaignPatchRoute:
         """Test PATCH campaign when campaign doesn't exist"""
         campaign_id = 999
         
-        with patch('app.api.dependencies.pytas.check_allocation_permission', return_value=True), \
+        with patch('app.api.dependencies.ckan.check_allocation_permission', return_value=True), \
              patch('app.services.campaign_service.CampaignService.partial_update_campaign') as mock_partial_update:
             
             mock_partial_update.return_value = None
@@ -278,7 +278,7 @@ class TestCampaignPatchRoute:
         campaign_id = 3
         single_field_update = {"name": "New Campaign Name Only"}
         
-        with patch('app.api.dependencies.pytas.check_allocation_permission', return_value=True), \
+        with patch('app.api.dependencies.ckan.check_allocation_permission', return_value=True), \
              patch('app.services.campaign_service.CampaignService.partial_update_campaign') as mock_partial_update:
             
             mock_partial_update.return_value = CampaignCreateResponse(id=campaign_id)
@@ -295,7 +295,7 @@ class TestCampaignPatchRoute:
         campaign_id = 3
         empty_update = {}
         
-        with patch('app.api.dependencies.pytas.check_allocation_permission', return_value=True), \
+        with patch('app.api.dependencies.ckan.check_allocation_permission', return_value=True), \
              patch('app.services.campaign_service.CampaignService.partial_update_campaign') as mock_partial_update:
             
             mock_partial_update.return_value = CampaignCreateResponse(id=campaign_id)
@@ -313,7 +313,7 @@ class TestCampaignPatchRoute:
     ])
     def test_patch_campaign_various_ids(self, client_with_auth, campaign_id, expected_status):
         """Test PATCH campaign with various campaign IDs"""
-        with patch('app.api.dependencies.pytas.check_allocation_permission', return_value=True), \
+        with patch('app.api.dependencies.ckan.check_allocation_permission', return_value=True), \
              patch('app.services.campaign_service.CampaignService.partial_update_campaign') as mock_partial_update:
             
             if expected_status == 200:
@@ -328,7 +328,7 @@ class TestCampaignPatchRoute:
         """Test that the PATCH service is called with correct parameters"""
         campaign_id = 3
         
-        with patch('app.api.dependencies.pytas.check_allocation_permission', return_value=True), \
+        with patch('app.api.dependencies.ckan.check_allocation_permission', return_value=True), \
              patch('app.services.campaign_service.CampaignService.partial_update_campaign') as mock_partial_update:
             
             mock_partial_update.return_value = CampaignCreateResponse(id=campaign_id)
@@ -374,7 +374,7 @@ class TestCampaignUpdateIntegration:
         campaign_id = 3
         
         # Test PUT works
-        with patch('app.api.dependencies.pytas.check_allocation_permission', return_value=True), \
+        with patch('app.api.dependencies.ckan.check_allocation_permission', return_value=True), \
              patch('app.services.campaign_service.CampaignService.update_campaign') as mock_update:
             
             mock_update.return_value = CampaignCreateResponse(id=campaign_id)
@@ -384,7 +384,7 @@ class TestCampaignUpdateIntegration:
             mock_update.assert_called_once()
         
         # Test PATCH works
-        with patch('app.api.dependencies.pytas.check_allocation_permission', return_value=True), \
+        with patch('app.api.dependencies.ckan.check_allocation_permission', return_value=True), \
              patch('app.services.campaign_service.CampaignService.partial_update_campaign') as mock_partial_update:
             
             mock_partial_update.return_value = CampaignCreateResponse(id=campaign_id)

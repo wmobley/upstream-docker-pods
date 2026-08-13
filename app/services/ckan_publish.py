@@ -15,6 +15,14 @@ DATASET_HASH_EXTRA_KEY = "upstream_dataset_hash"
 DATASET_KEY_EXTRA_KEY = "upstream_dataset_key"
 
 
+def _with_project_param(url: str, stack_id: str | None) -> str:
+    """Append ?project=<stack_id> so a shared UI link selects the project."""
+    if not stack_id:
+        return url
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}project={stack_id}"
+
+
 def build_station_dataset_identity(
     *,
     settings: Settings,
@@ -22,11 +30,13 @@ def build_station_dataset_identity(
     station: Any,
     dataset_name: str | None = None,
 ) -> dict[str, str]:
-    source_url = f"{settings.UI_BASE_URL.rstrip('/')}/campaigns/{campaign.id}/stations/{station.id}"
-    dataset_key = source_url
+    base_url = f"{settings.UI_BASE_URL.rstrip('/')}/campaigns/{campaign.id}/stations/{station.id}"
+    # Keep identity stable even when project routing is appended to the source URL.
+    dataset_key = base_url
     dataset_hash = hashlib.sha256(dataset_key.encode("utf-8")).hexdigest()[:10]
     base_name = _slugify(f"{campaign.name}-{station.name}")
     resolved_name = _slugify(dataset_name) if dataset_name else _slugify(f"{base_name}-{dataset_hash}")
+    source_url = _with_project_param(base_url, getattr(settings, "STACK_ID", None))
     return {
         "name": resolved_name,
         "hash": dataset_hash,
@@ -255,7 +265,10 @@ def sync_sensor_resources(
         }
 
         sensor_ui_name = f"{sensor_slug}-ui"
-        sensor_ui_url = f"{ui_base}/campaigns/{campaign.id}/stations/{station.id}/sensors/{sensor_id}"
+        sensor_ui_url = _with_project_param(
+            f"{ui_base}/campaigns/{campaign.id}/stations/{station.id}/sensors/{sensor_id}",
+            settings.STACK_ID,
+        )
         sensor_ui_description = f"Interactive upstream view for sensor {sensor_label} at station {station.name}."
         _upsert_resource(
             sensor_ui_name,

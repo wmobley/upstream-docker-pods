@@ -179,6 +179,10 @@ def elevate_role_for_tas_allocation(username: str, current_role: str) -> str:
 
     normalized_current = normalize_role_value(current_role, default=UserRoleEnum.NONE)
     if ROLE_RANK.get(normalized_current, -1) >= ROLE_RANK[UserRoleEnum.USER.value]:
+        logger.info(
+            "tas_allocation_check_skipped extra=%s",
+            {"username": normalized_username, "reason": "already_elevated", "role": normalized_current},
+        )
         return current_role
 
     try:
@@ -186,6 +190,15 @@ def elevate_role_for_tas_allocation(username: str, current_role: str) -> str:
     except Exception:
         logger.exception("TAS allocation check failed for %s", normalized_username)
         return current_role
+
+    logger.info(
+        "tas_allocation_check extra=%s",
+        {
+            "username": normalized_username,
+            "charge_code": settings.PRIMARY_ALLOCATION_CHARGE_CODE,
+            "has_base_allocation": has_allocation,
+        },
+    )
 
     if not has_allocation:
         return current_role
@@ -213,7 +226,7 @@ def _role_allows(role: str | None, minimum: str) -> bool:
 
 # Async function to get the current user based on the provided OAuth2 token
 async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> User:
-    if settings.ENV == "dev":
+    if settings.ENV == "dev" and not settings.TAPIS_ENFORCE_AUTH_IN_DEV:
         return User(
             username="test",
             role=_default_role(),

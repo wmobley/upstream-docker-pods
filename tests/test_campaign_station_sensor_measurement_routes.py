@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Tuple
 from unittest.mock import ANY
+from types import SimpleNamespace
 import jwt
 
 from app.main import app
@@ -129,7 +130,31 @@ STATION_ID = 1
 SENSOR_ID = 1
 MEASUREMENT_ID = 1
 
+
+def configure_station_sensor_repositories(
+    mock_station_repo_class: MagicMock,
+    mock_sensor_repo_class: MagicMock,
+    *,
+    public: bool = False,
+) -> None:
+    station_repository = MagicMock()
+    station_repository.get_station.return_value = SimpleNamespace(
+        campaignid=CAMPAIGN_ID,
+        published=public,
+        stationname="Station 1",
+    )
+    sensor_repository = MagicMock()
+    sensor_repository.get_sensor_entity.return_value = SimpleNamespace(
+        published=public,
+        alias="Sensor 1",
+        variablename="temp",
+    )
+    mock_station_repo_class.return_value = station_repository
+    mock_sensor_repo_class.return_value = sensor_repository
+
 # --- Test GET /measurements ---
+@patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.SensorRepository')
+@patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.StationRepository')
 @patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.MeasurementRepository')
 @patch('app.core.config.get_settings')
 @patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.check_allocation_permission', return_value=True)
@@ -137,12 +162,15 @@ def test_get_sensor_measurements_success(
     mock_check_alloc: MagicMock,
     mock_get_settings: MagicMock,
     mock_repo_class: MagicMock,
+    mock_station_repo_class: MagicMock,
+    mock_sensor_repo_class: MagicMock,
     client: TestClient,
     auth_headers: Dict[str, str],
     mock_measurement_repo: MagicMock,
     sample_measurement_model_data: List[Tuple[MeasurementModel, str]]
 ):
     mock_repo_class.return_value = mock_measurement_repo
+    configure_station_sensor_repositories(mock_station_repo_class, mock_sensor_repo_class)
     mock_settings = MagicMock()
     mock_settings.JWT_SECRET = TEST_JWT_SECRET
     mock_settings.ALG = TEST_JWT_ALGORITHM
@@ -183,15 +211,20 @@ def test_get_sensor_measurements_allocation_denied(
     assert response.status_code == 404 # As per route's HTTPException
     assert response.json()["detail"] == "Allocation is incorrect"
 
+@patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.SensorRepository')
+@patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.StationRepository')
 @patch('app.core.config.get_settings')
 def test_get_sensor_measurements_unauthorized(
     mock_get_settings: MagicMock,
+    mock_station_repo_class: MagicMock,
+    mock_sensor_repo_class: MagicMock,
     client: TestClient
 ):
     mock_settings = MagicMock()
     mock_settings.JWT_SECRET = TEST_JWT_SECRET # Need this for the app to load the auth backend
     mock_settings.ALG = TEST_JWT_ALGORITHM
     mock_get_settings.return_value = mock_settings
+    configure_station_sensor_repositories(mock_station_repo_class, mock_sensor_repo_class, public=False)
     response = client.get(
         f"/api/v1/campaigns/{CAMPAIGN_ID}/stations/{STATION_ID}/sensors/{SENSOR_ID}/measurements"
     )

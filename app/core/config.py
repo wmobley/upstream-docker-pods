@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     CKAN_TIMEOUT: int = Field(default=30)
     UI_BASE_URL: str = Field(default="http://127.0.0.1:5173")
     API_BASE_URL: str | None = Field(default="http://127.0.0.1:8000")
+    # Identifies this API pod's own project/stack (e.g. "sniffer") in the shared
+    # multi-project UI. Set on stacks provisioned via pods_service.build_bundle();
+    # left unset for legacy single-project deployments with a dedicated UI pod.
+    # Used by ckan_publish to disambiguate which project a CKAN dataset/resource
+    # link belongs to when it points at the shared discovery UI.
+    STACK_ID: str | None = Field(default=None)
     TAPIS_PODS_BASE_URL: str | None = Field(default=None)
     TAPIS_SERVICE_USERNAME: str | None = Field(default=None)
     TAPIS_SERVICE_PASSWORD: str | None = Field(default=None)

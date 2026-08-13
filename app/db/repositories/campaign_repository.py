@@ -59,7 +59,6 @@ class CampaignRepository:
 
     def get_campaigns_and_summary(
         self,
-        allocations: list[str] | None,
         bbox: str | None,
         start_date: datetime | None,
         end_date: datetime | None,
@@ -78,8 +77,6 @@ class CampaignRepository:
         ).select_from(Campaign).outerjoin(Station).outerjoin(Station.sensors).group_by(Campaign.campaignid)
 
         # Apply filters
-        if allocations:
-            query = query.filter(Campaign.allocation.in_(allocations))
         if bbox:
             bbox_north, bbox_east, bbox_south, bbox_west = bbox.split(",")
             query = query.filter(

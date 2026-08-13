@@ -18,6 +18,7 @@
 - **[2026-07-17] Tests run against this repo's checked-in `.env`, which has `ENV=dev` and `TAPIS_ENFORCE_AUTH_IN_DEV=false`.** A test asserting "unauthenticated request returns 401" against the *real* `get_current_user` dependency (not an override) will silently pass through the dev bypass and return 200 unless the test explicitly monkeypatches `TAPIS_ENFORCE_AUTH_IN_DEV=True` first.
 - **[2026-08-13] CKAN allocation checks normalize org identifiers before authorization:** `_fetch_user_organizations()` lowercases/trims CKAN org id/name/display/title, so `check_allocation_permission()` must normalize `Campaign.allocation` before exact comparison. Without that, station/list read routes that enforce allocation can 404 even when campaign detail loads.
 - **[2026-08-13] CKAN dataset conflict policy:** `package_create` 409 can be recoverable when the existing CKAN dataset extras match the same Upstream campaign/station. Upload and station-create paths keep idempotent patch behavior; explicit station publish defaults to conflict-first and requires `patch_existing_ckan_dataset=true` to patch a matching dataset. `ckan_dataset_name` lets callers choose a suggested alternate name.
+- **[2026-08-13] CKAN publish dataset identity with shared UI links:** `build_station_dataset_identity()` must derive `upstream_dataset_key`/hash/name from the base station URL without `?project=...`; only the CKAN `source`/resource UI URLs should append `project=<STACK_ID>`. Otherwise a shared multi-project link would create duplicate CKAN datasets for already-published stations.
 
 ## Do-Not-Repeat
 
@@ -38,6 +39,7 @@
 - [2026-07-22] `app/core/config.py`'s `ALLOWED_ALLOCATIONS` setting looked related to TAS allocations but is actually dead/unused — the real "allocation" concept already wired up in this repo (`app/api/dependencies/pytas.py`, despite its name) means CKAN organization membership, not TAS project allocations. These are two unrelated concepts that happen to share the word "allocation" — don't conflate them.
 - [2026-08-13] Do not compare raw `Campaign.allocation` to CKAN organization identifiers. The CKAN side is normalized; use exact normalized comparison on both sides and keep the existing empty-allocation fallback for CKAN-disabled/read-only paths.
 - [2026-08-13] Do not log CKAN `package_create` 409 as an ERROR before conflict classification. It may be the expected first step in create-or-patch idempotency; classify it, suggest a new name when failing, and patch only when the caller/path explicitly allows it.
+- [2026-08-13] After merging main into `feature/contextual-notes`, do not assume conflict-free files are semantically correct: main renamed `app.api.dependencies.pytas` to `ckan`, leaving the branch's new `tests/api/dependencies/test_pytas.py` import stale, and main's optional public measurement access meant tests had to mock station/sensor repositories instead of letting TestClient hit real SQLite through `get_db`.
 
 ## Decision Log
 

@@ -46,8 +46,30 @@ def process_batch(batch: list[dict[str, MeasurementValue]], session: Session) ->
     )
     batch.clear()
     return inserted_count
+
+def _is_empty_upload(file: UploadFile) -> bool:
+    """Return True when the uploaded file has no content.
+
+    The upload UI sends an empty placeholder CSV when the user only provides
+    one of the two files (sensors or measurements); pandas' read_csv raises
+    EmptyDataError on a 0-byte stream, so callers should treat that as "no
+    rows" instead of letting it crash the request.
+    """
+    position = file.file.tell()
+    file.file.seek(0, 2)
+    is_empty = file.file.tell() == 0
+    file.file.seek(position)
+    return is_empty
+
 def process_sensors_file(file: UploadFile, station_id: int, upload_event_id: int, session: Session) -> dict[str, int]:
     """Process the sensors CSV file and return a mapping of aliases to sensor IDs."""
+    if _is_empty_upload(file):
+        logger.info(
+            "process_sensors_file_empty_upload extra=%s",
+            {"station_id": station_id, "upload_event_id": upload_event_id, "filename": file.filename},
+        )
+        return {}
+
     # Read CSV using pandas
     sensor_repository = SensorRepository(session)
     df_sensors = pd.read_csv(file.file, keep_default_na=False, na_values=[])
@@ -149,6 +171,13 @@ def process_measurements_file(
     session: Session
 ) -> tuple[int, list[str]]:
     """Process the measurements CSV file and return total number of measurements processed and any errors."""
+    if _is_empty_upload(file):
+        logger.info(
+            "process_measurements_file_empty_upload extra=%s",
+            {"station_id": station_id, "upload_event_id": upload_event_id, "filename": file.filename},
+        )
+        return 0, []
+
     # Read CSV using pandas
 
     df = pd.read_csv(

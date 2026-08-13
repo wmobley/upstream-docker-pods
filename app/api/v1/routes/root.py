@@ -10,7 +10,9 @@ from app.api.dependencies.auth import (
     resolve_user_role,
     ensure_ckan_membership,
     elevate_role_for_tas_allocation,
+    get_current_user,
 )
+from app.api.v1.schemas.user import User
 from app.core.config import get_settings
 from pydantic import BaseModel
 
@@ -46,6 +48,18 @@ def _token_summary(token: str | None) -> dict[str, int | str | None]:
         "prefix": token[:12],
         "suffix": token[-12:],
     }
+
+class MeResponse(BaseModel):
+    username: str
+    role: str | None = None
+
+
+@router.get("/users/me", tags=["auth"])
+async def get_me(current_user: User = Depends(get_current_user)) -> MeResponse:
+    """Return the authenticated user's username and role. Accepts both internal HS256 JWTs
+    and raw Tapis RS256 JWTs, so Tapis-authenticated sessions can fetch their role."""
+    return MeResponse(username=current_user.username, role=current_user.role)
+
 
 # Route for user authentication and token generation
 @router.post("/token", tags=["auth"])

@@ -3,7 +3,7 @@ from typing import Literal
 import pytest
 from fastapi import HTTPException
 
-from app.api.dependencies import pytas
+from app.api.dependencies import ckan as pytas
 from app.api.v1.schemas.user import User
 
 CampaignAllocationRow = tuple[str | None] | None

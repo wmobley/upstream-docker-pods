@@ -18,7 +18,7 @@ from app.api.v1.schemas.campaign import GetCampaignResponse, PublishResponse, Su
 from app.api.v1.schemas.user import User
 from app.api.dependencies import auth
 from app.api.dependencies.auth import get_current_user, get_edit_user
-from app.api.dependencies.pytas import get_user_allocations
+from app.api.dependencies.ckan import get_user_allocations
 from app.db.session import get_db
 from app.services.ckan_publish import build_station_dataset_identity
 

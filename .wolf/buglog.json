@@ -194,6 +194,27 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-08-13T18:12:25Z"
+    },
+    {
+      "id": "bug-011",
+      "timestamp": "2026-08-13T13:46:00-05:00",
+      "error_message": "Merge of feature/contextual-notes into current main initially failed tests: ImportError importing app.api.dependencies.pytas from tests/api/dependencies/test_pytas.py, then sqlite3.ProgrammingError about SQLite objects created in a different thread in tests/test_campaign_station_sensor_measurement_routes.py",
+      "file": "tests/api/dependencies/test_pytas.py, tests/test_campaign_station_sensor_measurement_routes.py",
+      "root_cause": "Main renamed the CKAN allocation dependency module from pytas.py to ckan.py while the feature branch added a new test importing the old module name. Main also changed measurement GET routes to optional/public access, so older tests that only overrode get_viewer_user allowed _ensure_sensor_access to use real StationRepository/SensorRepository against SQLite inside FastAPI TestClient's threadpool.",
+      "fix": "Updated the allocation test to import app.api.dependencies.ckan as pytas and mocked StationRepository/SensorRepository in the measurement route tests so unit tests exercise route behavior without checking out a real SQLite connection.",
+      "tags": [
+        "merge",
+        "tests",
+        "ckan",
+        "sqlite",
+        "fastapi"
+      ],
+      "related_bugs": [
+        "bug-009",
+        "bug-010"
+      ],
+      "occurrences": 1,
+      "last_seen": "2026-08-13T13:46:00-05:00"
     }
   ]
 }

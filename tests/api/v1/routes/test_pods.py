@@ -24,7 +24,7 @@ def test_create_pod_bundle_invokes_service(monkeypatch):
             calls["init"] = calls.get("init", 0) + 1
             calls["token"] = token_override
 
-        def build_bundle(self, *, base, pg_user, pg_password):
+        def build_bundle(self, *, base, pg_user, pg_password, display_name=""):
             calls["args"] = (base, pg_user, pg_password)
             return {"volume": "ok", "api": "ok", "ui": "ok", "permissions": "ok"}
 
@@ -49,7 +49,7 @@ def test_create_pod_bundle_validation_error(monkeypatch):
         def __init__(self, token_override=None):
             pass
 
-        def build_bundle(self, *, base, pg_user, pg_password):  # pragma: no cover - mocked
+        def build_bundle(self, *, base, pg_user, pg_password, display_name=""):  # pragma: no cover - mocked
             raise ValueError("bad base")
 
     monkeypatch.setattr("app.api.v1.routes.pods.PodsService", DummyService)

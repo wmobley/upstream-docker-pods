@@ -13,7 +13,7 @@ from app.api.dependencies.auth import (
     get_tapis_token_header,
     get_tapis_token_header_optional,
 )
-from app.api.dependencies.pytas import (
+from app.api.dependencies.ckan import (
     check_allocation_permission,
     get_user_allocations,
     get_user_allocations_optional,

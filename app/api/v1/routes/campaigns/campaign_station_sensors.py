@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from app.api.dependencies.auth import get_viewer_user, get_edit_user
-from app.api.dependencies.pytas import (
+from app.api.dependencies.ckan import (
     check_allocation_permission,
     get_user_allocations,
     get_user_allocations_optional,

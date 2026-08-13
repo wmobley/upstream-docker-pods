@@ -4,10 +4,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
-from app.api.dependencies.pytas import (
+from app.api.dependencies.ckan import (
     check_allocation_permission,
     get_user_allocations,
-    get_user_allocations_optional,
 )
 
 from app.api.dependencies.auth import (
@@ -74,12 +73,11 @@ async def list_campaigns(
         list[str] | None, Query(description="List of sensor variables to filter by")
     ] = None,
     current_user: User = Depends(get_viewer_user),
-    allocations: list[str] = Depends(get_user_allocations_optional),
     db: Session = Depends(get_db),
 ) -> ListCampaignsResponsePagination:
     campaign_service = CampaignService(CampaignRepository(db))
     results, total_count = campaign_service.get_campaigns_with_summary(
-        allocations, bbox, start_date, end_date, sensor_variables, page, limit
+        bbox, start_date, end_date, sensor_variables, page, limit
     )
     response = ListCampaignsResponsePagination(
         items=results,

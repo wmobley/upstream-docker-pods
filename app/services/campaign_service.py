@@ -31,7 +31,6 @@ class CampaignService:
 
     def get_campaigns_with_summary(
         self,
-        allocations: list[str] | None = None,
         bbox: str | None = None,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
@@ -40,7 +39,7 @@ class CampaignService:
         limit: int = 20,
     ) -> tuple[list[ListCampaignsResponseItem], int]:
         rows, total_count = self.campaign_repository.get_campaigns_and_summary(
-            allocations, bbox, start_date, end_date, sensor_variables, page, limit
+            bbox, start_date, end_date, sensor_variables, page, limit
         )
         items: list[ListCampaignsResponseItem] = []
         for row in rows:
