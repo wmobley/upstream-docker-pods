@@ -136,18 +136,25 @@ def check_allocation_permission(
 
     If CKAN integration is disabled or no allocations are provided, access is permitted.
     """
-    if not allocations:
+    normalized_allocations = {
+        normalized
+        for allocation in allocations
+        if (normalized := _normalize(allocation))
+    }
+    if not normalized_allocations:
         return True
 
     with SessionLocal() as session:
-        campaign_exists = (
-            session.query(Campaign.campaignid)
+        campaign_allocation_row = (
+            session.query(Campaign.allocation)
             .filter(Campaign.campaignid == campaign_id)
-            .filter(Campaign.allocation.in_(allocations))
             .first()
         )
+        campaign_allocation = _normalize(
+            campaign_allocation_row[0] if campaign_allocation_row else None
+        )
 
-    if not campaign_exists:
+    if campaign_allocation not in normalized_allocations:
         raise HTTPException(
             status_code=404,
             detail="Access to Campaign unavailable. Improper Allocation",

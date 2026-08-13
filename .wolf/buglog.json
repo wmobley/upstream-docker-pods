@@ -158,6 +158,24 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-08-04"
+    },
+    {
+      "id": "bug-009",
+      "timestamp": "2026-08-13T17:19:37Z",
+      "error_message": "Failed to fetch station: 404 {\"detail\":\"Access to Campaign unavailable. Improper Allocation\"} on /campaigns/5/stations/5?project=upstream while campaign detail loaded",
+      "file": "app/api/dependencies/pytas.py",
+      "root_cause": "CKAN organization identifiers were normalized to lowercase, but check_allocation_permission compared Campaign.allocation directly against those normalized strings.",
+      "fix": "Normalize Campaign.allocation and non-empty allocation identifiers with the same _normalize helper before exact comparison; added tests/api/dependencies/test_pytas.py.",
+      "tags": [
+        "allocation",
+        "ckan",
+        "station-detail",
+        "authorization",
+        "fastapi"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-08-13T17:19:37Z"
     }
   ]
 }
