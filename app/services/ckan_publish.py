@@ -16,26 +16,29 @@ DATASET_KEY_EXTRA_KEY = "upstream_dataset_key"
 
 
 def _with_project_param(url: str, stack_id: str | None) -> str:
-    """Append ?project=<stack_id> so a link into the shared multi-project UI
-    identifies which project's data it points at. No-op for legacy
-    single-project deployments (STACK_ID unset)."""
+    """Append ?project=<stack_id> so a shared UI link selects the project."""
     if not stack_id:
         return url
     separator = "&" if "?" in url else "?"
     return f"{url}{separator}project={stack_id}"
 
 
-def build_station_dataset_identity(*, settings: Settings, campaign: Any, station: Any) -> dict[str, str]:
+def build_station_dataset_identity(
+    *,
+    settings: Settings,
+    campaign: Any,
+    station: Any,
+    dataset_name: str | None = None,
+) -> dict[str, str]:
     base_url = f"{settings.UI_BASE_URL.rstrip('/')}/campaigns/{campaign.id}/stations/{station.id}"
-    # Identity (key/hash/name) is derived from base_url, not source_url, so
-    # adding ?project= doesn't change the dataset's identity for stations
-    # already published under the un-parameterized URL.
+    # Keep identity stable even when project routing is appended to the source URL.
     dataset_key = base_url
     dataset_hash = hashlib.sha256(dataset_key.encode("utf-8")).hexdigest()[:10]
     base_name = _slugify(f"{campaign.name}-{station.name}")
-    source_url = _with_project_param(base_url, settings.STACK_ID)
+    resolved_name = _slugify(dataset_name) if dataset_name else _slugify(f"{base_name}-{dataset_hash}")
+    source_url = _with_project_param(base_url, getattr(settings, "STACK_ID", None))
     return {
-        "name": _slugify(f"{base_name}-{dataset_hash}"),
+        "name": resolved_name,
         "hash": dataset_hash,
         "key": dataset_key,
         "source_url": source_url,
@@ -53,13 +56,20 @@ def ensure_station_dataset(
     private: bool,
     station_metadata_schema: Sequence[Any] | None = None,
     campaign_metadata_schema: Sequence[Any] | None = None,
+    dataset_name: str | None = None,
+    allow_existing_patch: bool = True,
 ) -> tuple[dict[str, Any] | None, str | None, list[str]]:
     """
     Ensure a CKAN dataset exists for the given station and return the dataset payload,
     dataset id, and any errors encountered.
     """
     errors: list[str] = []
-    dataset_identity = build_station_dataset_identity(settings=settings, campaign=campaign, station=station)
+    dataset_identity = build_station_dataset_identity(
+        settings=settings,
+        campaign=campaign,
+        station=station,
+        dataset_name=dataset_name,
+    )
     dataset_name = dataset_identity["name"]
     notes = station.description or f"Station {station.name} in campaign {campaign.name}"
     tags = {"upstream", _slugify(campaign.name), _slugify(station.name)}
@@ -139,6 +149,8 @@ def ensure_station_dataset(
             extras=extras,
             private=private,
             extra_fields={k: v for k, v in extra_fields.items() if v is not None},
+            allow_existing_patch=allow_existing_patch,
+            suggested_name=_slugify(f"{dataset_name}-2"),
         )
         dataset_id = str(dataset.get("id") or dataset.get("name") or dataset_name)
         if dataset_id:

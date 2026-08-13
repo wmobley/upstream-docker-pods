@@ -53,7 +53,9 @@ A RESTful API service for managing environmental sensor data and campaigns.
 
 ## CKAN Integration
 
-As of this release CKAN registration is handled entirely in the Upstream UI. The API retains the publish/unpublish endpoints only to persist station metadata (`is_published` and `published_at`) after the UI finishes updating CKAN directly. No CKAN-specific configuration is required on the API service.
+When `CKAN_URL` is configured and the request includes a Tapis token, the API can register station datasets and sensor resources in CKAN during station create, CSV upload, and station publish flows. Station publish fails before changing local publish state if CKAN sync reports errors.
+
+If CKAN reports that a dataset name is already in use, station publish returns a suggested alternate `ckan_dataset_name`. To update an existing matching Upstream station dataset instead, retry station publish with `patch_existing_ckan_dataset: true`.
 
 ## Core API Endpoints
 
@@ -109,6 +111,12 @@ There are two instances running on upstream.pods.portals.tapis.io:
 
 - **Production**: https://upstreamapi.pods.portals.tapis.io/docs/
 - **Development**: https://upstreamapi.pods.portals.tapis.io/dev/docs/
+
+## Authentication
+
+Tapis Pods header auth and JWT fallback (architecture, local testing, security considerations) are
+documented in [`docs/auth/tapis-pods-auth.md`](../docs/auth/tapis-pods-auth.md) in the parent
+`upstream` meta-repo.
 
 ## Database Migrations
 

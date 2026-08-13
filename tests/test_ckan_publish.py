@@ -76,12 +76,71 @@ def test_ensure_station_dataset_maps_campaign_top_level_metadata() -> None:
     assert isinstance(kwargs, dict)
     assert str(kwargs["name"]).startswith("campaign-alpha-station-bravo-")
     assert len(str(kwargs["name"]).rsplit("-", 1)[-1]) == 10
+    assert kwargs["allow_existing_patch"] is True
+    assert str(kwargs["suggested_name"]).endswith("-2")
     assert kwargs["extra_fields"]["maintainer"] == "Funding Team"
     extras = kwargs["extras"]
     assert {"key": DATASET_KEY_EXTRA_KEY, "value": "https://ui.example.com/campaigns/7/stations/11"} in extras
     hash_extra = next(item for item in extras if item["key"] == DATASET_HASH_EXTRA_KEY)
     assert len(hash_extra["value"]) == 10
     assert {"key": "meta:station:local_code", "value": "SB-01"} in extras
+
+
+def test_ensure_station_dataset_allows_publish_conflict_options() -> None:
+    captured: dict[str, object] = {}
+
+    class FakeCKANClient:
+        def create_or_update_dataset(self, **kwargs):
+            captured["create_or_update_dataset"] = kwargs
+            return {"id": "dataset-1", "name": kwargs["name"], "resources": []}
+
+        def ensure_dataset_visibility(self, **kwargs):
+            captured["ensure_dataset_visibility"] = kwargs
+            return {"id": "dataset-1"}
+
+    settings = SimpleNamespace(UI_BASE_URL="https://ui.example.com", STACK_ID=None)
+    campaign = SimpleNamespace(
+        id=7,
+        name="Campaign Alpha",
+        description="Campaign description",
+        contact_name=None,
+        contact_email=None,
+        start_date=None,
+        end_date=None,
+        meta={},
+    )
+    station = SimpleNamespace(
+        id=11,
+        name="Station Bravo",
+        description="Station description",
+        contact_name=None,
+        contact_email=None,
+        geometry=None,
+        published_at=None,
+        meta={},
+    )
+
+    dataset, dataset_id, errors = ensure_station_dataset(
+        settings=settings,
+        ckan_client=FakeCKANClient(),
+        tapis_token="token",
+        campaign=campaign,
+        station=station,
+        owner_org="org-1",
+        private=False,
+        dataset_name="Custom Dataset Name",
+        allow_existing_patch=False,
+    )
+
+    assert errors == []
+    assert dataset_id == "dataset-1"
+    assert dataset is not None
+
+    kwargs = captured["create_or_update_dataset"]
+    assert isinstance(kwargs, dict)
+    assert kwargs["name"] == "custom-dataset-name"
+    assert kwargs["suggested_name"] == "custom-dataset-name-2"
+    assert kwargs["allow_existing_patch"] is False
 
 
 def test_build_station_dataset_identity_appends_project_param_when_stack_id_set() -> None:
