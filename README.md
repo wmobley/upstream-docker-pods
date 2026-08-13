@@ -57,6 +57,10 @@ When `CKAN_URL` is configured and the request includes a Tapis token, the API ca
 
 If CKAN reports that a dataset name is already in use, station publish returns a suggested alternate `ckan_dataset_name`. To update an existing matching Upstream station dataset instead, retry station publish with `patch_existing_ckan_dataset: true`.
 
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
 ## Core API Endpoints
 
 The service is mounted at `/api/v1`. Common read operations:
