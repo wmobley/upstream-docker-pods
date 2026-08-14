@@ -3999,7 +3999,7 @@
           "uploadfile_csv"
         ],
         "summary": "Post Sensor And Measurement",
-        "description": "Process sensor and measurement files and store data in the database.",
+        "description": "Process sensor and measurement files and store data in the database.\n\nChunked uploads share a client-generated ``upload_session_id``. The\nmeasurements are inserted for every chunk; expensive post-processing\n(sensor statistics, station geometry, CKAN sync) runs only once when the\nupload session is verified complete.",
         "operationId": "post_sensor_and_measurement_api_v1_uploadfile_csv_campaign__campaign_id__station__station_id__sensor_post",
         "security": [
           {
@@ -4074,9 +4074,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Post Sensor And Measurement Api V1 Uploadfile Csv Campaign  Campaign Id  Station  Station Id  Sensor Post"
+                  "$ref": "#/components/schemas/UploadFileCsvResponse"
                 }
               }
             }
@@ -6029,6 +6027,48 @@
             "format": "binary",
             "title": "Upload File Measurements",
             "description": "File with measurements."
+          },
+          "upload_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Session Id",
+            "description": "Optional client-generated upload session id for chunked uploads."
+          },
+          "finalize_upload": {
+            "type": "boolean",
+            "title": "Finalize Upload",
+            "description": "True when this is the final chunk (default True for legacy single-request uploads).",
+            "default": true
+          },
+          "chunk_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Index",
+            "description": "Zero-based chunk index of this request within the upload session."
+          },
+          "total_chunks": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Chunks",
+            "description": "Total number of chunks in the upload session."
           }
         },
         "type": "object",
@@ -6266,6 +6306,19 @@
           "name"
         ],
         "title": "CampaignsIn"
+      },
+      "Error": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "Error"
       },
       "ForceUpdateSensorStatisticsResponse": {
         "properties": {
@@ -8098,6 +8151,24 @@
             ],
             "title": "Organization",
             "description": "Optional CKAN organization to publish into when the campaign has none"
+          },
+          "ckan_dataset_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ckan Dataset Name",
+            "description": "Optional CKAN dataset name override for station publish"
+          },
+          "patch_existing_ckan_dataset": {
+            "type": "boolean",
+            "title": "Patch Existing Ckan Dataset",
+            "description": "If true, update an existing matching CKAN dataset instead of failing on name conflict",
+            "default": false
           }
         },
         "type": "object",
@@ -9232,6 +9303,206 @@
           "updated"
         ],
         "title": "UpdateSensorStatisticsResponse"
+      },
+      "UploadAudit": {
+        "properties": {
+          "measurement_rows_read": {
+            "type": "integer",
+            "title": "Measurement Rows Read"
+          },
+          "measurement_values_attempted": {
+            "type": "integer",
+            "title": "Measurement Values Attempted"
+          },
+          "measurement_values_inserted": {
+            "type": "integer",
+            "title": "Measurement Values Inserted"
+          },
+          "measurement_values_skipped_duplicate": {
+            "type": "integer",
+            "title": "Measurement Values Skipped Duplicate"
+          },
+          "sensor_alias_count": {
+            "type": "integer",
+            "title": "Sensor Alias Count"
+          },
+          "row_errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Row Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "measurement_rows_read",
+          "measurement_values_attempted",
+          "measurement_values_inserted",
+          "measurement_values_skipped_duplicate",
+          "sensor_alias_count"
+        ],
+        "title": "UploadAudit",
+        "description": "Per-chunk measurement ingestion counts returned by a CSV upload."
+      },
+      "UploadCkanSync": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "UploadCkanSync",
+        "description": "State of the deferred CKAN dataset/resource synchronization."
+      },
+      "UploadFileCsvResponse": {
+        "properties": {
+          "upload_event_id": {
+            "type": "integer",
+            "title": "Upload Event Id"
+          },
+          "upload_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Session Id"
+          },
+          "finalized": {
+            "type": "boolean",
+            "title": "Finalized"
+          },
+          "chunk_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Index"
+          },
+          "total_chunks": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Chunks"
+          },
+          "audit": {
+            "$ref": "#/components/schemas/UploadAudit"
+          },
+          "post_processing": {
+            "$ref": "#/components/schemas/UploadPostProcessing"
+          },
+          "ckan_sync": {
+            "$ref": "#/components/schemas/UploadCkanSync"
+          },
+          "uploaded_file_sensors stored in memory": {
+            "type": "boolean",
+            "title": "Uploaded File Sensors Stored In Memory"
+          },
+          "uploaded_file_measurements stored in memory": {
+            "type": "boolean",
+            "title": "Uploaded File Measurements Stored In Memory"
+          },
+          "Total sensors processed": {
+            "type": "integer",
+            "title": "Total Sensors Processed"
+          },
+          "Total measurements added to database": {
+            "type": "integer",
+            "title": "Total Measurements Added To Database"
+          },
+          "Data Processing time": {
+            "type": "string",
+            "title": "Data Processing Time"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "type": "array",
+            "title": "Errors"
+          },
+          "ckan_warnings": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ckan Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "upload_event_id",
+          "finalized",
+          "audit",
+          "post_processing",
+          "ckan_sync",
+          "uploaded_file_sensors stored in memory",
+          "uploaded_file_measurements stored in memory",
+          "Total sensors processed",
+          "Total measurements added to database",
+          "Data Processing time"
+        ],
+        "title": "UploadFileCsvResponse",
+        "description": "Response for a CSV upload request.\n\nNew structured fields (``audit``, ``post_processing``, ``ckan_sync``,\n``finalized``) are added alongside the legacy response keys that existing\nclients depend on."
+      },
+      "UploadPostProcessing": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "statistics_refreshed": {
+            "type": "boolean",
+            "title": "Statistics Refreshed",
+            "default": false
+          },
+          "station_geometry_refreshed": {
+            "type": "boolean",
+            "title": "Station Geometry Refreshed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "UploadPostProcessing",
+        "description": "State of once-per-upload post-processing (statistics/geometry)."
       },
       "UserRole": {
         "type": "string",

@@ -39,7 +39,7 @@ def test_process_sensors_file_returns_empty_map_for_blank_upload(mock_db_session
 
 
 def test_process_measurements_file_returns_zero_for_blank_upload(mock_db_session: MagicMock) -> None:
-    total_measurements, errors = process_measurements_file(
+    result = process_measurements_file(
         make_upload_file("", filename="blob"),
         station_id=1,
         alias_to_sensorid_map={"River Stage": 1},
@@ -47,8 +47,8 @@ def test_process_measurements_file_returns_zero_for_blank_upload(mock_db_session
         session=mock_db_session,
     )
 
-    assert total_measurements == 0
-    assert errors == []
+    assert result.rows_read == 0
+    assert result.errors == []
     mock_db_session.execute.assert_not_called()
 
 

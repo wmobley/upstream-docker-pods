@@ -853,3 +853,19 @@
 ## app/api/v1/routes/ (added 2026-07-17)
 
 - `user_roles.py` — GET /user-roles/me (self-lookup, no admin gate), GET/PUT/DELETE /user-roles (admin-gated list/upsert/delete) (~350 tok)
+
+## app/api/v1/routes/upload_file/ (added 2026-08-14)
+
+- `upload_csv.py` — CSV upload endpoint with chunked upload-session finalization (upload_session_id/finalize_upload/chunk_index/total_chunks), per-chunk audit receipts in upload_file_events, once-per-session sensor-statistics/geometry refresh, deferred CKAN sync via FastAPI BackgroundTasks, and typed UploadFileCsvResponse (~700 tok)
+
+## app/api/v1/schemas/ (added 2026-08-14)
+
+- `upload.py` — UploadAudit/UploadPostProcessing/UploadCkanSync/UploadFileCsvResponse response models; legacy keys kept via field aliases (~200 tok)
+
+## alembic/versions/ (added 2026-08-14)
+
+- `4e3905ac2ce5_merge_heads_add_upload_session_and_audit_fields.py` — merges the three migration heads (778a9dbdeb5e, c6b888362baa, d4e5f6a7b8c9) and adds nullable upload-session/chunk/audit columns + finalized/finalized_at + partial index ix_upload_file_events_upload_session on upload_file_events (~200 tok)
+
+## tests/ (added 2026-08-14)
+
+- `test_upload_csv_ingestion.py` — route/unit tests for chunked upload finalization, session receipt helpers, audit counting, empty measurement blobs, and duplicate-skip derivation (~700 tok)
