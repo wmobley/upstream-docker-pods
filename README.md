@@ -55,6 +55,8 @@ A RESTful API service for managing environmental sensor data and campaigns.
 
 When `CKAN_URL` is configured and the request includes a Tapis token, the API can register station datasets and sensor resources in CKAN during station create, CSV upload, and station publish flows. Station publish fails before changing local publish state if CKAN sync reports errors.
 
+For CSV uploads, CKAN synchronization is scheduled in a background task after the upload session is finalized, so CKAN network latency or failures do not block the upload response. The background task runs after the response is sent, uses its own database session, and only logs warnings. The Tapis token is passed in-memory and never persisted or logged. Because the task is not durable, a process restart immediately after the upload response may skip CKAN sync; the response reports the schedule status under `ckan_sync.status` (`scheduled`, `missing_tapis_token`, `ckan_disabled`, `not_finalized`, `skipped_incomplete_upload`, `already_finalized`, or `skipped_error`).
+
 If CKAN reports that a dataset name is already in use, station publish returns a suggested alternate `ckan_dataset_name`. To update an existing matching Upstream station dataset instead, retry station publish with `patch_existing_ckan_dataset: true`.
 
 ## License
@@ -73,6 +75,21 @@ The service is mounted at `/api/v1`. Common read operations:
 - `GET /api/v1/campaigns/{campaign_id}/stations/{station_id}/sensors/{sensor_id}/measurements` — retrieve measurements for a sensor
 
 An interactive schema browser is available at `https://<host>/docs` (for example `https://infordisaster.pods.portals.tapis.io/docs`).
+
+## CSV Upload
+
+`POST /api/v1/uploadfile_csv/campaign/{campaign_id}/station/{station_id}/sensor` accepts two multipart files — a sensors CSV and a measurements CSV — and inserts measurements with `ON CONFLICT DO NOTHING` on `(sensorid, collectiontime)`.
+
+Chunked uploads share a client-generated `upload_session_id`. Each request may set optional form fields:
+
+- `upload_session_id` — identifies one logical upload spread across chunks.
+- `chunk_index` — zero-based index of the current chunk.
+- `total_chunks` — total number of chunks in the upload.
+- `finalize_upload` (default `true`) — set `false` for every chunk except the last.
+
+Measurements are inserted for every chunk. Expensive post-processing — sensor statistics refresh, station geometry refresh, and CKAN synchronization — runs only once, after the server verifies the session is complete (successful receipts exist for every chunk index `0..total_chunks-1` and the session is not already finalized). A finalizing chunk whose session cannot be verified complete returns `finalized=false` with `ckan_sync.status="skipped_incomplete_upload"`. A retried finalizing chunk for an already-finalized session returns `finalized=true`, `post_processing.status="already_finalized"`, and `ckan_sync.status="already_finalized"`. Legacy requests that omit `upload_session_id` are treated as a complete single-request upload.
+
+The response includes per-chunk audit counts under `audit` (`measurement_rows_read`, `measurement_values_attempted`, `measurement_values_inserted`, `measurement_values_skipped_duplicate`, `sensor_alias_count`, `row_errors`), a `post_processing` block, and a `ckan_sync` block, while keeping the legacy keys (`Total sensors processed`, `Total measurements added to database`, `Data Processing time`, `errors`). `measurement_values_skipped_duplicate` is derived as attempted minus inserted.
 
 ## On-premise Environment
 
