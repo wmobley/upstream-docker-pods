@@ -1,9 +1,12 @@
+from datetime import datetime, timezone
 from typing import List
-from datetime import datetime
+
 from app.api.v1.schemas.measurement import MeasurementItem
 
 
-def calculate_triangle_area(p1: MeasurementItem, p2: MeasurementItem, p3: MeasurementItem) -> float:
+def calculate_triangle_area(
+    p1: MeasurementItem, p2: MeasurementItem, p3: MeasurementItem
+) -> float:
     """Calculate the area of a triangle formed by three points."""
     if not all(p.value is not None for p in [p1, p2, p3]):
         return 0.0
@@ -52,27 +55,27 @@ def lttb(data: List[MeasurementItem], threshold: int) -> List[MeasurementItem]:
         if not bucket_data:
             continue
 
-        avg_x = sum(p.collectiontime.timestamp() for p in bucket_data) / len(bucket_data)
-        avg_y = sum(p.value for p in bucket_data if p.value is not None) / len(bucket_data)
+        avg_x = sum(p.collectiontime.timestamp() for p in bucket_data) / len(
+            bucket_data
+        )
+        avg_y = sum(p.value for p in bucket_data if p.value is not None) / len(
+            bucket_data
+        )
 
         # Create average point
         avg_point = MeasurementItem(
             id=-1,  # Temporary ID
             value=avg_y,
-            collectiontime=datetime.fromtimestamp(avg_x),
-            geometry=bucket_data[0].geometry
+            collectiontime=datetime.fromtimestamp(avg_x, tz=timezone.utc),
+            geometry=bucket_data[0].geometry,
         )
 
         # Find point with maximum triangle area
-        max_area : float = -1.0
+        max_area: float = -1.0
         max_area_point = bucket_data[0]
 
         for point in bucket_data:
-            area = calculate_triangle_area(
-                sampled[-1],
-                point,
-                avg_point
-            )
+            area = calculate_triangle_area(sampled[-1], point, avg_point)
             if area > max_area:
                 max_area = area
                 max_area_point = point

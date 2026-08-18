@@ -36,6 +36,13 @@ def make_session() -> MagicMock:
     return session
 
 
+def make_execute_result(rows: int) -> MagicMock:
+    """Result whose RETURNING rows count equals ``rows`` inserted values."""
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [1] * rows
+    return result
+
+
 class TestProcessBatch:
     def test_empty_batch(self):
         session = make_session()
@@ -45,9 +52,9 @@ class TestProcessBatch:
         assert result.values_inserted == 0
         assert result.values_skipped_duplicate == 0
 
-    def test_insert_counts_use_rowcount(self):
+    def test_insert_counts_use_returned_rows(self):
         session = make_session()
-        session.execute.return_value = MagicMock(rowcount=3)
+        session.execute.return_value = make_execute_result(3)
         batch = [
             {
                 "sensorid": 1,
@@ -80,9 +87,9 @@ class TestProcessBatch:
 class TestProcessMeasurementsFile:
     MEASUREMENT_HEADER = "collectiontime,Lon_deg,Lat_deg,temp,humid\n"
 
-    def _run(self, csv_text: str, alias_map=None):
+    def _run(self, csv_text: str, alias_map=None, station_timezone=None):
         session = make_session()
-        session.execute.return_value = MagicMock(rowcount=1)
+        session.execute.return_value = make_execute_result(1)
         file = make_upload_file(csv_text.encode())
         alias_map = alias_map or {"temp": 10, "humid": 11}
         return process_measurements_file(
@@ -91,6 +98,7 @@ class TestProcessMeasurementsFile:
             alias_to_sensorid_map=alias_map,
             upload_event_id=1,
             session=session,
+            station_timezone=station_timezone,
         )
 
     def test_counts_rows_and_values(self):
@@ -132,7 +140,7 @@ class TestProcessMeasurementsFile:
 
     def test_skipped_duplicates_derive_from_attempted_minus_inserted(self):
         session = make_session()
-        session.execute.return_value = MagicMock(rowcount=1)
+        session.execute.return_value = make_execute_result(1)
         file = make_upload_file(
             (
                 self.MEASUREMENT_HEADER
@@ -150,6 +158,87 @@ class TestProcessMeasurementsFile:
         assert result.values_attempted == 2
         assert result.values_inserted == 1
         assert result.values_skipped_duplicate == 1
+
+    def _inserted_collectiontimes(self, session):
+        """Return the collectiontime values sent to the insert statement."""
+        stmt = session.execute.call_args[0][0]
+        compiled = stmt.compile()
+        return [
+            value for key, value in compiled.params.items() if "collectiontime" in key
+        ]
+
+    def test_naive_local_times_localized_in_station_timezone(self):
+        from datetime import timezone
+
+        session = make_session()
+        session.execute.return_value = make_execute_result(1)
+        file = make_upload_file(
+            (
+                self.MEASUREMENT_HEADER
+                + "2024-01-01 12:00:00,30.0,-97.0,22.5,\n"  # CST (UTC-6) -> 18:00 UTC
+                + "2024-06-01 12:00:00,30.0,-97.0,25.0,\n"  # CDT (UTC-5) -> 17:00 UTC
+            ).encode()
+        )
+        result = process_measurements_file(
+            file,
+            station_id=7,
+            alias_to_sensorid_map={"temp": 10},
+            upload_event_id=1,
+            session=session,
+            station_timezone="America/Chicago",
+        )
+        assert result.values_attempted == 2
+        values = self._inserted_collectiontimes(session)
+        assert len(values) == 2
+        jan, june = values
+        # January: Chicago is CST (UTC-6); June: CDT (UTC-5).
+        assert jan.utcoffset().total_seconds() == -6 * 3600
+        assert june.utcoffset().total_seconds() == -5 * 3600
+        assert jan.astimezone(timezone.utc).isoformat() == "2024-01-01T18:00:00+00:00"
+        assert june.astimezone(timezone.utc).isoformat() == "2024-06-01T17:00:00+00:00"
+
+    def test_aware_values_pass_through_regardless_of_station_timezone(self):
+        from datetime import timezone
+
+        session = make_session()
+        session.execute.return_value = make_execute_result(1)
+        file = make_upload_file(
+            (
+                self.MEASUREMENT_HEADER + "2024-01-01T12:00:00Z,30.0,-97.0,22.5,\n"
+            ).encode()
+        )
+        result = process_measurements_file(
+            file,
+            station_id=7,
+            alias_to_sensorid_map={"temp": 10},
+            upload_event_id=1,
+            session=session,
+            station_timezone="America/Chicago",
+        )
+        assert result.values_attempted == 1
+        (value,) = self._inserted_collectiontimes(session)
+        assert value.astimezone(timezone.utc).isoformat() == "2024-01-01T12:00:00+00:00"
+
+    def test_naive_values_default_to_utc_without_station_timezone(self):
+        from datetime import timezone
+
+        session = make_session()
+        session.execute.return_value = make_execute_result(1)
+        file = make_upload_file(
+            (
+                self.MEASUREMENT_HEADER + "2024-01-01 12:00:00,30.0,-97.0,22.5,\n"
+            ).encode()
+        )
+        result = process_measurements_file(
+            file,
+            station_id=7,
+            alias_to_sensorid_map={"temp": 10},
+            upload_event_id=1,
+            session=session,
+        )
+        assert result.values_attempted == 1
+        (value,) = self._inserted_collectiontimes(session)
+        assert value.astimezone(timezone.utc).isoformat() == "2024-01-01T12:00:00+00:00"
 
 
 class TestSessionReceiptHelpers:

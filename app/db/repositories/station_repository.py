@@ -33,6 +33,7 @@ class StationRepository:
             startdate=request.start_date,
             campaignid=campaign_id,
             station_type=request.station_type.value,
+            timezone=request.timezone,
             meta=request.metadata or {},
         )
         self.db.add(db_station)
@@ -170,6 +171,7 @@ class StationRepository:
             contact_email = request.contact_email
             active = request.active
             start_date = request.start_date
+            timezone = request.timezone
 
 
             if name is None:
@@ -184,6 +186,8 @@ class StationRepository:
                 raise ValueError("Active must be provided for a full update")
             if start_date is None:
                 raise ValueError("Start date must be provided for a full update")
+            if timezone is None:
+                raise ValueError("Timezone must be provided for a full update")
 
             db_station.stationname = name
             db_station.description = description
@@ -191,6 +195,7 @@ class StationRepository:
             db_station.contactemail = contact_email
             db_station.active = active
             db_station.startdate = start_date
+            db_station.timezone = timezone
             db_station.meta = request.metadata or {}
 
         self.db.commit()

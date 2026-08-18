@@ -82,6 +82,7 @@ class CampaignService:
             contact_email=station.contactemail,
             active=station.active,
             start_date=station.startdate,
+            timezone=station.timezone,
             is_published=bool(getattr(station, "published", False)),
             published_at=getattr(station, "published_at", None),
             geometry=json.loads(station.geometry) if station.geometry else {},

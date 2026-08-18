@@ -23,23 +23,30 @@ class Station(Base):
     active: Mapped[Optional[bool]] = mapped_column()
     startdate: Mapped[Optional[datetime]] = mapped_column()
 
+    # IANA timezone name (e.g. "America/Chicago", "UTC") in which naive
+    # measurement collectiontime values are interpreted. Required on create.
+    timezone: Mapped[str] = mapped_column()
 
     # Station type
     station_type: Mapped[str] = mapped_column()  # 'static' or 'mobile'
 
     # Location for static stations
-    geometry: Mapped[geoalchemy2.types.Geometry] = mapped_column(geoalchemy2.types.Geometry("GEOMETRY", srid=4326))
-    published: Mapped[bool] = mapped_column("is_published", Boolean, nullable=False, default=False)
-    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, nullable=False, default=dict)
+    geometry: Mapped[geoalchemy2.types.Geometry] = mapped_column(
+        geoalchemy2.types.Geometry("GEOMETRY", srid=4326)
+    )
+    published: Mapped[bool] = mapped_column(
+        "is_published", Boolean, nullable=False, default=False
+    )
+    published_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    meta: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False, default=dict
+    )
 
     # relationships
-    campaign: Mapped["Campaign"] = relationship(
-        back_populates="stations"
-    )
-    sensors: Mapped[List["Sensor"]] = relationship(
-        back_populates="station"
-    )
+    campaign: Mapped["Campaign"] = relationship(back_populates="stations")
+    sensors: Mapped[List["Sensor"]] = relationship(back_populates="station")
     notes: Mapped[List["Note"]] = relationship(
         back_populates="station", cascade="all, delete-orphan"
     )

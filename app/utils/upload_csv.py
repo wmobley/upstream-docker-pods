@@ -14,6 +14,7 @@ from app.api.v1.schemas.sensor import SensorIn
 from app.db.models.measurement import Measurement
 from app.db.models.sensor import Sensor
 from app.db.repositories.sensor_repository import SensorRepository
+from app.utils.timezone import localize_collectiontime
 
 # Constants
 MultiPartParser.spool_max_size = 500 * 1024 * 1024
@@ -79,12 +80,16 @@ def process_batch(
         return BatchInsertResult(values_attempted=0, values_inserted=0)
     stmt = insert(Measurement).values(batch)
     stmt = stmt.on_conflict_do_nothing(index_elements=["sensorid", "collectiontime"])
-    result = session.execute(stmt)
-    inserted_count = result.rowcount if hasattr(result, "rowcount") else len(batch)
+    # Count actual insertions via RETURNING instead of rowcount: SQLAlchemy's
+    # psycopg3 dialect reports rowcount -1 for multi-row INSERT ... ON CONFLICT
+    # DO NOTHING against a real database, which would corrupt the audit counts.
+    returning_stmt = stmt.returning(Measurement.sensorid)
+    result = session.execute(returning_stmt)
+    inserted_count = len(result.scalars().all())
     session.commit()
     batch_result = BatchInsertResult(
         values_attempted=len(batch),
-        values_inserted=int(inserted_count) if inserted_count is not None else 0,
+        values_inserted=inserted_count,
     )
     logger.info(
         "upload_csv_process_batch extra=%s",
@@ -121,7 +126,11 @@ def process_sensors_file(
     if _is_empty_upload(file):
         logger.info(
             "process_sensors_file_empty_upload extra=%s",
-            {"station_id": station_id, "upload_event_id": upload_event_id, "filename": file.filename},
+            {
+                "station_id": station_id,
+                "upload_event_id": upload_event_id,
+                "filename": file.filename,
+            },
         )
         return {}
 
@@ -238,17 +247,28 @@ def process_measurements_file(
     alias_to_sensorid_map: dict[str, int],
     upload_event_id: int,
     session: Session,
+    station_timezone: str | None = None,
 ) -> MeasurementsProcessingResult:
     """Process the measurements CSV file and return a structured result.
 
     The returned ``MeasurementsProcessingResult`` reports CSV rows read, the
     number of candidate measurement values attempted, the number actually
     inserted, and any row/schema errors encountered.
+
+    Naive ``collectiontime`` values are interpreted in ``station_timezone``
+    (the station's declared IANA timezone). When not provided, values default
+    to ``UTC`` (preserving legacy behavior). Already-aware values pass through
+    unchanged.
     """
+    timezone = station_timezone or "UTC"
     if _is_empty_upload(file):
         logger.info(
             "process_measurements_file_empty_upload extra=%s",
-            {"station_id": station_id, "upload_event_id": upload_event_id, "filename": file.filename},
+            {
+                "station_id": station_id,
+                "upload_event_id": upload_event_id,
+                "filename": file.filename,
+            },
         )
         return MeasurementsProcessingResult(rows_read=0)
 
@@ -336,7 +356,7 @@ def process_measurements_file(
             measurement_batch.append(
                 {
                     "stationid": station_id,
-                    "collectiontime": time,
+                    "collectiontime": localize_collectiontime(time, timezone),
                     "measurementvalue": value,
                     "geometry": WKTElement(geom, srid=4326),
                     "sensorid": sensor_id,

@@ -38,7 +38,8 @@ MOCK_STATION_CREATE_PAYLOAD = {
     "contact_email": "dr.test@example.com",
     "active": True,
     "start_date": "2024-01-15T10:00:00",
-    "station_type": "static"
+    "station_type": "static",
+    "timezone": "America/Chicago",
 }
 
 MOCK_STATION_UPDATE_PAYLOAD = {
@@ -65,6 +66,7 @@ MOCK_GET_STATION_RESPONSE = {
     "contact_email": "dr.test@example.com",
     "active": True,
     "start_date": "2024-01-15T10:00:00Z", # Assuming timezone info might be added
+    "timezone": "America/Chicago",
     "geometry": {},
     "sensors": []
 }
@@ -74,6 +76,7 @@ MOCK_STATION_ITEM_SUMMARY = {
     "name": "Test Station Alpha",
     "description": "A station for testing purposes",
     "geometry": {},
+    "timezone": "America/Chicago",
     "sensor_types": ["temperature"],
     "sensor_variables": ["temp_celsius"],
     "sensor_count": 1
@@ -214,6 +217,7 @@ class TestCampaignStationRoutes:
                     name="Test Station Alpha",
                     description="Test description",
                     start_date=datetime.utcnow(),
+                    timezone="America/Chicago",
                 )
             ],
         )
@@ -222,6 +226,7 @@ class TestCampaignStationRoutes:
             name="Test Station Alpha",
             description="Test description",
             start_date=datetime.utcnow(),
+            timezone="America/Chicago",
             geometry={},
             sensors=[],
         )
@@ -278,6 +283,7 @@ class TestCampaignStationRoutes:
             name="Orphan Station",
             description="Test description",
             start_date=datetime.utcnow(),
+            timezone="America/Chicago",
             geometry={},
             sensors=[],
         )
@@ -363,6 +369,7 @@ class TestCampaignStationRoutes:
             name="Test Station Alpha",
             description="Test description",
             start_date=datetime.utcnow(),
+            timezone="America/Chicago",
             geometry={},
             sensors=[],
         )
@@ -413,6 +420,7 @@ class TestCampaignStationRoutes:
             name="Test Station Alpha",
             description="Test description",
             start_date=datetime.utcnow(),
+            timezone="America/Chicago",
             geometry={},
             sensors=[],
         )
@@ -594,3 +602,89 @@ class TestCampaignStationRoutes:
         with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=True):
             response = client_with_auth.post(f"/api/v1/campaigns/{self.campaign_id}/stations", json=payload_missing_field)
             assert response.status_code == 422
+
+    def test_create_station_missing_timezone(self, client_with_auth):
+        payload_missing_timezone = MOCK_STATION_CREATE_PAYLOAD.copy()
+        del payload_missing_timezone["timezone"]  # timezone is required by StationCreate
+        with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=True):
+            response = client_with_auth.post(
+                f"/api/v1/campaigns/{self.campaign_id}/stations", json=payload_missing_timezone
+            )
+            assert response.status_code == 422
+
+    def test_create_station_invalid_timezone(self, client_with_auth):
+        payload_invalid_timezone = MOCK_STATION_CREATE_PAYLOAD.copy()
+        payload_invalid_timezone["timezone"] = "Not/AZone"
+        with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=True):
+            response = client_with_auth.post(
+                f"/api/v1/campaigns/{self.campaign_id}/stations", json=payload_invalid_timezone
+            )
+            assert response.status_code == 422
+
+    def test_update_station_invalid_timezone(self, client_with_auth):
+        payload_invalid_timezone = MOCK_STATION_UPDATE_PAYLOAD.copy()
+        payload_invalid_timezone["timezone"] = "Not/AZone"
+        with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=True):
+            response = client_with_auth.put(
+                f"/api/v1/campaigns/{self.campaign_id}/stations/{self.station_id}",
+                json=payload_invalid_timezone,
+            )
+            assert response.status_code == 422
+
+
+class TestCampaignDetailIncludesStationTimezone:
+    """Regression: GET /campaigns/{id} builds station items that must include
+    timezone (added as a required field). Missing it raised a 500
+    ValidationError that surfaced as a CORS error in the browser."""
+
+    def _mock_station(self, stationid, stationname, timezone):
+        st = Mock()
+        st.stationid = stationid
+        st.stationname = stationname
+        st.description = "d"
+        st.contactname = "c"
+        st.contactemail = "e"
+        st.active = True
+        st.startdate = datetime(2024, 1, 1)
+        st.timezone = timezone
+        st.published = False
+        st.published_at = None
+        st.geometry = None
+        st.meta = None
+        st.sensors = []
+        return st
+
+    def _mock_campaign(self, stations):
+        c = Mock()
+        c.campaignid = 1
+        c.campaignname = "C"
+        c.description = "d"
+        c.contactname = "c"
+        c.contactemail = "e"
+        c.startdate = datetime(2024, 1, 1)
+        c.enddate = datetime(2024, 12, 31)
+        c.allocation = "A"
+        c.bbox_west = c.bbox_east = c.bbox_south = c.bbox_north = 0.0
+        c.geometry = None
+        c.meta = None
+        c.stations = stations
+        return c
+
+    def test_campaign_detail_stations_include_timezone(self):
+        from app.services.campaign_service import CampaignService
+
+        repo = Mock()
+        repo.get_campaign.return_value = self._mock_campaign(
+            [
+                self._mock_station(1, "S1", "America/Chicago"),
+                self._mock_station(2, "S2", "UTC"),
+            ]
+        )
+        repo.count_stations.return_value = 2
+        repo.count_sensors.return_value = 0
+        repo.get_sensor_types.return_value = []
+        repo.get_sensor_variables.return_value = []
+
+        result = CampaignService(repo).get_campaign_with_summary(1)
+
+        assert [s.timezone for s in result.stations] == ["America/Chicago", "UTC"]

@@ -80,6 +80,8 @@ An interactive schema browser is available at `https://<host>/docs` (for example
 
 `POST /api/v1/uploadfile_csv/campaign/{campaign_id}/station/{station_id}/sensor` accepts two multipart files — a sensors CSV and a measurements CSV — and inserts measurements with `ON CONFLICT DO NOTHING` on `(sensorid, collectiontime)`.
 
+Every station declares an IANA `timezone` (required at creation, defaulting to `UTC` for stations created before this requirement). `collectiontime` values are stored as timezone-aware `TIMESTAMPTZ`: naive values in the measurements CSV are interpreted in the station's declared timezone, while values carrying a timezone (e.g. `Z` or `+00:00`) pass through unchanged.
+
 Chunked uploads share a client-generated `upload_session_id`. Each request may set optional form fields:
 
 - `upload_session_id` — identifies one logical upload spread across chunks.

@@ -378,12 +378,26 @@ def post_sensor_and_measurement(
                 "measurements_filename": upload_file_measurements.filename,
             },
         )
+        station = station_service.get_station(station_id)
+        station_timezone = getattr(station, "timezone", None)
+        if not isinstance(station_timezone, str) or not station_timezone:
+            station_timezone = "UTC"
+            logger.warning(
+                "upload_csv_station_timezone_missing extra=%s",
+                {
+                    "campaign_id": campaign_id,
+                    "station_id": station_id,
+                    "upload_event_id": upload_event_id,
+                    "fallback": station_timezone,
+                },
+            )
         measurements_result = process_measurements_file(
             upload_file_measurements,
             station_id,
             alias_to_sensorid_map,
             upload_event_id,
             db,
+            station_timezone=station_timezone,
         )
         upload_file_measurements.file.close()
         logger.info(

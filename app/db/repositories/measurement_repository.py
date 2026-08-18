@@ -1,21 +1,42 @@
+import typing
 from datetime import datetime
 from typing import List
-import typing
 
-from sqlalchemy.orm import Session
 from geoalchemy2 import WKTElement
-from sqlalchemy import func, text, select
+from sqlalchemy import func, select, text
+from sqlalchemy.orm import Session
+
 from app.api.v1.schemas.measurement import (
     AggregatedMeasurement,
     MeasurementIn,
     MeasurementUpdate,
 )
 from app.db.models.measurement import Measurement
+from app.db.models.sensor import Sensor
+from app.db.models.station import Station
+from app.utils.timezone import localize_collectiontime
 
 
 class MeasurementRepository:
     def __init__(self, db: Session):
         self.db = db
+
+    def _station_timezone_for_sensor(self, sensor_id: int) -> str:
+        """Return the station's declared IANA timezone for a sensor.
+
+        Falls back to ``UTC`` when the station cannot be resolved (defensive:
+        keeps legacy naive values interpreted as UTC).
+        """
+        station = (
+            self.db.query(Station)
+            .join(Sensor, Sensor.stationid == Station.stationid)
+            .filter(Sensor.sensorid == sensor_id)
+            .first()
+        )
+        timezone = getattr(station, "timezone", None)
+        if isinstance(timezone, str) and timezone:
+            return timezone
+        return "UTC"
 
     def create_measurement(self, request: MeasurementIn, sensor_id: int) -> Measurement:
         # Convert the geometry string to WKTElement for PostGIS
@@ -24,7 +45,9 @@ class MeasurementRepository:
         db_measurement = Measurement(
             sensorid=sensor_id,
             variablename=request.variablename,
-            collectiontime=request.collectiontime,
+            collectiontime=localize_collectiontime(
+                request.collectiontime, self._station_timezone_for_sensor(sensor_id)
+            ),
             variabletype=request.variabletype,
             description=request.description,
             measurementvalue=request.measurementvalue,
@@ -128,12 +151,15 @@ class MeasurementRepository:
         self, measurements: List[MeasurementIn], sensor_id: int
     ) -> List[Measurement]:
         db_measurements = []
+        station_timezone = self._station_timezone_for_sensor(sensor_id)
         for measurement in measurements:
             geometry = WKTElement(measurement.geometry, srid=4326)  # type: ignore[arg-type]
             db_measurement = Measurement(
                 sensorid=sensor_id,
                 variablename=measurement.variablename,
-                collectiontime=measurement.collectiontime,
+                collectiontime=localize_collectiontime(
+                    measurement.collectiontime, station_timezone
+                ),
                 variabletype=measurement.variabletype,
                 description=measurement.description,
                 measurementvalue=measurement.measurementvalue,
@@ -217,6 +243,15 @@ class MeasurementRepository:
                 db_field = field_mapping.get(field, field)
                 if db_field == "geometry" and value is not None:
                     setattr(db_measurement, db_field, WKTElement(value, srid=4326))
+                elif db_field == "collectiontime" and value is not None:
+                    setattr(
+                        db_measurement,
+                        db_field,
+                        localize_collectiontime(
+                            value,
+                            self._station_timezone_for_sensor(db_measurement.sensorid),
+                        ),
+                    )
                 else:
                     setattr(db_measurement, db_field, value)
         else:
@@ -240,7 +275,9 @@ class MeasurementRepository:
                 raise ValueError("variabletype must be provided for a full update")
 
             db_measurement.sensorid = sensorid
-            db_measurement.collectiontime = collectiontime
+            db_measurement.collectiontime = localize_collectiontime(
+                collectiontime, self._station_timezone_for_sensor(sensorid)
+            )
             db_measurement.geometry = WKTElement(geometry, srid=4326)  # type: ignore[assignment]
             db_measurement.measurementvalue = measurementvalue
             db_measurement.variabletype = variabletype
