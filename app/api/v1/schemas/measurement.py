@@ -52,9 +52,9 @@ class AggregatedMeasurement(BaseModel):
     point_count: int
     lower_bound: float
     upper_bound: float
-    parametric_lower_bound: float
-    parametric_upper_bound: float
-    std_dev: float
+    parametric_lower_bound: float | None = None
+    parametric_upper_bound: float | None = None
+    std_dev: float | None = None
     min_value: float
     max_value: float
     percentile_25: float

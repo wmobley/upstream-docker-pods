@@ -6,6 +6,33 @@
     "version": "0.0.1"
   },
   "paths": {
+    "/api/v1/users/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Get Me",
+        "description": "Return the authenticated user's username and role. Accepts both internal HS256 JWTs\nand raw Tapis RS256 JWTs, so Tapis-authenticated sessions can fetch their role.",
+        "operationId": "get_me_api_v1_users_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/token": {
       "post": {
         "tags": [
@@ -202,38 +229,6 @@
               "title": "Sensor Variables"
             },
             "description": "List of sensor variables to filter by"
-          },
-          {
-            "name": "X-TAPIS-TOKEN",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Tapis-Token"
-            }
-          },
-          {
-            "name": "Authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
           }
         ],
         "responses": {
@@ -4312,6 +4307,33 @@
         }
       }
     },
+    "/api/v1/user-roles/me": {
+      "get": {
+        "tags": [
+          "user-roles"
+        ],
+        "summary": "Get My Role",
+        "description": "Self-lookup of the caller's own role in this project's DB. No admin gate.",
+        "operationId": "get_my_role_api_v1_user_roles_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/user-roles": {
       "get": {
         "tags": [
@@ -5901,15 +5923,36 @@
             "title": "Upper Bound"
           },
           "parametric_lower_bound": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Parametric Lower Bound"
           },
           "parametric_upper_bound": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Parametric Upper Bound"
           },
           "std_dev": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Std Dev"
           },
           "min_value": {
@@ -5945,9 +5988,6 @@
           "point_count",
           "lower_bound",
           "upper_bound",
-          "parametric_lower_bound",
-          "parametric_upper_bound",
-          "std_dev",
           "min_value",
           "max_value",
           "percentile_25",
@@ -6094,6 +6134,12 @@
             "type": "string",
             "title": "Pg Password",
             "description": "Postgres password"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name",
+            "description": "Human-readable name shown in the project dropdown",
+            "default": ""
           }
         },
         "type": "object",
@@ -6673,6 +6719,10 @@
             "$ref": "#/components/schemas/StationType",
             "default": "static"
           },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
           "geometry": {
             "additionalProperties": true,
             "type": "object",
@@ -6726,7 +6776,8 @@
         "type": "object",
         "required": [
           "id",
-          "name"
+          "name",
+          "timezone"
         ],
         "title": "GetStationResponse"
       },
@@ -7196,6 +7247,30 @@
           "token_type"
         ],
         "title": "LoginResponse"
+      },
+      "MeResponse": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username"
+        ],
+        "title": "MeResponse"
       },
       "MeasurementCreateResponse": {
         "properties": {
@@ -8810,6 +8885,10 @@
             "$ref": "#/components/schemas/StationType",
             "default": "static"
           },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
           "metadata": {
             "anyOf": [
               {
@@ -8826,7 +8905,8 @@
         "type": "object",
         "required": [
           "name",
-          "start_date"
+          "start_date",
+          "timezone"
         ],
         "title": "StationCreate"
       },
@@ -8913,6 +8993,10 @@
             "$ref": "#/components/schemas/StationType",
             "default": "static"
           },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
           "geometry": {
             "additionalProperties": true,
             "type": "object",
@@ -8971,6 +9055,7 @@
         "required": [
           "id",
           "name",
+          "timezone",
           "sensor_count",
           "sensor_types",
           "sensor_variables"
@@ -9064,6 +9149,17 @@
               }
             ]
           },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
           "metadata": {
             "anyOf": [
               {
@@ -9143,6 +9239,10 @@
             "$ref": "#/components/schemas/StationType",
             "default": "static"
           },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
           "geometry": {
             "additionalProperties": true,
             "type": "object",
@@ -9191,7 +9291,8 @@
         "required": [
           "id",
           "name",
-          "start_date"
+          "start_date",
+          "timezone"
         ],
         "title": "StationsListResponseItem"
       },
@@ -9503,6 +9604,63 @@
         ],
         "title": "UploadPostProcessing",
         "description": "State of once-per-upload post-processing (statistics/geometry)."
+      },
+      "User": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "disabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username"
+        ],
+        "title": "User"
       },
       "UserRole": {
         "type": "string",

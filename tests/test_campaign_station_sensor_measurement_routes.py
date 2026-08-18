@@ -259,6 +259,64 @@ def test_get_measurements_confidence_intervals_success(
     mock_measurement_repo.get_measurements_with_confidence_intervals.assert_called_once()
     mock_ensure_access.assert_called_once()
 
+
+@patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements._ensure_sensor_access', return_value=(MagicMock(), MagicMock(), True))
+@patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.MeasurementRepository')
+@patch('app.core.config.get_settings')
+def test_get_measurements_confidence_intervals_nullable_stats(
+    mock_get_settings: MagicMock,
+    mock_repo_class: MagicMock,
+    mock_ensure_access: MagicMock,
+    client: TestClient,
+    mock_measurement_repo: MagicMock,
+):
+    """Single-point buckets (point_count=1) have NULL std_dev and parametric
+    bounds; the API must accept and return those as null."""
+    mock_repo_class.return_value = mock_measurement_repo
+    mock_settings = MagicMock()
+    mock_settings.JWT_SECRET = TEST_JWT_SECRET
+    mock_settings.ALG = TEST_JWT_ALGORITHM
+    mock_get_settings.return_value = mock_settings
+
+    single_point_measurement = AggregatedMeasurement(
+        measurement_time=datetime.utcnow().replace(minute=0, second=0, microsecond=0),
+        value=25.0,
+        median_value=25.0,
+        min_value=25.0,
+        max_value=25.0,
+        point_count=1,
+        std_dev=None,
+        lower_bound=25.0,
+        upper_bound=25.0,
+        parametric_lower_bound=None,
+        parametric_upper_bound=None,
+        percentile_25=25.0,
+        percentile_75=25.0,
+        ci_method="percentile",
+        confidence_level=0.95,
+    )
+    mock_measurement_repo.get_measurements_with_confidence_intervals.return_value = [
+        single_point_measurement
+    ]
+
+    response = client.get(
+        f"/api/v1/campaigns/{CAMPAIGN_ID}/stations/{STATION_ID}/sensors/{SENSOR_ID}/measurements/confidence-intervals"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["std_dev"] is None
+    assert data[0]["parametric_lower_bound"] is None
+    assert data[0]["parametric_upper_bound"] is None
+    # Other fields should still be present and non-null
+    assert data[0]["value"] == 25.0
+    assert data[0]["point_count"] == 1
+    assert data[0]["ci_method"] == "percentile"
+    assert data[0]["confidence_level"] == 0.95
+    mock_measurement_repo.get_measurements_with_confidence_intervals.assert_called_once()
+    mock_ensure_access.assert_called_once()
+
+
 # --- Test PUT /measurements/{measurement_id} ---
 MOCK_MEASUREMENT_UPDATE_PAYLOAD = {
     "measurementvalue": 30.5,
