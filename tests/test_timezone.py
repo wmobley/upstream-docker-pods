@@ -69,3 +69,70 @@ class TestLocalizeCollectiontime:
         value = datetime(2026, 11, 1, 1, 30, 0)
         result = localize_collectiontime(value, "America/Chicago")
         assert result.utcoffset().total_seconds() == -5 * 3600
+
+    # --- New format support tests ---
+
+    def test_us_format_m_d_yy_h_m(self):
+        # US format: M/D/YY HH:MM (e.g., 8/6/26 17:15)
+        result = localize_collectiontime("8/6/26 17:15", "America/Chicago")
+        assert result.isoformat() == "2026-08-06T17:15:00-05:00"
+
+    def test_us_format_m_d_yyyy_h_m(self):
+        # US format: M/D/YYYY HH:MM (e.g., 8/6/2026 17:15)
+        result = localize_collectiontime("8/6/2026 17:15", "America/Chicago")
+        assert result.isoformat() == "2026-08-06T17:15:00-05:00"
+
+    def test_us_format_mm_dd_yy_h_m(self):
+        # US format: MM/DD/YY HH:MM (e.g., 08/06/26 17:15)
+        result = localize_collectiontime("08/06/26 17:15", "America/Chicago")
+        assert result.isoformat() == "2026-08-06T17:15:00-05:00"
+
+    def test_us_format_mm_dd_yyyy_h_m(self):
+        # US format: MM/DD/YYYY HH:MM (e.g., 08/06/2026 17:15)
+        result = localize_collectiontime("08/06/2026 17:15", "America/Chicago")
+        assert result.isoformat() == "2026-08-06T17:15:00-05:00"
+
+    def test_us_format_with_seconds(self):
+        # US format with seconds: M/D/YY HH:MM:SS
+        result = localize_collectiontime("8/6/26 17:15:30", "America/Chicago")
+        assert result.isoformat() == "2026-08-06T17:15:30-05:00"
+
+    def test_european_format_d_m_yy_h_m(self):
+        # European format: D/M/YY HH:MM (e.g., 13/8/26 17:15 = 13 Aug 2026)
+        # Using day=13 makes it unambiguous (US format would reject month=13)
+        result = localize_collectiontime("13/8/26 17:15", "Europe/London")
+        assert result.isoformat() == "2026-08-13T17:15:00+01:00"
+
+    def test_european_format_d_m_yyyy_h_m(self):
+        # European format: D/M/YYYY HH:MM (unambiguous with day > 12)
+        result = localize_collectiontime("13/8/2026 17:15", "Europe/London")
+        assert result.isoformat() == "2026-08-13T17:15:00+01:00"
+
+    def test_european_format_dd_mm_yy_h_m(self):
+        # European format: DD/MM/YY HH:MM (unambiguous with day > 12)
+        result = localize_collectiontime("13/08/26 17:15", "Europe/London")
+        assert result.isoformat() == "2026-08-13T17:15:00+01:00"
+
+    def test_european_format_with_seconds(self):
+        # European format with seconds (unambiguous day > 12)
+        result = localize_collectiontime("13/8/26 17:15:30", "Europe/London")
+        assert result.isoformat() == "2026-08-13T17:15:30+01:00"
+
+    def test_iso_format_with_space_and_seconds(self):
+        # ISO-like with space separator and seconds
+        result = localize_collectiontime("2026-08-06 17:15:30", "America/Chicago")
+        assert result.isoformat() == "2026-08-06T17:15:30-05:00"
+
+    def test_iso_format_with_space_no_seconds(self):
+        # ISO-like with space separator, no seconds
+        result = localize_collectiontime("2026-08-06 17:15", "America/Chicago")
+        assert result.isoformat() == "2026-08-06T17:15:00-05:00"
+
+    def test_invalid_format_raises_clear_error(self):
+        with pytest.raises(ValueError, match="Invalid datetime string"):
+            localize_collectiontime("not-a-date", "UTC")
+
+    def test_12_hour_format_not_supported(self):
+        # 12-hour format with AM/PM is explicitly not supported
+        with pytest.raises(ValueError, match="Invalid datetime string"):
+            localize_collectiontime("8/6/26 5:15 PM", "UTC")
