@@ -22,6 +22,9 @@ timezone (``stations.timezone``). Already-aware values pass through unchanged.
   - ``DD/MM/YY HH:MM`` (e.g., ``06/08/26 17:15``)
   - ``DD/MM/YYYY HH:MM`` (e.g., ``06/08/2026 17:15``)
   - With seconds: ``D/M/YY HH:MM:SS``, etc.
+- Y/M/D formats (24-hour clock):
+  - ``YYYY/MM/DD HH:MM`` (e.g., ``2026/08/06 17:15``)
+  - ``YYYY/MM/DD HH:MM:SS`` (e.g., ``2026/08/06 17:15:00``)
 
 Note: 12-hour format with AM/PM is **not** supported.
 """
@@ -42,6 +45,9 @@ _DATETIME_FORMATS: tuple[str, ...] = (
     "%d/%m/%Y %H:%M",
     "%d/%m/%y %H:%M:%S",
     "%d/%m/%Y %H:%M:%S",
+    # Y/M/D formats (year/month/day with slashes) - common in some systems
+    "%Y/%m/%d %H:%M",
+    "%Y/%m/%d %H:%M:%S",
     # Additional common variants
     "%Y-%m-%d %H:%M",
     "%Y-%m-%d %H:%M:%S",
@@ -71,7 +77,7 @@ def _parse_datetime_string(value: str) -> datetime:
     raise ValueError(
         f"Invalid datetime string: '{value}'. "
         f"Supported formats: ISO 8601 (YYYY-MM-DDTHH:MM:SS), "
-        f"US (M/D/YY HH:MM), European (D/M/YY HH:MM), and variants with/without seconds."
+        f"US (M/D/YY HH:MM), European (D/M/YY HH:MM), Y/M/D (YYYY/MM/DD HH:MM), and variants with/without seconds."
     )
 
 
