@@ -77,7 +77,6 @@ def discover_project_instances(user_token: str) -> list[dict[str, str]]:
             pods_url,
             headers={
                 "X-Tapis-Token": service_token,
-                "X-Tapis-Tenant": settings.TAPIS_TENANT_ID,
                 "Accept": "application/json",
             },
             timeout=20,
