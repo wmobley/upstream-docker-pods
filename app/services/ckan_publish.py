@@ -284,7 +284,7 @@ def sync_sensor_resources(
 
         sensor_api_name = f"{sensor_slug}-measurements"
         sensor_api_url = (
-            f"{api_base}/api/v1/campaigns/{campaign.id}/stations/{station.id}/sensors/{sensor_id}/measurements"
+            f"{api_base}/api/v1/campaigns/{campaign.id}/stations/{station.id}/sensors/{sensor_id}/measurements.geojson"
         )
         sensor_api_description = (
             f"Measurement API endpoint (GeoJSON) for sensor {sensor_label} at station {station.name}."

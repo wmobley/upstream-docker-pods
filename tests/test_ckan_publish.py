@@ -255,7 +255,7 @@ def test_sync_sensor_resources_appends_project_param_to_ui_url_only() -> None:
     ui_call = next(call for call in calls if call["name"].endswith("-ui"))
     api_call = next(call for call in calls if call["name"].endswith("-measurements"))
     assert ui_call["url"] == "https://ui.example.com/campaigns/7/stations/11/sensors/5?project=sniffer"
-    assert api_call["url"] == "https://api.example.com/api/v1/campaigns/7/stations/11/sensors/5/measurements"
+    assert api_call["url"] == "https://api.example.com/api/v1/campaigns/7/stations/11/sensors/5/measurements.geojson"
 
 
 def test_ensure_station_dataset_uses_buffered_bbox_polygon_for_spatial() -> None:

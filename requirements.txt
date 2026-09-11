@@ -10,7 +10,7 @@ fastapi[standard]<1.0.0,>=0.114.2
 geoalchemy2
 shapely
 types-shapely
-psycopg[binary]==3.2.3
+psycopg[binary]>=3.2.10
 geojson-pydantic>=1.2.0
 python-dateutil
 types-requests
