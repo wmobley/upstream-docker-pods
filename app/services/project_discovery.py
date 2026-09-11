@@ -30,11 +30,13 @@ def discover_project_instances(user_token: str) -> list[dict[str, str]]:
     actual end user rather than the service account.
     """
     settings = get_settings()
-    if not settings.TAPIS_SERVICE_USERNAME or not settings.TAPIS_SERVICE_PASSWORD:
+    service_username = settings.TAPIS_SERVICE_USERNAME or settings.TAS_USER
+    service_password = settings.TAPIS_SERVICE_PASSWORD or settings.TAS_SECRET
+    if not service_username or not service_password:
         raise RuntimeError("TAPIS_SERVICE_USERNAME and TAPIS_SERVICE_PASSWORD are required")
 
     auth = TapisAuthClient(settings.TAPIS_BASE_URL, settings.TAPIS_TENANT_ID)
-    outcome = auth.authenticate(settings.TAPIS_SERVICE_USERNAME, settings.TAPIS_SERVICE_PASSWORD)
+    outcome = auth.authenticate(service_username, service_password)
     service_token = (outcome.tokens or {}).get("access_token")
     if not service_token:
         raise RuntimeError("Unable to obtain Tapis service token")

@@ -21,4 +21,10 @@ def list_project_instances(
     tapis_token = authorization.split(" ", 1)[1].strip()
     if not tapis_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bearer Tapis token required")
-    return discover_project_instances(tapis_token)
+    try:
+        return discover_project_instances(tapis_token)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Project discovery service unavailable",
+        ) from exc

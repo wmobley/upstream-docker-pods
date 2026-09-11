@@ -20,6 +20,7 @@
       "JWT_SECRET": "iHaveADogHerNameIsAcacia",
       "ALG": "HS256",
       "TAS_URL": "https://tas-dev.tacc.utexas.edu/api-test",
+      "TAPIS_PODS_BASE_URL": "https://pods.portals.tapis.io",
       "ENVIRONMENT": "production",
       "ENV": "production",
       "CKAN_URL": "https://ckan.tacc.utexas.edu",
