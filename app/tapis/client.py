@@ -7,8 +7,8 @@ from typing import Any, ClassVar, Dict, Optional, cast
 
 import jwt
 import requests
-from tapipy.errors import BaseTapyException  # type: ignore[import-untyped]
-from tapipy.tapis import Tapis  # type: ignore[import-untyped]
+from tapipy.errors import BaseTapyException
+from tapipy.tapis import Tapis
 
 logger = logging.getLogger(__name__)
 if not logger.handlers:

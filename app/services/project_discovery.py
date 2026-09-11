@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def _api_url(pod: dict[str, Any], pods_base_url: str) -> str:
     networking = pod.get("networking") or {}
-    entry = next(iter(networking.values()), {}) if isinstance(networking, dict) else {}
+    entry: dict[str, Any] = next(iter(networking.values()), {}) if isinstance(networking, dict) else {}
     url = entry.get("url") if isinstance(entry, dict) else None
     if url:
         return f"https://{url}".rstrip("/")
