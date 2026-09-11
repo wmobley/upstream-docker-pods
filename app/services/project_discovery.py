@@ -39,7 +39,12 @@ def discover_project_instances(user_token: str) -> list[dict[str, str]]:
     if not service_token:
         raise RuntimeError("Unable to obtain Tapis service token")
 
-    pods_base = (settings.TAPIS_PODS_BASE_URL or settings.TAPIS_BASE_URL).rstrip("/")
+    configured_pods_base = settings.TAPIS_PODS_BASE_URL or ""
+    if configured_pods_base.strip():
+        pods_base = configured_pods_base.rstrip("/")
+    else:
+        tapis_host = settings.TAPIS_BASE_URL.replace("https://", "").replace("http://", "").rstrip("/")
+        pods_base = f"https://pods.{tapis_host}"
     response = requests.get(
         f"{pods_base}/v3/pods",
         headers={"X-Tapis-Token": service_token, "Accept": "application/json"},
