@@ -49,8 +49,16 @@ def discover_project_instances(user_token: str) -> list[dict[str, str]]:
         pods_base = f"https://pods.{tapis_host}"
     response = requests.get(
         f"{pods_base}/v3/pods",
-        headers={"X-Tapis-Token": service_token, "Accept": "application/json"},
+        headers={
+            "X-Tapis-Token": service_token,
+            "X-Tapis-Tenant": settings.TAPIS_TENANT_ID,
+            "Accept": "application/json",
+        },
         timeout=20,
+    )
+    logger.info(
+        "project_discovery_pods_response extra=%s",
+        {"status_code": response.status_code, "service": "tapis-pods"},
     )
     response.raise_for_status()
     payload = cast(dict[str, Any], response.json())
