@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 import requests
 
@@ -51,7 +51,7 @@ def discover_project_instances(user_token: str) -> list[dict[str, str]]:
         timeout=20,
     )
     response.raise_for_status()
-    payload = response.json()
+    payload = cast(dict[str, Any], response.json())
     pods = payload.get("result", []) if isinstance(payload, dict) else []
 
     instances: list[dict[str, str]] = []
