@@ -7,7 +7,6 @@ from app.api.dependencies.auth import get_viewer_user, get_edit_user
 from app.api.dependencies.ckan import (
     check_allocation_permission,
     get_user_allocations,
-    get_user_allocations_optional,
 )
 from app.api.v1.schemas.sensor import SensorItem, GetSensorResponse, ListSensorsResponsePagination, SensorStatistics, SensorCreateResponse, SensorUpdate, ForceUpdateSensorStatisticsResponse, UpdateSensorStatisticsResponse
 from app.api.v1.schemas.campaign import PublishRequest, PublishResponse
@@ -39,13 +38,12 @@ async def list_sensors(
     description_contains: str | None = Query(None, description="Filter sensors by text in description (partial match)"),
     postprocess: Optional[bool] = Query(None, description="Filter sensors by postprocess flag"),
     current_user: User = Depends(get_viewer_user),
-    allocations: list[str] = Depends(get_user_allocations_optional),
     db: Session = Depends(get_db),
     sort_by: Optional[SortField] = Query(None, description="Sort sensors by field"),
     sort_order: str = Query("asc", description="Sort order (asc or desc)"),
 ) -> ListSensorsResponsePagination:
-    if not check_allocation_permission(current_user, campaign_id, allocations):
-        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    if not StationRepository(db).station_belongs_to_campaign(station_id, campaign_id):
+        raise HTTPException(status_code=404, detail="Station not found")
 
     sensor_service = SensorService(
         sensor_repository=SensorRepository(db),
@@ -79,11 +77,12 @@ async def get_sensor(
     sensor_id: int,
     campaign_id: int,
     current_user: User = Depends(get_viewer_user),
-    allocations: list[str] = Depends(get_user_allocations_optional),
     db: Session = Depends(get_db)
 ) -> GetSensorResponse:
-    if not check_allocation_permission(current_user, campaign_id, allocations):
-        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    if not StationRepository(db).station_belongs_to_campaign(station_id, campaign_id):
+        raise HTTPException(status_code=404, detail="Station not found")
+    if not SensorRepository(db).get_sensor_entity(sensor_id, station_id=station_id):
+        raise HTTPException(status_code=404, detail="Sensor not found")
 
     sensor_service = SensorService(
         sensor_repository=SensorRepository(db),

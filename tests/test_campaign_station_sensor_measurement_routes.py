@@ -186,30 +186,35 @@ def test_get_sensor_measurements_success(
     assert len(data["items"]) == len(sample_measurement_model_data) # Assuming limit > total
     assert data["items"][0]["id"] == sample_measurement_model_data[0][0].measurementid
     assert data["items"][0]["value"] == sample_measurement_model_data[0][0].measurementvalue
-    # A more robust way to check mock_check_alloc would be to inspect its call_args if current_user was mocked
-    # For now, this is a placeholder for the call check
-    mock_check_alloc.assert_called_once() # Simplified check
+    mock_check_alloc.assert_not_called()
     mock_measurement_repo.list_measurements.assert_called_once()
 
 @patch('app.core.config.get_settings')
 @patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.check_allocation_permission', return_value=False)
-def test_get_sensor_measurements_allocation_denied(
+def test_get_sensor_measurements_ignores_ckan_membership(
     mock_check_alloc: MagicMock,
     mock_get_settings: MagicMock,
     client: TestClient,
-    auth_headers: Dict[str, str]
+    auth_headers: Dict[str, str],
+    mock_measurement_repo: MagicMock,
+    sample_measurement_model_data: List[Tuple[MeasurementModel, str]],
 ):
     mock_settings = MagicMock()
     mock_settings.JWT_SECRET = TEST_JWT_SECRET
     mock_settings.ALG = TEST_JWT_ALGORITHM
     mock_get_settings.return_value = mock_settings
 
-    response = client.get(
-        f"/api/v1/campaigns/{CAMPAIGN_ID}/stations/{STATION_ID}/sensors/{SENSOR_ID}/measurements",
-        headers=auth_headers
-    )
-    assert response.status_code == 404 # As per route's HTTPException
-    assert response.json()["detail"] == "Allocation is incorrect"
+    with patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.StationRepository') as station_repo_class, \
+         patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.SensorRepository') as sensor_repo_class, \
+         patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.MeasurementRepository', return_value=mock_measurement_repo):
+        configure_station_sensor_repositories(station_repo_class, sensor_repo_class)
+        response = client.get(
+            f"/api/v1/campaigns/{CAMPAIGN_ID}/stations/{STATION_ID}/sensors/{SENSOR_ID}/measurements?limit=10",
+            headers=auth_headers
+        )
+    assert response.status_code == 200
+    assert len(response.json()["items"]) == len(sample_measurement_model_data)
+    mock_check_alloc.assert_not_called()
 
 @patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.SensorRepository')
 @patch('app.api.v1.routes.campaigns.campaign_station_sensor_measurements.StationRepository')

@@ -161,11 +161,13 @@ class TestCampaignStationRoutes:
             assert data["items"][0]["id"] == MOCK_STATION_ITEM_SUMMARY["id"]
             mock_list.assert_called_once_with(self.campaign_id, 1, 20)
 
-    def test_list_stations_permission_denied(self, client_with_auth):
-        with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=False):
+    def test_list_stations_ignores_ckan_membership(self, client_with_auth):
+        mock_items = [StationItemWithSummary(**MOCK_STATION_ITEM_SUMMARY)]
+        with patch('app.api.v1.routes.campaigns.campaign_stations.check_allocation_permission', return_value=False), \
+             patch('app.services.station_service.StationService.get_stations_with_summary', return_value=(mock_items, 1)):
             response = client_with_auth.get(f"/api/v1/campaigns/{self.campaign_id}/stations")
-            assert response.status_code == 404
-            assert response.json()["detail"] == "Allocation is incorrect"
+            assert response.status_code == 200
+            assert response.json()["items"][0]["id"] == MOCK_STATION_ITEM_SUMMARY["id"]
 
     # GET /campaigns/{campaign_id}/stations/{station_id}
     def test_get_station_success(self, client_with_auth):
@@ -184,6 +186,14 @@ class TestCampaignStationRoutes:
             assert response.status_code == 404
             assert response.json()["detail"] == "Station not found"
             mock_get.assert_called_once_with(self.station_id)
+
+    def test_get_station_wrong_campaign_returns_not_found(self, client_with_auth):
+        with patch('app.api.v1.routes.campaigns.campaign_stations.StationRepository.station_belongs_to_campaign', return_value=False), \
+             patch('app.services.station_service.StationService.get_station') as mock_get:
+            response = client_with_auth.get(f"/api/v1/campaigns/{self.campaign_id}/stations/{self.station_id}")
+            assert response.status_code == 404
+            assert response.json()["detail"] == "Station not found"
+            mock_get.assert_not_called()
 
     # DELETE /campaigns/{campaign_id}/stations
     # Note: The route function is named delete_sensor, but it deletes campaign stations.

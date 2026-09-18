@@ -16,7 +16,6 @@ from app.api.dependencies.auth import (
 from app.api.dependencies.ckan import (
     check_allocation_permission,
     get_user_allocations,
-    get_user_allocations_optional,
     user_has_ckan_organization,
 )
 from app.api.v1.schemas.station import (
@@ -53,6 +52,13 @@ logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/campaigns/{campaign_id}", tags=["stations"])
+
+
+def _ensure_station_belongs_to_campaign(
+    db: Session, campaign_id: int, station_id: int
+) -> None:
+    if not StationRepository(db).station_belongs_to_campaign(station_id, campaign_id):
+        raise HTTPException(status_code=404, detail="Station not found")
 
 
 def _token_summary(token: str | None) -> dict[str, int | str | None]:
@@ -207,11 +213,8 @@ async def list_stations(
     page: int = 1,
     limit: int = 20,
     current_user: User = Depends(get_viewer_user),
-    allocations: list[str] = Depends(get_user_allocations_optional),
     db: Session = Depends(get_db),
 ) -> ListStationsResponsePagination:
-    if not check_allocation_permission(current_user, campaign_id, allocations):
-        raise HTTPException(status_code=404, detail="Allocation is incorrect")
     station_service = StationService(StationRepository(db))
     stations, total_count = station_service.get_stations_with_summary(
         campaign_id, page, limit
@@ -232,12 +235,10 @@ async def get_station(
     station_id: int,
     campaign_id: int,
     current_user: User = Depends(get_viewer_user),
-    allocations: list[str] = Depends(get_user_allocations_optional),
     db: Session = Depends(get_db),
 ) -> GetStationResponse:
     request_id = request.headers.get("X-Request-ID") or request.query_params.get("_request_id", "")
-    if not check_allocation_permission(current_user, campaign_id, allocations):
-        raise HTTPException(status_code=404, detail="Allocation is incorrect")
+    _ensure_station_belongs_to_campaign(db, campaign_id, station_id)
     station_service = StationService(StationRepository(db))
     station = station_service.get_station(station_id)
     if not station:
@@ -387,14 +388,10 @@ async def export_sensors_csv(
     campaign_id: int,
     station_id: int,
     current_user: User = Depends(get_viewer_user),
-    allocations: list[str] = Depends(get_user_allocations_optional),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """Export sensors for a station as CSV with streaming support."""
-    if not check_allocation_permission(current_user, campaign_id, allocations):
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    # Check if station exists
+    _ensure_station_belongs_to_campaign(db, campaign_id, station_id)
     station_service = StationService(StationRepository(db))
     station = station_service.get_station(station_id)
     if not station:
@@ -421,14 +418,10 @@ async def export_measurements_csv(
     ] = None,
     end_date: Annotated[datetime | None, Query(description="End date filter")] = None,
     current_user: User = Depends(get_viewer_user),
-    allocations: list[str] = Depends(get_user_allocations_optional),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     """Export measurements for a station as CSV with streaming support."""
-    if not check_allocation_permission(current_user, campaign_id, allocations):
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    # Check if station exists
+    _ensure_station_belongs_to_campaign(db, campaign_id, station_id)
     station_service = StationService(StationRepository(db))
     station = station_service.get_station(station_id)
     if not station:

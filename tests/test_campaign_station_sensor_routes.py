@@ -132,11 +132,13 @@ class TestCampaignStationSensorRoutes:
                 sort_order="desc"
             )
 
-    def test_list_sensors_permission_denied(self, client_with_auth):
-        with patch('app.api.v1.routes.campaigns.campaign_station_sensors.check_allocation_permission', return_value=False):
+    def test_list_sensors_ignores_ckan_membership(self, client_with_auth):
+        mock_items = [SensorItem(**MOCK_SENSOR_ITEM_DATA)]
+        with patch('app.api.v1.routes.campaigns.campaign_station_sensors.check_allocation_permission', return_value=False), \
+             patch('app.services.sensor_service.SensorService.get_sensors_by_station_id', return_value=(mock_items, 1)):
             response = client_with_auth.get(f"/api/v1/campaigns/{self.campaign_id}/stations/{self.station_id}/sensors")
-            assert response.status_code == 404
-            assert response.json()["detail"] == "Allocation is incorrect"
+            assert response.status_code == 200
+            assert response.json()["items"][0]["id"] == MOCK_SENSOR_ITEM_DATA["id"]
 
     def test_list_sensors_unauthorized(self, client_no_auth):
         response = client_no_auth.get(f"/api/v1/campaigns/{self.campaign_id}/stations/{self.station_id}/sensors")
@@ -163,6 +165,17 @@ class TestCampaignStationSensorRoutes:
             assert response.status_code == 404
             assert response.json()["detail"] == "Sensor not found"
             mock_get.assert_called_once_with(self.sensor_id)
+
+    def test_get_sensor_wrong_station_returns_not_found(self, client_with_auth):
+        with patch('app.api.v1.routes.campaigns.campaign_station_sensors.StationRepository.station_belongs_to_campaign', return_value=True), \
+             patch('app.api.v1.routes.campaigns.campaign_station_sensors.SensorRepository.get_sensor_entity', return_value=None), \
+             patch('app.services.sensor_service.SensorService.get_sensor') as mock_get:
+            response = client_with_auth.get(
+                f"/api/v1/campaigns/{self.campaign_id}/stations/{self.station_id}/sensors/{self.sensor_id}"
+            )
+            assert response.status_code == 404
+            assert response.json()["detail"] == "Sensor not found"
+            mock_get.assert_not_called()
 
     # DELETE /campaigns/{campaign_id}/stations/{station_id}/sensors
     # Note: The route function is named delete_sensor, but it deletes all sensors for a station.

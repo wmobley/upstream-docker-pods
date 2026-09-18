@@ -8,12 +8,10 @@ from fastapi.responses import JSONResponse
 from app.api.dependencies.auth import (
     get_current_user_optional,
     get_edit_user,
-    get_tapis_token_header_optional,
 )
 from app.api.dependencies.ckan import (
     check_allocation_permission,
     get_user_allocations,
-    resolve_user_allocations,
 )
 from app.api.v1.schemas.user import User
 from app.api.v1.schemas.measurement import (
@@ -61,7 +59,6 @@ def _ensure_sensor_access(
     sensor_id: int,
     *,
     current_user: User | None,
-    tapis_token: str | None,
     station_repository: StationRepository,
     sensor_repository: SensorRepository,
 ) -> Tuple[StationModel | None, SensorModel | None, bool]:
@@ -70,12 +67,6 @@ def _ensure_sensor_access(
     is_public = False
 
     if current_user is not None:
-        # Read-only access check: degrade gracefully if CKAN is unreachable so a
-        # CKAN outage does not block viewing measurements.
-        allocations = resolve_user_allocations(current_user, tapis_token, strict=False)
-        allowed = check_allocation_permission(current_user, campaign_id, allocations)
-        if not allowed:
-            raise HTTPException(status_code=404, detail="Allocation is incorrect")
         try:
             station, sensor = _fetch_station_and_sensor(
                 campaign_id, station_id, sensor_id, station_repository, sensor_repository
@@ -139,7 +130,6 @@ async def get_sensor_measurements(
     min_measurement_value: float | None = None,
     max_measurement_value: float | None = None,
     current_user: User | None = Depends(get_current_user_optional),
-    tapis_token: str | None = Depends(get_tapis_token_header_optional),
     limit: int = 1000,
     page: int = 1,
     downsample_threshold: int | None = None,
@@ -152,7 +142,6 @@ async def get_sensor_measurements(
         station_id,
         sensor_id,
         current_user=current_user,
-        tapis_token=tapis_token,
         station_repository=station_repository,
         sensor_repository=sensor_repository,
     )
@@ -173,7 +162,6 @@ async def get_measurements_with_confidence_intervals(
     min_value: float | None = Query(None, description="Minimum measurement value to include"),
     max_value: float | None = Query(None, description="Maximum measurement value to include"),
     current_user: User | None = Depends(get_current_user_optional),
-    tapis_token: str | None = Depends(get_tapis_token_header_optional),
     db: Session = Depends(get_db)
 ) -> list[AggregatedMeasurement]:
     """Get sensor measurements with confidence intervals for visualization."""
@@ -184,7 +172,6 @@ async def get_measurements_with_confidence_intervals(
         station_id,
         sensor_id,
         current_user=current_user,
-        tapis_token=tapis_token,
         station_repository=station_repository,
         sensor_repository=sensor_repository,
     )
@@ -204,7 +191,6 @@ async def get_sensor_measurements_geojson(
     min_measurement_value: float | None = None,
     max_measurement_value: float | None = None,
     current_user: User | None = Depends(get_current_user_optional),
-    tapis_token: str | None = Depends(get_tapis_token_header_optional),
     limit: int = 1000,
     page: int = 1,
     downsample_threshold: int | None = None,
@@ -217,7 +203,6 @@ async def get_sensor_measurements_geojson(
         station_id,
         sensor_id,
         current_user=current_user,
-        tapis_token=tapis_token,
         station_repository=station_repository,
         sensor_repository=sensor_repository,
     )

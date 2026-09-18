@@ -59,6 +59,8 @@ For CSV uploads, CKAN synchronization is scheduled in a background task after th
 
 If CKAN reports that a dataset name is already in use, station publish returns a suggested alternate `ckan_dataset_name`. To update an existing matching Upstream station dataset instead, retry station publish with `patch_existing_ckan_dataset: true`.
 
+CKAN organization membership controls campaign metadata changes and publication ownership; it does not control authenticated data visibility. Authenticated users with access to this API project can read campaign, station, sensor, measurement, and export data. Unauthenticated measurement reads remain limited to published station and sensor data. The API still verifies that requested stations belong to the campaign and sensors belong to the station.
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
