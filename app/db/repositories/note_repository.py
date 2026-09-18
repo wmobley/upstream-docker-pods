@@ -82,7 +82,7 @@ class NoteRepository:
             .order_by(Measurement.collectiontime.desc(), Note.created_at.desc())
             .all()
         )
-        return rows
+        return [(row[0], row[1]) for row in rows]
 
     def list_by_sensor(self, campaign_id: int, station_id: int, sensor_id: int) -> tuple[list[Note], int]:
         q = self.db.query(Note).filter(
