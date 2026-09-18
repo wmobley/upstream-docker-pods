@@ -3,6 +3,7 @@
 See docs/design/2026-07-23-measurement-note-location.md.
 """
 from unittest.mock import MagicMock
+from datetime import datetime, timezone
 
 import pytest
 from geoalchemy2 import WKTElement
@@ -114,6 +115,81 @@ def test_create_measurement_note_passes_location_to_repository():
 
     repo.create.assert_called_once()
     assert repo.create.call_args.kwargs["location"] == WKT
+
+
+def test_create_measurement_note_passes_sensor_to_repository():
+    repo = MagicMock()
+    repo.create.return_value = Note(noteid=1, scope=NoteScope.MEASUREMENT, content="x", created_by="alice", campaign_id=1)
+    service = NoteService(repo)
+
+    service.create_measurement_note(
+        MeasurementNoteCreate(content="chart point observation"),
+        campaign_id=1,
+        station_id=2,
+        sensor_id=4,
+        measurement_id=3,
+        username="alice",
+    )
+
+    assert repo.create.call_args.kwargs["sensor_id"] == 4
+
+
+def test_service_lists_measurement_notes_with_chart_point_timestamps():
+    note = Note(
+        noteid=1,
+        scope=NoteScope.MEASUREMENT,
+        content="chart point observation",
+        created_by="alice",
+        created_at=datetime(2026, 9, 17, 12, 0, tzinfo=timezone.utc),
+        campaign_id=1,
+        station_id=2,
+        sensor_id=4,
+        measurement_id=3,
+    )
+    measurement_timestamp = datetime(2026, 9, 16, 18, 30, tzinfo=timezone.utc)
+    repo = MagicMock()
+    repo.list_measurement_notes_by_sensor.return_value = [(note, measurement_timestamp)]
+    service = NoteService(repo)
+
+    result = service.list_measurement_notes_by_sensor(1, 2, 4)
+
+    assert result.total == 1
+    assert result.items[0].measurement_id == 3
+    assert result.items[0].measurement_timestamp == measurement_timestamp
+    repo.list_measurement_notes_by_sensor.assert_called_once_with(1, 2, 4)
+
+
+def test_service_lists_historical_measurement_note_without_sensor_id():
+    note = Note(
+        noteid=2,
+        scope=NoteScope.MEASUREMENT,
+        content="legacy chart point observation",
+        created_by="alice",
+        created_at=datetime(2026, 9, 17, 12, 0, tzinfo=timezone.utc),
+        campaign_id=1,
+        station_id=2,
+        sensor_id=None,
+        measurement_id=5,
+    )
+    measurement_timestamp = datetime(2026, 9, 15, 9, 0, tzinfo=timezone.utc)
+    repo = MagicMock()
+    repo.list_measurement_notes_by_sensor.return_value = [(note, measurement_timestamp)]
+
+    result = NoteService(repo).list_measurement_notes_by_sensor(1, 2, 4)
+
+    assert result.total == 1
+    assert result.items[0].sensor_id is None
+    assert result.items[0].measurement_timestamp == measurement_timestamp
+
+
+def test_service_lists_empty_measurement_note_result():
+    repo = MagicMock()
+    repo.list_measurement_notes_by_sensor.return_value = []
+
+    result = NoteService(repo).list_measurement_notes_by_sensor(1, 2, 4)
+
+    assert result.items == []
+    assert result.total == 0
 
 
 def test_update_passes_location_to_repository():

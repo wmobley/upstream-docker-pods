@@ -4,6 +4,7 @@ from typing import Optional
 from geoalchemy2 import WKTElement
 from sqlalchemy.orm import Session
 
+from app.db.models.measurement import Measurement
 from app.db.models.note import Note, NoteScope
 
 
@@ -65,6 +66,23 @@ class NoteRepository:
             Note.scope == NoteScope.MEASUREMENT,
         ).order_by(Note.created_at.desc())
         return q.all(), q.count()
+
+    def list_measurement_notes_by_sensor(
+        self, campaign_id: int, station_id: int, sensor_id: int
+    ) -> list[tuple[Note, datetime]]:
+        rows = (
+            self.db.query(Note, Measurement.collectiontime)
+            .join(Measurement, Note.measurement_id == Measurement.measurementid)
+            .filter(
+                Note.campaign_id == campaign_id,
+                Note.station_id == station_id,
+                Note.scope == NoteScope.MEASUREMENT,
+                Measurement.sensorid == sensor_id,
+            )
+            .order_by(Measurement.collectiontime.desc(), Note.created_at.desc())
+            .all()
+        )
+        return rows
 
     def list_by_sensor(self, campaign_id: int, station_id: int, sensor_id: int) -> tuple[list[Note], int]:
         q = self.db.query(Note).filter(

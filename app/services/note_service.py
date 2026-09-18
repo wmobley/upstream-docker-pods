@@ -5,7 +5,15 @@ from geoalchemy2.shape import to_shape
 from geojson_pydantic import Point
 from shapely.geometry import mapping
 
-from app.api.v1.schemas.note import NoteCreate, NoteCreateResponse, NoteItem, NoteUpdate, ListNotesResponse
+from app.api.v1.schemas.note import (
+    ListMeasurementNotesResponse,
+    ListNotesResponse,
+    MeasurementNoteItem,
+    NoteCreate,
+    NoteCreateResponse,
+    NoteItem,
+    NoteUpdate,
+)
 from app.db.models.note import NoteScope
 from app.db.repositories.note_repository import NoteRepository
 
@@ -82,6 +90,7 @@ class NoteService:
         measurement_id: int,
         username: str,
         location: Optional[str] = None,
+        sensor_id: Optional[int] = None,
     ) -> NoteCreateResponse:
         note = self.repo.create(
             scope=NoteScope.MEASUREMENT,
@@ -89,6 +98,7 @@ class NoteService:
             created_by=username,
             campaign_id=campaign_id,
             station_id=station_id,
+            sensor_id=sensor_id,
             measurement_id=measurement_id,
             location=location,
         )
@@ -111,6 +121,19 @@ class NoteService:
     ) -> ListNotesResponse:
         notes, total = self.repo.list_by_measurement(campaign_id, station_id, measurement_id)
         return ListNotesResponse(items=[self._to_item(n) for n in notes], total=total)
+
+    def list_measurement_notes_by_sensor(
+        self, campaign_id: int, station_id: int, sensor_id: int
+    ) -> ListMeasurementNotesResponse:
+        rows = self.repo.list_measurement_notes_by_sensor(campaign_id, station_id, sensor_id)
+        items = [
+            MeasurementNoteItem(
+                **self._to_item(note).model_dump(),
+                measurement_timestamp=measurement_timestamp,
+            )
+            for note, measurement_timestamp in rows
+        ]
+        return ListMeasurementNotesResponse(items=items, total=len(items))
 
     def list_note_locations_for_campaign(self, campaign_id: int) -> ListNotesResponse:
         """Every note in the campaign that has its own location — for plotting

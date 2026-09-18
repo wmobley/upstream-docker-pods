@@ -53,6 +53,7 @@ def create_measurement_note(
         measurement_id,
         current_user.username,
         location=request.location,
+        sensor_id=sensor_id,
     )
 
 

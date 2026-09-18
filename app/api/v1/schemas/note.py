@@ -61,3 +61,14 @@ class NoteCreateResponse(BaseModel):
 class ListNotesResponse(BaseModel):
     items: List[NoteItem]
     total: int
+
+
+class MeasurementNoteItem(NoteItem):
+    """A measurement note with the timestamp of its chart point."""
+
+    measurement_timestamp: datetime
+
+
+class ListMeasurementNotesResponse(BaseModel):
+    items: List[MeasurementNoteItem]
+    total: int

@@ -73,6 +73,7 @@ The service is mounted at `/api/v1`. Common read operations:
 - `GET /api/v1/campaigns/{campaign_id}/stations/{station_id}` — station metadata plus sensor list
 - `GET /api/v1/campaigns/{campaign_id}/stations/{station_id}/sensors` — enumerate sensors (filtering and sorting available)
 - `GET /api/v1/campaigns/{campaign_id}/stations/{station_id}/sensors/{sensor_id}/measurements` — retrieve measurements for a sensor
+- `GET /api/v1/campaigns/{campaign_id}/stations/{station_id}/sensors/{sensor_id}/measurement-notes` — list chart-point measurement notes with their measurement timestamps
 
 An interactive schema browser is available at `https://<host>/docs` (for example `https://infordisaster.pods.portals.tapis.io/docs`).
 
