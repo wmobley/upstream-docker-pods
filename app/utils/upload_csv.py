@@ -129,7 +129,6 @@ def process_sensors_file(
             {
                 "station_id": station_id,
                 "upload_event_id": upload_event_id,
-                "filename": file.filename,
             },
         )
         return {}
@@ -142,9 +141,8 @@ def process_sensors_file(
         {
             "station_id": station_id,
             "upload_event_id": upload_event_id,
-            "filename": file.filename,
             "row_count": len(df_sensors.index),
-            "columns": df_sensors.columns.tolist(),
+            "column_count": len(df_sensors.columns),
         },
     )
     sensor_maps: list[Sensor] = []
@@ -155,7 +153,14 @@ def process_sensors_file(
         validator.validate(dataframe=df_sensors, errors="raise")
     except ValueError as e:
         file.file.close()
-        logging.error(f"Validation error: {str(e)}")
+        logger.error(
+            "process_sensors_file_validation_failed extra=%s",
+            {
+                "station_id": station_id,
+                "upload_event_id": upload_event_id,
+                "error_type": type(e).__name__,
+            },
+        )
         raise HTTPException(status_code=400, detail=f"Validation failed: {str(e)}")
     # Process each row
     for _, sensor_row in df_sensors.iterrows():
@@ -190,7 +195,6 @@ def process_sensors_file(
             "upload_event_id": upload_event_id,
             "new_sensor_count": len(sensor_maps),
             "existing_sensor_count": len(existing_sensors),
-            "aliases": [str(sensor.alias) for sensor in sensor_maps],
         },
     )
     sensor_repository.create_sensors(sensor_maps)
@@ -215,7 +219,7 @@ def process_sensors_file(
         {
             "station_id": station_id,
             "upload_event_id": upload_event_id,
-            "alias_to_sensorid_map": response,
+            "sensor_mapping_count": len(response),
         },
     )
 
@@ -267,7 +271,6 @@ def process_measurements_file(
             {
                 "station_id": station_id,
                 "upload_event_id": upload_event_id,
-                "filename": file.filename,
             },
         )
         return MeasurementsProcessingResult(rows_read=0)
@@ -288,7 +291,6 @@ def process_measurements_file(
             {
                 "station_id": station_id,
                 "upload_event_id": upload_event_id,
-                "filename": file.filename,
             },
         )
         return MeasurementsProcessingResult(rows_read=0)
@@ -297,11 +299,9 @@ def process_measurements_file(
         {
             "station_id": station_id,
             "upload_event_id": upload_event_id,
-            "filename": file.filename,
             "row_count": len(df.index),
-            "columns": df.columns.tolist(),
+            "column_count": len(df.columns),
             "alias_count": len(alias_to_sensorid_map),
-            "aliases": sorted(alias_to_sensorid_map.keys()),
         },
     )
     max_rows_per_insert = min(
@@ -319,7 +319,15 @@ def process_measurements_file(
         if alias not in df.columns:
             # Handle errors if alias is missing in the file
             error_msg = f"Measurements columns are {df.columns.tolist()} doesn't match with '{alias}'"
-            logger.error(error_msg)
+            logger.error(
+                "process_measurements_file_missing_sensor_column extra=%s",
+                {
+                    "station_id": station_id,
+                    "upload_event_id": upload_event_id,
+                    "measurement_column_count": len(df.columns),
+                    "failure": "missing_sensor_column",
+                },
+            )
             errors.append(error_msg)
             continue
         valid_mask = pd.notna(df[alias])
@@ -329,8 +337,7 @@ def process_measurements_file(
                 {
                     "station_id": station_id,
                     "upload_event_id": upload_event_id,
-                    "alias": alias,
-                    "sensor_id": sensor_id,
+                    "value_count": 0,
                 },
             )
             result.per_alias[alias] = 0
@@ -343,8 +350,6 @@ def process_measurements_file(
             {
                 "station_id": station_id,
                 "upload_event_id": upload_event_id,
-                "alias": alias,
-                "sensor_id": sensor_id,
                 "value_count": alias_value_count,
             },
         )
@@ -391,7 +396,6 @@ def process_measurements_file(
             "values_inserted": result.values_inserted,
             "values_skipped_duplicate": result.values_skipped_duplicate,
             "error_count": len(errors),
-            "errors": errors,
         },
     )
 

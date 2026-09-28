@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 from typing import Annotated
 from types import SimpleNamespace
+from uuid import UUID
 
 from fastapi import (
     APIRouter,
@@ -57,6 +58,16 @@ DEFAULT_VARIABLE_NAME = "No BestGuess Formula"
 
 router = APIRouter(prefix="/uploadfile_csv", tags=["uploadfile_csv"])
 logger = logging.getLogger(__name__)
+
+
+def normalize_client_request_id(value: str | None) -> str | None:
+    """Accept only UUID-shaped browser correlation ids for log linking."""
+    if not value:
+        return None
+    try:
+        return str(UUID(value))
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 def is_measurement_batch_too_large_error(exc: Exception) -> bool:
@@ -444,6 +455,9 @@ def post_sensor_and_measurement(
     total_chunks: Annotated[
         int | None, Form(description="Total number of chunks in the upload session.")
     ] = None,
+    client_request_id: Annotated[
+        str | None, Form(description="Opaque client correlation id.")
+    ] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_edit_user),
     tapis_token: str | None = Depends(get_tapis_token_header_optional),
@@ -469,19 +483,29 @@ def post_sensor_and_measurement(
         total_chunks=total_chunks,
     )
     upload_event_id = upload_event.id
+    normalized_client_request_id = normalize_client_request_id(client_request_id)
+    if client_request_id and normalized_client_request_id is None:
+        logger.warning(
+            "upload_csv_invalid_client_request_id extra=%s",
+            {
+                "campaign_id": campaign_id,
+                "station_id": station_id,
+                "upload_event_id": upload_event_id,
+                "client_request_id": normalized_client_request_id,
+            },
+        )
     logger.info(
         "upload_csv_start extra=%s",
         {
             "campaign_id": campaign_id,
             "station_id": station_id,
             "upload_event_id": upload_event_id,
+            "client_request_id": normalized_client_request_id,
             "upload_session_id": upload_session_id,
             "finalize_upload": finalize_upload,
             "chunk_index": chunk_index,
             "total_chunks": total_chunks,
             "user": getattr(current_user, "username", None),
-            "sensors_filename": upload_file_sensors.filename,
-            "measurements_filename": upload_file_measurements.filename,
             "sensors_in_memory": upload_file_sensors._in_memory,
             "measurements_in_memory": upload_file_measurements._in_memory,
             "tapis_token_present": bool(tapis_token),
@@ -495,7 +519,7 @@ def post_sensor_and_measurement(
                 "campaign_id": campaign_id,
                 "station_id": station_id,
                 "upload_event_id": upload_event_id,
-                "sensors_filename": upload_file_sensors.filename,
+                "client_request_id": normalized_client_request_id,
             },
         )
         alias_to_sensorid_map = process_sensors_file(
@@ -509,7 +533,7 @@ def post_sensor_and_measurement(
                 "station_id": station_id,
                 "upload_event_id": upload_event_id,
                 "sensor_alias_count": len(alias_to_sensorid_map),
-                "sensor_aliases": sorted(alias_to_sensorid_map.keys()),
+                "client_request_id": normalized_client_request_id,
             },
         )
 
@@ -519,7 +543,7 @@ def post_sensor_and_measurement(
                 "campaign_id": campaign_id,
                 "station_id": station_id,
                 "upload_event_id": upload_event_id,
-                "measurements_filename": upload_file_measurements.filename,
+                "client_request_id": normalized_client_request_id,
             },
         )
         station = station_service.get_station(station_id)
@@ -550,12 +574,12 @@ def post_sensor_and_measurement(
                 "campaign_id": campaign_id,
                 "station_id": station_id,
                 "upload_event_id": upload_event_id,
+                "client_request_id": normalized_client_request_id,
                 "rows_read": measurements_result.rows_read,
                 "values_attempted": measurements_result.values_attempted,
                 "values_inserted": measurements_result.values_inserted,
                 "values_skipped_duplicate": measurements_result.values_skipped_duplicate,
                 "error_count": len(measurements_result.errors),
-                "errors": measurements_result.errors,
             },
         )
 
@@ -722,12 +746,17 @@ def post_sensor_and_measurement(
                 "campaign_id": campaign_id,
                 "station_id": station_id,
                 "upload_event_id": upload_event_id,
+                "client_request_id": normalized_client_request_id,
                 "upload_session_id": upload_session_id,
                 "finalized": finalized,
                 "total_sensors": len(alias_to_sensorid_map),
                 "total_measurements": measurements_result.values_inserted,
                 "processing_seconds": data_processing_time,
                 "error_count": len(measurements_result.errors),
+                "post_processing_status": post_processing_status,
+                "ckan_sync_status": ckan_sync_status,
+                "ckan_sync_message": ckan_sync_message,
+                "finalization_error_count": len(finalization_errors),
             },
         )
         return response
@@ -739,8 +768,7 @@ def post_sensor_and_measurement(
                 "campaign_id": campaign_id,
                 "station_id": station_id,
                 "upload_event_id": upload_event_id,
-                "sensors_filename": upload_file_sensors.filename,
-                "measurements_filename": upload_file_measurements.filename,
+                "client_request_id": normalized_client_request_id,
             },
         )
         raise
@@ -752,8 +780,7 @@ def post_sensor_and_measurement(
                 "campaign_id": campaign_id,
                 "station_id": station_id,
                 "upload_event_id": upload_event_id,
-                "sensors_filename": upload_file_sensors.filename,
-                "measurements_filename": upload_file_measurements.filename,
+                "client_request_id": normalized_client_request_id,
             },
         )
         if is_measurement_batch_too_large_error(exc):
@@ -777,8 +804,7 @@ def post_sensor_and_measurement(
                 "campaign_id": campaign_id,
                 "station_id": station_id,
                 "upload_event_id": upload_event_id,
-                "sensors_filename": upload_file_sensors.filename,
-                "measurements_filename": upload_file_measurements.filename,
+                "client_request_id": normalized_client_request_id,
             },
         )
         raise HTTPException(

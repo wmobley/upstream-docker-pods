@@ -4,6 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.v1.routes.upload_file.upload_csv import (
     close_db_session_safely,
+    normalize_client_request_id,
     snapshot_ckan_inputs,
 )
 
@@ -23,6 +24,14 @@ def test_close_db_session_safely_contains_dead_connection_error() -> None:
     close_db_session_safely(session, upload_event_id=5852)  # type: ignore[arg-type]
 
     assert session.invalidated is True
+
+
+def test_normalize_client_request_id_accepts_only_uuid_values() -> None:
+    value = "123e4567-e89b-12d3-a456-426614174000"
+
+    assert normalize_client_request_id(value) == value
+    assert normalize_client_request_id("not-a-request-id") is None
+    assert normalize_client_request_id(None) is None
 
 
 def test_snapshot_ckan_inputs_detaches_mutable_metadata() -> None:
