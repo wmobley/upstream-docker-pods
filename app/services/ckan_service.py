@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import logging
+import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Dict, Iterable, List, Literal, Optional, cast
 
 import requests
@@ -29,6 +32,22 @@ def _mask_token(token: str | None) -> dict[str, int | str | None]:
 
 class CKANError(RuntimeError):
     """Raised when CKAN returns an error response."""
+
+
+class CKANAuthorizationError(CKANError):
+    """Raised when CKAN rejects a request for authorization reasons."""
+
+    def __init__(self, message: str, *, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class CKANRetryableError(CKANError):
+    """Raised when CKAN or the network remains temporarily unavailable."""
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class CKANDatasetNameConflict(CKANError):
@@ -106,9 +125,41 @@ def _suggest_dataset_name(name: str) -> str:
 
 
 class CKANService:
-    def __init__(self, *, base_url: str, timeout: int = 30) -> None:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        timeout: int = 30,
+        request_delay_seconds: float = 0.5,
+        max_retries: int = 3,
+        backoff_seconds: float = 1.0,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.request_delay_seconds = max(0.0, request_delay_seconds)
+        self.max_retries = max(0, max_retries)
+        self.backoff_seconds = max(0.0, backoff_seconds)
+
+    @staticmethod
+    def _retry_after_seconds(response: requests.Response) -> float | None:
+        value = response.headers.get("Retry-After")
+        if not value:
+            return None
+        try:
+            return max(0.0, float(value))
+        except ValueError:
+            try:
+                retry_at = parsedate_to_datetime(value)
+                if retry_at.tzinfo is None:
+                    retry_at = retry_at.replace(tzinfo=timezone.utc)
+                return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+            except (TypeError, ValueError, OverflowError):
+                return None
+
+    def _retry_delay(self, attempt: int, response: requests.Response | None) -> float:
+        retry_after = self._retry_after_seconds(response) if response is not None else None
+        exponential = self.backoff_seconds * (2**attempt)
+        return min(30.0, retry_after if retry_after is not None else exponential)
 
     def _headers(
         self,
@@ -157,26 +208,86 @@ class CKANService:
                 "param_keys": sorted(params.keys()) if isinstance(params, dict) else None,
             },
         )
-        response = requests.request(
-            method=method,
-            url=url,
-            headers=headers,
-            json=json,
-            params=params,
-            timeout=self.timeout,
-        )
-        try:
-            response.raise_for_status()
-        except requests.HTTPError as exc:
-            log_method = logger.info if response.status_code == 409 and path == "/api/3/action/package_create" else logger.error
-            log_method(
-                "CKAN request failed (%s %s) status=%s body=%s",
-                method,
-                url,
-                response.status_code,
-                response.text,
-            )
-            raise CKANError(response.text) from exc
+        for attempt in range(self.max_retries + 1):
+            if self.request_delay_seconds:
+                time.sleep(self.request_delay_seconds)
+            try:
+                response = requests.request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    json=json,
+                    params=params,
+                    timeout=self.timeout,
+                )
+            except requests.RequestException as exc:
+                if attempt < self.max_retries:
+                    delay = self._retry_delay(attempt, None)
+                    logger.warning(
+                        "CKAN request transient network failure; retrying extra=%s",
+                        {
+                            "method": method,
+                            "path": path,
+                            "attempt": attempt + 1,
+                            "delay_seconds": delay,
+                        },
+                    )
+                    if delay:
+                        time.sleep(delay)
+                    continue
+                raise CKANRetryableError(
+                    f"CKAN request failed after {self.max_retries + 1} attempts: {exc}"
+                ) from exc
+
+            if response.status_code in {401, 403}:
+                log_method = logger.info if response.status_code == 403 else logger.error
+                log_method(
+                    "CKAN request authorization failed (%s %s) status=%s body=%s",
+                    method,
+                    url,
+                    response.status_code,
+                    response.text,
+                )
+                raise CKANAuthorizationError(
+                    response.text,
+                    status_code=response.status_code,
+                )
+
+            if response.status_code == 429 or 500 <= response.status_code < 600:
+                if attempt < self.max_retries:
+                    delay = self._retry_delay(attempt, response)
+                    logger.warning(
+                        "CKAN request throttled/transient; retrying extra=%s",
+                        {
+                            "method": method,
+                            "path": path,
+                            "status_code": response.status_code,
+                            "attempt": attempt + 1,
+                            "delay_seconds": delay,
+                        },
+                    )
+                    if delay:
+                        time.sleep(delay)
+                    continue
+                raise CKANRetryableError(
+                    f"CKAN request failed after {self.max_retries + 1} attempts "
+                    f"with status {response.status_code}: {response.text}",
+                    status_code=response.status_code,
+                )
+
+            try:
+                response.raise_for_status()
+            except requests.HTTPError as exc:
+                log_method = logger.info if response.status_code == 409 and path == "/api/3/action/package_create" else logger.error
+                log_method(
+                    "CKAN request failed (%s %s) status=%s body=%s",
+                    method,
+                    url,
+                    response.status_code,
+                    response.text,
+                )
+                raise CKANError(response.text) from exc
+            break
 
         payload: Dict[str, Any] = response.json()
         if not payload.get("success", False):
@@ -554,7 +665,20 @@ def get_ckan_service() -> CKANService | None:
     settings = get_settings()
     if not settings.CKAN_URL:
         return None
-    return CKANService(base_url=settings.CKAN_URL, timeout=settings.CKAN_TIMEOUT)
+    return CKANService(
+        base_url=settings.CKAN_URL,
+        timeout=settings.CKAN_TIMEOUT,
+        request_delay_seconds=getattr(settings, "CKAN_REQUEST_DELAY_SECONDS", 0.5),
+        max_retries=getattr(settings, "CKAN_MAX_RETRIES", 3),
+        backoff_seconds=getattr(settings, "CKAN_BACKOFF_SECONDS", 1.0),
+    )
 
 
-__all__ = ["CKANService", "CKANError", "_slugify", "get_ckan_service"]
+__all__ = [
+    "CKANAuthorizationError",
+    "CKANError",
+    "CKANRetryableError",
+    "CKANService",
+    "_slugify",
+    "get_ckan_service",
+]

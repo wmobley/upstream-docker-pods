@@ -1,8 +1,10 @@
 # type: ignore
+from copy import deepcopy
 import logging
 import time
 from datetime import datetime
 from typing import Annotated
+from types import SimpleNamespace
 
 from fastapi import (
     APIRouter,
@@ -13,7 +15,7 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.formparsers import MultiPartParser
 
@@ -35,7 +37,12 @@ from app.db.repositories.station_repository import StationRepository
 from app.db.session import SessionLocal, get_db
 from app.services.campaign_service import CampaignService
 from app.services.ckan_publish import ensure_station_dataset, sync_sensor_resources
-from app.services.ckan_service import get_ckan_service
+from app.services.ckan_service import (
+    CKANAuthorizationError,
+    CKANError,
+    CKANRetryableError,
+    get_ckan_service,
+)
 from app.services.station_service import StationService
 from app.utils.upload_csv import (
     process_measurements_file,
@@ -57,6 +64,84 @@ def is_measurement_batch_too_large_error(exc: Exception) -> bool:
     return (
         "number of parameters must be between 0 and 65535" in message
         or "too many parameters" in message
+    )
+
+
+def close_db_session_safely(db: Session, *, upload_event_id: int) -> None:
+    """Close a background-task session without surfacing dead-connection errors."""
+    try:
+        db.close()
+    except SQLAlchemyError as exc:
+        try:
+            db.invalidate()
+        except Exception:  # pragma: no cover - defensive cleanup
+            pass
+        logger.warning(
+            "upload_csv_ckan_db_cleanup_failed extra=%s",
+            {
+                "upload_event_id": upload_event_id,
+                "error_type": type(exc).__name__,
+            },
+        )
+
+
+def snapshot_ckan_inputs(
+    campaign: object,
+    station: object,
+    sensors: list[object],
+    station_schema: list[object],
+    campaign_schema: list[object],
+    sensor_schema: list[object],
+) -> tuple[SimpleNamespace, SimpleNamespace, list[SimpleNamespace], list[SimpleNamespace], list[SimpleNamespace], list[SimpleNamespace]]:
+    """Detach the small CKAN input graph from SQLAlchemy before network I/O."""
+    campaign_snapshot = SimpleNamespace(
+        id=campaign.id,
+        name=campaign.name,
+        description=campaign.description,
+        contact_name=campaign.contact_name,
+        contact_email=campaign.contact_email,
+        start_date=campaign.start_date,
+        end_date=campaign.end_date,
+        allocation=campaign.allocation,
+        meta=deepcopy(getattr(campaign, "metadata", None) or {}),
+    )
+    station_snapshot = SimpleNamespace(
+        id=station.id,
+        name=station.name,
+        description=station.description,
+        contact_name=station.contact_name,
+        contact_email=station.contact_email,
+        geometry=deepcopy(station.geometry),
+        published_at=station.published_at,
+        meta=deepcopy(getattr(station, "metadata", None) or {}),
+    )
+
+    def schema_snapshot(items: list[object]) -> list[SimpleNamespace]:
+        return [
+            SimpleNamespace(
+                key=item.key,
+                ckan_field=item.ckan_field,
+                ckan_mode=item.ckan_mode,
+            )
+            for item in items
+        ]
+
+    sensor_snapshots = [
+        SimpleNamespace(
+            id=sensor.sensorid,
+            alias=sensor.alias,
+            variablename=sensor.variablename,
+            meta=deepcopy(getattr(sensor, "meta", None) or {}),
+        )
+        for sensor in sensors
+    ]
+    return (
+        campaign_snapshot,
+        station_snapshot,
+        sensor_snapshots,
+        schema_snapshot(station_schema),
+        schema_snapshot(campaign_schema),
+        schema_snapshot(sensor_schema),
     )
 
 
@@ -179,7 +264,37 @@ def run_ckan_sync_upload(
         station_schema = metadata_repo.list_schema(scope="station", active_only=True)
         campaign_schema = metadata_repo.list_schema(scope="campaign", active_only=True)
         sensor_schema = metadata_repo.list_schema(scope="sensor", active_only=True)
+        sensor_repo = SensorRepository(db)
+        sensors = sensor_repo.get_sensors_by_ids(sensor_ids)
+        (
+            campaign,
+            station,
+            sensors,
+            station_schema,
+            campaign_schema,
+            sensor_schema,
+        ) = snapshot_ckan_inputs(
+            campaign,
+            station,
+            sensors,
+            station_schema,
+            campaign_schema,
+            sensor_schema,
+        )
+    finally:
+        close_db_session_safely(db, upload_event_id=upload_event_id)
+
+    sync_status = "retryable_failed"
+    ckan_warnings: list[str] = []
+    try:
         ckan_client = get_ckan_service()
+        if ckan_client is None:
+            logger.info(
+                "upload_csv_ckan_sync_finished extra=%s",
+                {"upload_event_id": upload_event_id, "status": "retryable_failed", "reason": "CKAN unavailable"},
+            )
+            return
+
         dataset, dataset_id, dataset_errors = ensure_station_dataset(
             settings=settings,
             ckan_client=ckan_client,
@@ -190,10 +305,9 @@ def run_ckan_sync_upload(
             private=True,
             station_metadata_schema=station_schema,
             campaign_metadata_schema=campaign_schema,
+            raise_on_error=True,
         )
-        ckan_warnings = list(dataset_errors)
-        sensor_repo = SensorRepository(db)
-        sensors = sensor_repo.get_sensors_by_ids(sensor_ids)
+        ckan_warnings.extend(dataset_errors)
         resource_errors = sync_sensor_resources(
             settings=settings,
             ckan_client=ckan_client,
@@ -204,6 +318,7 @@ def run_ckan_sync_upload(
             dataset_id=dataset_id,
             sensors=sensors,
             sensor_metadata_schema=sensor_schema,
+            fail_fast=True,
         )
         ckan_warnings.extend(resource_errors)
         for message in ckan_warnings:
@@ -216,6 +331,28 @@ def run_ckan_sync_upload(
                     "message": message,
                 },
             )
+        sync_status = "completed"
+    except CKANAuthorizationError as exc:
+        sync_status = "authorization_failed"
+        logger.warning(
+            "upload_csv_ckan_sync_finished extra=%s",
+            {
+                "upload_event_id": upload_event_id,
+                "upload_session_id": upload_session_id,
+                "status": sync_status,
+                "status_code": exc.status_code,
+            },
+        )
+    except (CKANRetryableError, CKANError) as exc:
+        logger.warning(
+            "upload_csv_ckan_sync_finished extra=%s",
+            {
+                "upload_event_id": upload_event_id,
+                "upload_session_id": upload_session_id,
+                "status": sync_status,
+                "error_type": type(exc).__name__,
+            },
+        )
     except Exception:
         logger.exception(
             "upload_csv_ckan_background_error extra=%s",
@@ -225,7 +362,14 @@ def run_ckan_sync_upload(
             },
         )
     finally:
-        db.close()
+        logger.info(
+            "upload_csv_ckan_sync_finished extra=%s",
+            {
+                "upload_event_id": upload_event_id,
+                "upload_session_id": upload_session_id,
+                "status": sync_status,
+            },
+        )
 
 
 def schedule_ckan_sync(

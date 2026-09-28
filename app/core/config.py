@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     CKAN_ADMIN_USERNAME: str | None = Field(default="dso_test")
     CKAN_ADMIN_API_KEY: str | None = Field(default=None)
     CKAN_TIMEOUT: int = Field(default=30)
+    CKAN_REQUEST_DELAY_SECONDS: float = Field(default=0.5, ge=0)
+    CKAN_MAX_RETRIES: int = Field(default=3, ge=0, le=5)
+    CKAN_BACKOFF_SECONDS: float = Field(default=1.0, ge=0)
     UI_BASE_URL: str = Field(default="http://127.0.0.1:5173")
     API_BASE_URL: str | None = Field(default="http://127.0.0.1:8000")
     # Identifies this API pod's own project/stack (e.g. "sniffer") in the shared

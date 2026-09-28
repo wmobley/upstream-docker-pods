@@ -264,6 +264,15 @@ class PodsService:
                 "TAPIS_TENANT_ID": self.settings.TAPIS_TENANT_ID,
                 "CKAN_URL": self.settings.CKAN_URL,
                 "CKAN_TIMEOUT": str(self.settings.CKAN_TIMEOUT),
+                "CKAN_REQUEST_DELAY_SECONDS": str(
+                    getattr(self.settings, "CKAN_REQUEST_DELAY_SECONDS", 0.5)
+                ),
+                "CKAN_MAX_RETRIES": str(
+                    getattr(self.settings, "CKAN_MAX_RETRIES", 3)
+                ),
+                "CKAN_BACKOFF_SECONDS": str(
+                    getattr(self.settings, "CKAN_BACKOFF_SECONDS", 1.0)
+                ),
                 "CKAN_ORGANIZATION": self.settings.CKAN_ORGANIZATION or "upstream",
                 "CKAN_ADMIN_USERNAME": self.settings.CKAN_ADMIN_USERNAME or "dso_test",
                 "CKAN_ADMIN_API_KEY": self.settings.CKAN_ADMIN_API_KEY or "",

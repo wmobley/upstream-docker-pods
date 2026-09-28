@@ -7,7 +7,13 @@ import math
 from typing import Any, Iterable, Sequence
 
 from app.core.config import Settings
-from app.services.ckan_service import CKANService, CKANError, _slugify
+from app.services.ckan_service import (
+    CKANAuthorizationError,
+    CKANError,
+    CKANRetryableError,
+    CKANService,
+    _slugify,
+)
 
 logger = logging.getLogger(__name__)
 SPATIAL_BUFFER_METERS = 5.0
@@ -58,6 +64,7 @@ def ensure_station_dataset(
     campaign_metadata_schema: Sequence[Any] | None = None,
     dataset_name: str | None = None,
     allow_existing_patch: bool = True,
+    raise_on_error: bool = False,
 ) -> tuple[dict[str, Any] | None, str | None, list[str]]:
     """
     Ensure a CKAN dataset exists for the given station and return the dataset payload,
@@ -161,10 +168,14 @@ def ensure_station_dataset(
             )
     except CKANError as exc:
         message = f"Failed to register dataset for station {station.id} in CKAN: {exc}"
+        if raise_on_error:
+            raise
         logger.warning("%s", message)
         errors.append(message)
     except Exception as exc:  # pragma: no cover - defensive
         message = f"Unexpected error while ensuring CKAN dataset for station {station.id}: {exc}"
+        if raise_on_error:
+            raise
         logger.exception("%s", message)
         errors.append(message)
 
@@ -194,6 +205,7 @@ def sync_sensor_resources(
     dataset_id: str | None,
     sensors: Sequence[Any] | Iterable[Any],
     sensor_metadata_schema: Sequence[Any] | None = None,
+    fail_fast: bool = False,
 ) -> list[str]:
     """
     Ensure CKAN resources exist for the provided sensors. Returns a list of warnings/errors.
@@ -235,12 +247,22 @@ def sync_sensor_resources(
                 extra_fields=extra_fields,
             )
             existing_resources_by_name[name] = resource
+        except (CKANAuthorizationError, CKANRetryableError) as exc:
+            message = (
+                f"Failed to register resource {name} for sensor {sensor_identifier} in CKAN: {exc}"
+            )
+            logger.warning("%s", message)
+            errors.append(message)
+            if fail_fast:
+                raise
         except CKANError as exc:
             message = (
                 f"Failed to register resource {name} for sensor {sensor_identifier} in CKAN: {exc}"
             )
             logger.warning("%s", message)
             errors.append(message)
+            if fail_fast:
+                raise
         except Exception as exc:  # pragma: no cover - defensive
             message = (
                 f"Unexpected error while registering resource {name} for sensor "
@@ -248,6 +270,8 @@ def sync_sensor_resources(
             )
             logger.exception("%s", message)
             errors.append(message)
+            if fail_fast:
+                raise
 
     for sensor in sensors:
         sensor_id, sensor_label = _sensor_identifier(sensor)

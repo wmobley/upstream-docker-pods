@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from app.services.ckan_publish import (
     DATASET_HASH_EXTRA_KEY,
     DATASET_KEY_EXTRA_KEY,
@@ -10,6 +12,7 @@ from app.services.ckan_publish import (
     ensure_station_dataset,
     sync_sensor_resources,
 )
+from app.services.ckan_service import CKANAuthorizationError
 
 
 def test_ensure_station_dataset_maps_campaign_top_level_metadata() -> None:
@@ -256,6 +259,42 @@ def test_sync_sensor_resources_appends_project_param_to_ui_url_only() -> None:
     api_call = next(call for call in calls if call["name"].endswith("-measurements"))
     assert ui_call["url"] == "https://ui.example.com/campaigns/7/stations/11/sensors/5?project=sniffer"
     assert api_call["url"] == "https://api.example.com/api/v1/campaigns/7/stations/11/sensors/5/measurements.geojson"
+
+
+def test_sync_sensor_resources_can_stop_after_authorization_failure() -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeCKANClient:
+        def ensure_resource(self, **kwargs):
+            calls.append(kwargs)
+            raise CKANAuthorizationError("not authorized", status_code=403)
+
+    settings = SimpleNamespace(
+        UI_BASE_URL="https://ui.example.com",
+        API_BASE_URL="https://api.example.com",
+        STACK_ID=None,
+    )
+    campaign = SimpleNamespace(id=7, name="Campaign Alpha")
+    station = SimpleNamespace(id=11, name="Station Bravo")
+    sensors = [
+        SimpleNamespace(id=5, alias="Air Temp", variablename="air_temperature", meta={}),
+        SimpleNamespace(id=6, alias="Humidity", variablename="humidity", meta={}),
+    ]
+
+    with pytest.raises(CKANAuthorizationError):
+        sync_sensor_resources(
+            settings=settings,
+            ckan_client=FakeCKANClient(),
+            tapis_token="token",
+            campaign=campaign,
+            station=station,
+            dataset={"resources": []},
+            dataset_id="dataset-1",
+            sensors=sensors,
+            fail_fast=True,
+        )
+
+    assert len(calls) == 1
 
 
 def test_ensure_station_dataset_uses_buffered_bbox_polygon_for_spatial() -> None:

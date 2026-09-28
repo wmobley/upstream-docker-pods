@@ -1,6 +1,118 @@
 import pytest
+import requests
 
-from app.services.ckan_service import CKANDatasetNameConflict, CKANError, CKANService
+from app.services.ckan_service import (
+    CKANAuthorizationError,
+    CKANDatasetNameConflict,
+    CKANError,
+    CKANRetryableError,
+    CKANService,
+)
+
+
+class FakeResponse:
+    def __init__(self, status_code: int, *, result=None, text: str = "", headers=None):
+        self.status_code = status_code
+        self._result = result
+        self.text = text
+        self.headers = headers or {}
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.HTTPError(response=self)
+
+    def json(self):
+        return {"success": True, "result": self._result}
+
+
+def test_request_retries_429_and_5xx_with_retry_after_and_backoff(monkeypatch) -> None:
+    responses = [
+        FakeResponse(429, text="slow down", headers={"Retry-After": "1"}),
+        FakeResponse(503, text="temporarily unavailable"),
+        FakeResponse(200, result={"id": "dataset-id"}),
+    ]
+    sleeps: list[float] = []
+
+    monkeypatch.setattr(
+        "app.services.ckan_service.requests.request",
+        lambda **_: responses.pop(0),
+    )
+    monkeypatch.setattr("app.services.ckan_service.time.sleep", sleeps.append)
+
+    service = CKANService(
+        base_url="https://ckan.example.com",
+        request_delay_seconds=0,
+        max_retries=2,
+        backoff_seconds=2,
+    )
+
+    result = service._request(
+        method="POST",
+        path="/api/3/action/resource_create",
+        token="token",
+        json={},
+    )
+
+    assert result == {"id": "dataset-id"}
+    assert sleeps == [1.0, 4.0]
+
+
+def test_request_does_not_retry_authorization_failures(monkeypatch) -> None:
+    calls = 0
+
+    def request(**_):
+        nonlocal calls
+        calls += 1
+        return FakeResponse(403, text="not authorized")
+
+    monkeypatch.setattr("app.services.ckan_service.requests.request", request)
+
+    service = CKANService(
+        base_url="https://ckan.example.com",
+        request_delay_seconds=0,
+        max_retries=3,
+    )
+
+    with pytest.raises(CKANAuthorizationError) as exc_info:
+        service._request(
+            method="POST",
+            path="/api/3/action/resource_create",
+            token="token",
+            json={},
+        )
+
+    assert exc_info.value.status_code == 403
+    assert calls == 1
+
+
+def test_request_reports_retryable_failure_after_bounded_retries(monkeypatch) -> None:
+    calls = 0
+
+    def request(**_):
+        nonlocal calls
+        calls += 1
+        return FakeResponse(503, text="unavailable")
+
+    monkeypatch.setattr("app.services.ckan_service.requests.request", request)
+    monkeypatch.setattr("app.services.ckan_service.time.sleep", lambda _: None)
+
+    service = CKANService(
+        base_url="https://ckan.example.com",
+        request_delay_seconds=0,
+        max_retries=2,
+        backoff_seconds=0,
+    )
+
+    with pytest.raises(CKANRetryableError) as exc_info:
+        service._request(
+            method="POST",
+            path="/api/3/action/resource_create",
+            token="token",
+            json={},
+        )
+
+    assert exc_info.value.status_code == 503
+    assert calls == 3
 
 
 def test_create_or_update_dataset_patches_matching_existing_dataset() -> None:
