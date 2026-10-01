@@ -46,6 +46,17 @@ class Settings(BaseSettings):
     # defaults to false there). Gates TAS-allocation-based role elevation.
     IS_PRIMARY_INSTANCE: bool = Field(default=False)
     PRIMARY_ALLOCATION_CHARGE_CODE: str = Field(default="PT2050-DataX")
+    # Opt-in only while the wide-CSV bulk ingestion experiment is validated.
+    BULK_INGESTION_ENABLED: bool = Field(default=False)
+    # Phase 2A async importer; requires one worker and a shared durable volume.
+    ASYNC_BULK_INGESTION_ENABLED: bool = Field(default=False)
+    BULK_IMPORT_STORAGE_PATH: str = Field(default="/tmp/upstream-bulk-imports")
+    BULK_IMPORT_MAX_CHUNK_BYTES: int = Field(default=100 * 1024 * 1024, ge=1)
+    BULK_IMPORT_MAX_TOTAL_BYTES: int = Field(default=2 * 1024 * 1024 * 1024, ge=1)
+    BULK_IMPORT_MAX_CHUNKS: int = Field(default=10000, ge=1)
+    BULK_IMPORT_WORKER_LEASE_SECONDS: int = Field(default=1800, ge=30)
+    BULK_IMPORT_MAX_ATTEMPTS: int = Field(default=3, ge=1, le=10)
+    BULK_IMPORT_WORKER_POLL_SECONDS: float = Field(default=15.0, gt=0, le=3600)
 
     model_config = SettingsConfigDict(
         env_file=".env",

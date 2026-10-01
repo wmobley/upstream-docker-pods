@@ -3,7 +3,7 @@ from copy import deepcopy
 import logging
 import time
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -50,6 +50,7 @@ from app.utils.upload_csv import (
     process_sensors_file,
     update_sensor_statistics,
 )
+from app.utils.bulk_upload_csv import process_measurements_file_bulk
 
 # Constants
 MultiPartParser.spool_max_size = 500 * 1024 * 1024
@@ -163,6 +164,7 @@ def create_upload_event(
     upload_session_id: str | None,
     chunk_index: int | None,
     total_chunks: int | None,
+    ingestion_mode: str | None = None,
 ) -> UploadFileEvent:
     """Create and return a new upload file event with session metadata."""
     upload_event = UploadFileEvent(
@@ -172,6 +174,7 @@ def create_upload_event(
         station_id=station_id,
         chunk_index=chunk_index,
         total_chunks=total_chunks,
+        ingestion_mode=ingestion_mode,
     )
     session.add(upload_event)
     session.commit()
@@ -195,6 +198,17 @@ def get_session_receipts(
         .order_by(UploadFileEvent.id.desc())
         .all()
     )
+
+
+def session_ingestion_modes(
+    session: Session,
+    campaign_id: int,
+    station_id: int,
+    upload_session_id: str,
+) -> set[str]:
+    """Return normalized ingestion modes already used by an upload session."""
+    receipts = get_session_receipts(session, campaign_id, station_id, upload_session_id)
+    return {receipt.ingestion_mode or "legacy" for receipt in receipts}
 
 
 def successful_receipt_chunk_indexes(
@@ -458,6 +472,10 @@ def post_sensor_and_measurement(
     client_request_id: Annotated[
         str | None, Form(description="Opaque client correlation id.")
     ] = None,
+    ingestion_mode: Annotated[
+        Literal["legacy", "bulk"],
+        Form(description="Opt-in server ingestion strategy; bulk is experimental."),
+    ] = "legacy",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_edit_user),
     tapis_token: str | None = Depends(get_tapis_token_header_optional),
@@ -473,6 +491,23 @@ def post_sensor_and_measurement(
     sensor_repository = SensorRepository(db)
     station_service = StationService(StationRepository(db))
 
+    if ingestion_mode == "bulk" and not get_settings().BULK_INGESTION_ENABLED:
+        raise HTTPException(
+            status_code=404,
+            detail="The experimental bulk ingestion mode is not enabled.",
+        )
+    if upload_session_id:
+        existing_modes = session_ingestion_modes(
+            db, campaign_id, station_id, upload_session_id
+        )
+        if existing_modes and existing_modes != {ingestion_mode}:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "An upload session cannot change ingestion_mode after its first chunk."
+                ),
+            )
+
     # Create upload event with session metadata
     upload_event = create_upload_event(
         db,
@@ -481,6 +516,7 @@ def post_sensor_and_measurement(
         upload_session_id=upload_session_id,
         chunk_index=chunk_index,
         total_chunks=total_chunks,
+        ingestion_mode=ingestion_mode,
     )
     upload_event_id = upload_event.id
     normalized_client_request_id = normalize_client_request_id(client_request_id)
@@ -559,14 +595,24 @@ def post_sensor_and_measurement(
                     "fallback": station_timezone,
                 },
             )
-        measurements_result = process_measurements_file(
-            upload_file_measurements,
-            station_id,
-            alias_to_sensorid_map,
-            upload_event_id,
-            db,
-            station_timezone=station_timezone,
-        )
+        if ingestion_mode == "bulk":
+            measurements_result = process_measurements_file_bulk(
+                upload_file_measurements,
+                station_id,
+                alias_to_sensorid_map,
+                upload_event_id,
+                db,
+                station_timezone=station_timezone,
+            )
+        else:
+            measurements_result = process_measurements_file(
+                upload_file_measurements,
+                station_id,
+                alias_to_sensorid_map,
+                upload_event_id,
+                db,
+                station_timezone=station_timezone,
+            )
         upload_file_measurements.file.close()
         logger.info(
             "upload_csv_process_measurements_done extra=%s",
@@ -711,6 +757,7 @@ def post_sensor_and_measurement(
             finalized=finalized,
             chunk_index=chunk_index,
             total_chunks=total_chunks,
+            ingestion_mode=ingestion_mode,
             audit=UploadAudit(
                 measurement_rows_read=measurements_result.rows_read,
                 measurement_values_attempted=measurements_result.values_attempted,

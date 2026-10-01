@@ -20,6 +20,7 @@ class UploadFileEvent(Base):
     station_id: Mapped[Optional[int]] = mapped_column(default=None)
     chunk_index: Mapped[Optional[int]] = mapped_column(default=None)
     total_chunks: Mapped[Optional[int]] = mapped_column(default=None)
+    ingestion_mode: Mapped[Optional[str]] = mapped_column(default=None)
 
     # Per-chunk audit counts. NULL until a chunk finishes inserting rows.
     measurement_rows_read: Mapped[Optional[int]] = mapped_column(default=None)

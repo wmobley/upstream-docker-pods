@@ -5,11 +5,12 @@ Use these template payloads to register reusable Pods templates for the Upstream
 ## Template IDs
 - `upstreampostgrestemplate`
 - `upstreamapitemplate`
+- `upstreamworkertemplate`
 - `upstreamuitemplate`
 
 ## How to register
 1) Copy the matching `*-template.json` file.
-2) Replace placeholder tokens (`{{BASE}}`, `{{PG_USER}}`, `{{PG_PASSWORD}}`, `{{CKAN_ADMIN_API_KEY}}`) with your real values before posting **but never commit secrets**. Leave `CKAN_ADMIN_USERNAME` as `dso_test` unless you use a different CKAN admin user.
+2) Replace placeholder tokens (`{{BASE}}`, `{{PG_USER}}`, `{{PG_PASSWORD}}`, `{{API_IMAGE}}`, `{{WORKER_IMAGE}}`, `{{IMPORT_VOLUME_ID}}`, `{{TAPIS_PODS_BASE_URL}}`, `{{TAS_USER}}`, `{{TAS_SECRET}}`, `{{JWT_SECRET}}`, `{{CKAN_ADMIN_API_KEY}}`) with your real values before posting **but never commit secrets**. Leave `CKAN_ADMIN_USERNAME` as `dso_test` unless you use a different CKAN admin user.
 3) POST to Pods Templates:  
    ```bash
    curl -X POST "$PODS_BASE_URL/v3/pods/templates" \
@@ -22,3 +23,4 @@ Use these template payloads to register reusable Pods templates for the Upstream
 ## Notes
 - The template payload goes in the `template` field expected by the Pods Templates API. The `pod_id` values include placeholders so you can instantiate with different bases per lab/system.
 - The API template includes `CKAN_ADMIN_API_KEY`, `CKAN_ADMIN_USERNAME`, and `CKAN_ORGANIZATION` so the backend can add users to the `upstream` CKAN org without exposing the key to the UI. Do not commit real secrets to source control—inject them when registering the template or via overrides.
+- The worker template has no public networking entry and receives only database/import-storage settings. Keep both async flags false until the shared-volume and restart checks pass.

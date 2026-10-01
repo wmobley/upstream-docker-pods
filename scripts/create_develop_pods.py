@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Create the upstream-develop and upstream-developapi pods on portals.develop.tapis.io.
+Create the upstream develop Pods on the explicitly selected Tapis control plane.
 
 Usage:
     export TAPIS_USERNAME=<your-username>
     export TAPIS_PASSWORD=<your-password>
+    export TAPIS_BASE_URL=https://portals.tapis.io
     export PG_PASSWORD=<choose-a-postgres-password>
     python3 scripts/create_develop_pods.py
 
 Optional env vars (defaults shown):
-    TAPIS_BASE_URL=https://portals.develop.tapis.io
     PG_USER=pguser
     API_IMAGE=ghcr.io/wmobley/upstream-docker-pods:feature-unified-ui-tapis-auth
     UI_IMAGE=ghcr.io/wmobley/upstream-ui-pods:feature-unified-ui-tapis-auth
@@ -22,13 +22,21 @@ from tapipy.tapis import Tapis
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-BASE_URL = os.environ.get("TAPIS_BASE_URL", "https://portals.tapis.io")
+BASE_URL = os.environ.get("TAPIS_BASE_URL")
+if not BASE_URL:
+    raise RuntimeError("TAPIS_BASE_URL must be set explicitly; refusing an ambiguous control plane")
+BASE_URL = BASE_URL.rstrip("/")
 PODS_DOMAIN = BASE_URL.replace("https://", "pods.")
 
 USERNAME = os.environ["TAPIS_USERNAME"]
 PASSWORD = os.environ["TAPIS_PASSWORD"]
 PG_USER = os.environ.get("PG_USER", "pguser")
 PG_PASSWORD = os.environ["PG_PASSWORD"]
+TAS_SECRET = os.environ.get("TAS_SECRET")
+JWT_SECRET = os.environ.get("JWT_SECRET")
+
+if not TAS_SECRET or not JWT_SECRET:
+    raise RuntimeError("TAS_SECRET and JWT_SECRET must be set; refusing unsafe defaults")
 
 API_IMAGE = os.environ.get(
     "API_IMAGE",
@@ -40,9 +48,12 @@ UI_IMAGE = os.environ.get(
 )
 
 VOLUME_ID     = "upstreamdevelopvolume"
+IMPORT_VOLUME_ID = "upstreamdevelopimportvolume"
 POSTGRES_ID   = "upstreamdeveloppostgres"
 API_ID        = "upstreamdevelopapi"
+WORKER_ID     = "upstreamdevelopworker"
 UI_ID         = "upstreamdevelop"
+IMPORT_STORAGE_PATH = "/var/lib/upstream-bulk-imports"
 
 ADMIN_USERS = ["wmobley", "tasclient_dsso"]
 
@@ -123,6 +134,19 @@ except RuntimeError as e:
     else:
         raise
 
+print(f"Creating volume {IMPORT_VOLUME_ID} …")
+try:
+    pods_post(
+        "/pods/volumes",
+        {"volume_id": IMPORT_VOLUME_ID, "description": "Durable async import chunks for upstream-develop"},
+    )
+    print("  Created.")
+except RuntimeError as e:
+    if "already exists" in str(e).lower() or "uniqueviolation" in str(e).lower():
+        print("  Already exists — skipping.")
+    else:
+        raise
+
 # ---------------------------------------------------------------------------
 # Postgres pod
 # ---------------------------------------------------------------------------
@@ -183,8 +207,8 @@ api_payload = {
         "DATABASE_URL": f"postgresql+psycopg://{PG_USER}:{PG_PASSWORD}@{POSTGRES_ID}.{PODS_DOMAIN}:443/{PG_USER}",
         "POSTGRES_PASSWORD": PG_PASSWORD,
         "TAS_USER": os.environ.get("TAS_USER", USERNAME),
-        "TAS_SECRET": os.environ.get("TAS_SECRET", PASSWORD),
-        "JWT_SECRET": os.environ.get("JWT_SECRET", "changeme-dev-secret"),
+        "TAS_SECRET": TAS_SECRET,
+        "JWT_SECRET": JWT_SECRET,
         "ALG": "HS256",
         "TAS_URL": BASE_URL,
         "ENVIRONMENT": "develop",
@@ -196,11 +220,21 @@ api_payload = {
         "CKAN_ADMIN_API_KEY": os.environ.get("CKAN_ADMIN_API_KEY", ""),
         "UI_BASE_URL": f"https://{UI_ID}.{PODS_DOMAIN}",
         "API_BASE_URL": f"https://{API_ID}.{PODS_DOMAIN}",
-        "TAPIS_BASE_URL": "https://portals.tapis.io",
+        "TAPIS_BASE_URL": BASE_URL,
         "TAPIS_TENANT_ID": "portals",
+        "BULK_INGESTION_ENABLED": "false",
+        "ASYNC_BULK_INGESTION_ENABLED": "false",
+        "BULK_IMPORT_STORAGE_PATH": IMPORT_STORAGE_PATH,
+        "BULK_IMPORT_WORKER_POLL_SECONDS": "15",
     },
     "status_requested": "ON",
-    "volume_mounts": {},
+    "volume_mounts": {
+        IMPORT_STORAGE_PATH: {
+            "type": "tapisvolume",
+            "source_id": IMPORT_VOLUME_ID,
+            "sub_path": "",
+        }
+    },
     "time_to_stop_default": -1,
     "networking": {
         "default": {
@@ -227,7 +261,55 @@ try:
     print("  Created.")
 except RuntimeError as e:
     if "already exists" in str(e).lower() or "uniqueviolation" in str(e).lower():
-        print("  Already exists — skipping.")
+        print("  Already exists — updating shared-volume/configuration contract.")
+        update_payload = dict(api_payload)
+        update_payload["status_requested"] = "RESTART"
+        pods_put(f"/pods/{API_ID}", update_payload)
+    else:
+        raise
+
+# ---------------------------------------------------------------------------
+# Async import worker pod
+# ---------------------------------------------------------------------------
+print(f"Creating pod {WORKER_ID} …")
+worker_payload = {
+    "pod_id": WORKER_ID,
+    "image": API_IMAGE,
+    "description": "[upstream] Develop async import worker",
+    "stack_id": STACK_ID,
+    "command": ["/bin/bash", "-c", "python -m app.workers.process_upload_imports --poll"],
+    "environment_variables": {
+        "DATABASE_URL": f"postgresql+psycopg://{PG_USER}:{PG_PASSWORD}@{POSTGRES_ID}.{PODS_DOMAIN}:443/{PG_USER}",
+        "ENVIRONMENT": "develop",
+        "ENV": "develop",
+        "BULK_INGESTION_ENABLED": "false",
+        "ASYNC_BULK_INGESTION_ENABLED": "false",
+        "BULK_IMPORT_STORAGE_PATH": IMPORT_STORAGE_PATH,
+        "BULK_IMPORT_WORKER_POLL_SECONDS": "15",
+        "BULK_IMPORT_WORKER_LEASE_SECONDS": "1800",
+        "BULK_IMPORT_MAX_ATTEMPTS": "3",
+    },
+    "status_requested": "ON",
+    "volume_mounts": {
+        IMPORT_STORAGE_PATH: {
+            "type": "tapisvolume",
+            "source_id": IMPORT_VOLUME_ID,
+            "sub_path": "",
+        }
+    },
+    "time_to_stop_default": -1,
+    "networking": {},
+    "resources": {"cpu_request": 250, "cpu_limit": 2000, "mem_request": 256, "mem_limit": 3072, "gpus": 0},
+}
+try:
+    pods_post("/pods", worker_payload)
+    print("  Created.")
+except RuntimeError as e:
+    if "already exists" in str(e).lower() or "uniqueviolation" in str(e).lower():
+        print("  Already exists — updating worker configuration.")
+        update_payload = dict(worker_payload)
+        update_payload["status_requested"] = "RESTART"
+        pods_put(f"/pods/{WORKER_ID}", update_payload)
     else:
         raise
 
@@ -274,7 +356,7 @@ except RuntimeError as e:
 # ---------------------------------------------------------------------------
 print("\nGranting admin permissions …")
 for user in ADMIN_USERS:
-    for pod_id in [POSTGRES_ID, API_ID, UI_ID]:
+    for pod_id in [POSTGRES_ID, API_ID, WORKER_ID, UI_ID]:
         try:
             pods_post(f"/pods/{pod_id}/permissions", {"user": user, "level": "ADMIN"})
             print(f"  {pod_id}: {user} → ADMIN")
@@ -287,9 +369,16 @@ for user in ADMIN_USERS:
     except RuntimeError:
         print(f"  {VOLUME_ID}: {user} → (already set or skipped)")
 
+    try:
+        pods_post(f"/pods/volumes/{IMPORT_VOLUME_ID}/permissions", {"user": user, "level": "ADMIN"})
+        print(f"  {IMPORT_VOLUME_ID}: {user} → ADMIN")
+    except RuntimeError:
+        print(f"  {IMPORT_VOLUME_ID}: {user} → (already set or skipped)")
+
 print("\nDone! Pod URLs:")
 print(f"  UI  → https://{UI_ID}.{PODS_DOMAIN}")
 print(f"  API → https://{API_ID}.{PODS_DOMAIN}")
+print(f"  Worker → {WORKER_ID} (private; no HTTP endpoint)")
 print(f"  DB  → {POSTGRES_ID}.{PODS_DOMAIN}:443")
 print("\nNote: pods take a few minutes to reach RUNNING state.")
 print("Check status at: " + BASE_URL + "/v3/pods")

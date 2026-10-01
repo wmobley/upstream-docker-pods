@@ -95,6 +95,48 @@ Chunked uploads share a client-generated `upload_session_id`. Each request may s
 - `chunk_index` — zero-based index of the current chunk.
 - `total_chunks` — total number of chunks in the upload.
 - `finalize_upload` (default `true`) — set `false` for every chunk except the last.
+- `ingestion_mode` (default `legacy`) — set to `bulk` only when
+  `BULK_INGESTION_ENABLED=true`; this is an experimental JSONB-staging path and cannot be
+  changed within an upload session.
+
+The bulk path is disabled by default. It is currently intended for local/test validation only;
+it preserves the same duplicate key and finalization behavior.
+
+### Async bulk import experiment
+
+When both `BULK_INGESTION_ENABLED=true` and `ASYNC_BULK_INGESTION_ENABLED=true`, the Phase 2A
+experiment exposes a durable, owner-scoped import workflow:
+
+- `POST /api/v1/imports?campaign_id={id}&station_id={id}` with JSON
+  `{"total_chunks": N, "total_bytes": B}` creates an import manifest.
+- `POST /api/v1/imports/{import_id}/chunks` uploads one measurement CSV chunk with form fields
+  `chunk_index` and `chunk_sha256`; include the sensors CSV only on chunk zero.
+- `POST /api/v1/imports/{import_id}/finalize` seals a complete manifest and queues it.
+- `GET /api/v1/imports/{import_id}` reports durable progress and terminal status.
+
+Chunk files are stored below `BULK_IMPORT_STORAGE_PATH` using server-generated names and atomic
+writes. The API and worker must share this storage root. For a one-shot local diagnostic, run a
+worker against the same database and volume with:
+
+```bash
+python -m app.workers.process_upload_imports --import-id <import-id>
+```
+
+The deployable worker mode polls for queued imports and handles SIGTERM-safe idle shutdown:
+
+```bash
+python -m app.workers.process_upload_imports --poll
+```
+
+The API and worker must mount the same durable volume at the same path. The develop Pod
+provisioner uses `/var/lib/upstream-bulk-imports` and a dedicated
+`upstreamdevelopimportvolume`; it requires `TAPIS_BASE_URL`, `TAS_SECRET`, and `JWT_SECRET`
+explicitly and refuses unsafe defaults. Both bulk flags remain false until the shared-volume,
+restart, lease, and cleanup checks pass.
+
+This experiment is intentionally single-worker/local-volume only. It does not persist Tapis
+tokens or run CKAN synchronization from the worker; partial measurements remain visible while a
+job is processing. Configure the `BULK_IMPORT_*` limits before enabling it.
 
 Measurements are inserted for every chunk. Expensive post-processing — sensor statistics refresh, station geometry refresh, and CKAN synchronization — runs only once, after the server verifies the session is complete (successful receipts exist for every chunk index `0..total_chunks-1` and the session is not already finalized). A finalizing chunk whose session cannot be verified complete returns `finalized=false` with `ckan_sync.status="skipped_incomplete_upload"`. A retried finalizing chunk for an already-finalized session returns `finalized=true`, `post_processing.status="already_finalized"`, and `ckan_sync.status="already_finalized"`. Legacy requests that omit `upload_session_id` are treated as a complete single-request upload.
 

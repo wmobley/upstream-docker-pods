@@ -1,0 +1,85 @@
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db.base import Base
+
+
+class UploadImport(Base):
+    """Durable control-plane state for an asynchronous bulk upload."""
+
+    __tablename__ = "upload_imports"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    station_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    owner_username: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    total_chunks: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    received_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="created")
+    storage_key: Mapped[str] = mapped_column(String(36), nullable=False, unique=True)
+    sensors_storage_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    rows_read: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    values_attempted: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    values_inserted: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    worker_token: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    lease_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_error: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    sealed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    chunks: Mapped[list["UploadImportChunk"]] = relationship(
+        back_populates="upload_import",
+        cascade="all, delete-orphan",
+        order_by="UploadImportChunk.chunk_index",
+    )
+
+
+class UploadImportChunk(Base):
+    """Immutable manifest and processing receipt for one measurement chunk."""
+
+    __tablename__ = "upload_import_chunks"
+    __table_args__ = (
+        UniqueConstraint("import_id", "chunk_index", name="uq_upload_import_chunk_index"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    import_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("upload_imports.id", ondelete="CASCADE"), nullable=False
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    byte_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Relative to the import directory; chunk_index is the uniqueness boundary.
+    storage_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    processed: Mapped[bool] = mapped_column(nullable=False, default=False)
+    upload_event_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("upload_file_events.id", ondelete="SET NULL"), nullable=True
+    )
+    rows_read: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    values_attempted: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    values_inserted: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    processed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    upload_import: Mapped[UploadImport] = relationship(back_populates="chunks")

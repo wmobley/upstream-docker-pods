@@ -42,6 +42,8 @@ jobs:
   build-and-push:
     needs: pytest
     runs-on: ubuntu-latest
+    outputs:
+      image-digest: ${{ steps.build-image.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -68,6 +70,7 @@ jobs:
             type=sha
 
       - name: Build and push Docker image
+        id: build-image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -86,6 +89,7 @@ jobs:
       TAPIS_SERVICE_PASSWORD: ${{ secrets.TAPIS_DEVELOP_PASSWORD }}
       TAPIS_BASE_URL: https://portals.tapis.io
       TAPIS_POD_ID: upstreamdevelopapi
+      TAPIS_WORKER_ID: upstreamdevelopworker
 
     steps:
       - name: Set up Python for Tapis auth
@@ -109,33 +113,56 @@ jobs:
 
       - name: Deploy to Tapis Pods (develop)
         run: |
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          IMAGE="ghcr.io/${{ env.IMAGE_NAME }}:sha-${SHORT_SHA}"
+          set -euo pipefail
+          DIGEST="${{ needs.build-and-push.outputs.image-digest }}"
+          if [[ "${TAPIS_BASE_URL}" != "https://portals.tapis.io" ]]; then
+            echo "Refusing to update an unapproved Tapis control plane: ${TAPIS_BASE_URL}"
+            exit 1
+          fi
+          if [[ "${DIGEST}" != sha256:* ]]; then
+            echo "Build did not produce an immutable image digest"
+            exit 1
+          fi
+          IMAGE="ghcr.io/${{ env.IMAGE_NAME }}@${DIGEST}"
           TAPIS_TOKEN="${{ steps.tapis_token.outputs.token }}"
 
-          POD=$(curl -sf "${TAPIS_BASE_URL}/v3/pods/${TAPIS_POD_ID}" \
-            -H "X-Tapis-Token: ${TAPIS_TOKEN}" | jq '.result')
+          update_pod() {
+            local pod_id="$1"
+            local startup_cmd="$2"
+            local is_worker="$3"
+            local pod
+            local payload
+            pod=$(curl -sf "${TAPIS_BASE_URL}/v3/pods/${pod_id}" \
+              -H "X-Tapis-Token: ${TAPIS_TOKEN}" | jq '.result')
+            payload=$(echo "$pod" | jq --arg img "$IMAGE" --arg tapis "$TAPIS_BASE_URL" --argjson cmd "$startup_cmd" --argjson is_worker "$is_worker" '{
+              image: $img,
+              description: .description,
+              command: $cmd,
+              arguments: .arguments,
+              environment_variables: ((.environment_variables // {}) + {
+                "TAPIS_BASE_URL": $tapis,
+                "BULK_INGESTION_ENABLED": "false",
+                "ASYNC_BULK_INGESTION_ENABLED": "false",
+                "BULK_IMPORT_STORAGE_PATH": "/var/lib/upstream-bulk-imports",
+                "BULK_IMPORT_WORKER_POLL_SECONDS": "15"
+              }),
+              secret_map: (.secret_map // {}),
+              status_requested: "RESTART",
+              volume_mounts: (.volume_mounts // {}),
+              time_to_stop_default: (.time_to_stop_default // -1),
+              time_to_stop_instance: .time_to_stop_instance,
+              networking: (.networking // {}),
+              resources: (.resources // {}),
+              compute_queue: (.compute_queue // "default")
+            } | if $is_worker then .environment_variables |= del(.TAS_USER, .TAS_SECRET, .JWT_SECRET, .TAS_URL, .TAPIS_BASE_URL, .CKAN_URL, .CKAN_ADMIN_API_KEY) else . end')
+            echo "$payload" | jq -e --arg expected "$IMAGE" '.image == $expected' >/dev/null
+            curl -sf -X PUT "${TAPIS_BASE_URL}/v3/pods/${pod_id}" \
+              -H "X-Tapis-Token: ${TAPIS_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$payload" | jq -r ".status | \"${pod_id}: \" + tostring"
+          }
 
-          STARTUP_CMD='["/bin/bash","-c","until alembic upgrade heads; do echo Waiting for DB...; sleep 10; done && uvicorn app.main:app --reload --host 0.0.0.0"]'
-
-          PAYLOAD=$(echo "$POD" | jq --arg img "$IMAGE" --argjson cmd "$STARTUP_CMD" '{
-            image: $img,
-            description: .description,
-            command: $cmd,
-            arguments: .arguments,
-            environment_variables: (.environment_variables // {}),
-            secret_map: (.secret_map // {}),
-            status_requested: "RESTART",
-            volume_mounts: (.volume_mounts // {}),
-            time_to_stop_default: (.time_to_stop_default // -1),
-            time_to_stop_instance: .time_to_stop_instance,
-            networking: (.networking // {}),
-            resources: (.resources // {}),
-            compute_queue: (.compute_queue // "default")
-          }')
-
-          STATUS=$(curl -sf -X PUT "${TAPIS_BASE_URL}/v3/pods/${TAPIS_POD_ID}" \
-            -H "X-Tapis-Token: ${TAPIS_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "$PAYLOAD" | jq -r '.status')
-          echo "Tapis Pods update status: ${STATUS}"
+          API_STARTUP_CMD='["/bin/bash","-c","until alembic upgrade heads; do echo Waiting for DB...; sleep 10; done && uvicorn app.main:app --host 0.0.0.0"]'
+          WORKER_STARTUP_CMD='["/bin/bash","-c","python -m app.workers.process_upload_imports --poll"]'
+          update_pod "${TAPIS_POD_ID}" "$API_STARTUP_CMD" false
+          update_pod "${TAPIS_WORKER_ID}" "$WORKER_STARTUP_CMD" true

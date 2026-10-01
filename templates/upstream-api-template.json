@@ -3,7 +3,7 @@
   "description": "Upstream API connected to the Postgres pod",
   "template": {
     "pod_id": "{{BASE}}api",
-    "image": "ghcr.io/wmobley/upstream-docker-pods:main",
+    "image": "{{API_IMAGE}}",
     "pod_template": "",
     "description": "Upstream API connected to postgres pod",
     "command": [
@@ -15,12 +15,12 @@
       "DATABASE_URL": "postgresql+psycopg://{{PG_USER}}:{{PG_PASSWORD}}@{{BASE}}postgres.pods.portals.tapis.io:443/{{PG_USER}}",
       "VITE_UPSTREAM_API_URL": "https://{{BASE}}.pods.portals.tapis.io",
       "POSTGRES_PASSWORD": "{{PG_PASSWORD}}",
-      "TAS_USER": "tasclient_dsso",
-      "TAS_SECRET": "2TjvnY22spKet8cdZwxYZjunLmQCKFRkN9vEtWNnv2JV5vZnCUDxKCxsQyFJJxXG",
-      "JWT_SECRET": "iHaveADogHerNameIsAcacia",
+      "TAS_USER": "{{TAS_USER}}",
+      "TAS_SECRET": "{{TAS_SECRET}}",
+      "JWT_SECRET": "{{JWT_SECRET}}",
       "ALG": "HS256",
       "TAS_URL": "https://tas-dev.tacc.utexas.edu/api-test",
-      "TAPIS_PODS_BASE_URL": "https://pods.portals.tapis.io",
+      "TAPIS_PODS_BASE_URL": "{{TAPIS_PODS_BASE_URL}}",
       "ENVIRONMENT": "production",
       "ENV": "production",
       "CKAN_URL": "https://ckan.tacc.utexas.edu",
@@ -30,10 +30,20 @@
       "CKAN_ADMIN_API_KEY": "{{CKAN_ADMIN_API_KEY}}",
       "UI_BASE_URL": "https://{{BASE}}.pods.portals.tapis.io",
       "API_BASE_URL": "https://{{BASE}}api.pods.portals.tapis.io",
+      "BULK_INGESTION_ENABLED": "false",
+      "ASYNC_BULK_INGESTION_ENABLED": "false",
+      "BULK_IMPORT_STORAGE_PATH": "/var/lib/upstream-bulk-imports",
+      "BULK_IMPORT_WORKER_POLL_SECONDS": "15",
       "UPSTREAM_RELEASE": "{{IMAGE_TAG}}"
     },
     "status_requested": "ON",
-    "volume_mounts": {},
+    "volume_mounts": {
+      "/var/lib/upstream-bulk-imports": {
+        "type": "tapisvolume",
+        "source_id": "{{IMPORT_VOLUME_ID}}",
+        "sub_path": ""
+      }
+    },
     "time_to_stop_default": -1,
     "networking": {
       "default": {

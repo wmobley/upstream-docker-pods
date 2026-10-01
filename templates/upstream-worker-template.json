@@ -1,0 +1,38 @@
+{
+  "template_id": "upstreamworkertemplate",
+  "description": "Upstream async import worker using the API image and shared import volume",
+  "template": {
+    "pod_id": "{{BASE}}worker",
+    "image": "{{WORKER_IMAGE}}",
+    "description": "Upstream async import worker",
+    "command": ["/bin/bash", "-c", "python -m app.workers.process_upload_imports --poll"],
+    "environment_variables": {
+      "DATABASE_URL": "postgresql+psycopg://{{PG_USER}}:{{PG_PASSWORD}}@{{BASE}}postgres.pods.portals.tapis.io:443/{{PG_USER}}",
+      "ENVIRONMENT": "{{ENVIRONMENT}}",
+      "ENV": "{{ENVIRONMENT}}",
+      "BULK_INGESTION_ENABLED": "false",
+      "ASYNC_BULK_INGESTION_ENABLED": "false",
+      "BULK_IMPORT_STORAGE_PATH": "/var/lib/upstream-bulk-imports",
+      "BULK_IMPORT_WORKER_POLL_SECONDS": "15",
+      "BULK_IMPORT_WORKER_LEASE_SECONDS": "1800",
+      "BULK_IMPORT_MAX_ATTEMPTS": "3"
+    },
+    "status_requested": "ON",
+    "volume_mounts": {
+      "/var/lib/upstream-bulk-imports": {
+        "type": "tapisvolume",
+        "source_id": "{{IMPORT_VOLUME_ID}}",
+        "sub_path": ""
+      }
+    },
+    "time_to_stop_default": -1,
+    "networking": {},
+    "resources": {
+      "cpu_request": 250,
+      "cpu_limit": 2000,
+      "mem_request": 256,
+      "mem_limit": 3072,
+      "gpus": 0
+    }
+  }
+}

@@ -42,6 +42,7 @@ class UploadFileCsvResponse(BaseModel):
     finalized: bool
     chunk_index: int | None = None
     total_chunks: int | None = None
+    ingestion_mode: str = "legacy"
     audit: UploadAudit
     post_processing: UploadPostProcessing
     ckan_sync: UploadCkanSync
