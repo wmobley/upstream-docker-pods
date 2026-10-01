@@ -49,8 +49,18 @@ def test_workflow_uses_one_digest_for_api_and_worker():
     assert "image-digest:" in workflow
     assert 'DIGEST="${{ needs.build-and-push.outputs.image-digest }}"' in workflow
     assert 'IMAGE="ghcr.io/${{ env.IMAGE_NAME }}@${DIGEST}"' in workflow
-    assert 'update_pod "${TAPIS_POD_ID}"' in workflow
-    assert 'update_pod "${TAPIS_WORKER_ID}"' in workflow
+    assert 'request_json PUT "/v3/pods/${TAPIS_POD_ID}"' in workflow
+    assert 'request_json PUT "/v3/pods/${TAPIS_WORKER_ID}"' in workflow
     assert '"BULK_INGESTION_ENABLED": "false"' in workflow
     assert '"ASYNC_BULK_INGESTION_ENABLED": "false"' in workflow
     assert 'https://portals.tapis.io' in workflow
+
+
+def test_workflow_provisions_missing_worker_and_shared_volume():
+    workflow = (ROOT / ".github" / "workflows" / "build-docker-image.yaml").read_text()
+
+    assert 'IMPORT_VOLUME_ID="upstreamdevelopimportvolume"' in workflow
+    assert 'request_json POST "/v3/pods/volumes"' in workflow
+    assert 'request_json POST "/v3/pods"' in workflow
+    assert 'source_id: $volume' in workflow
+    assert 'Existing API pod does not expose DATABASE_URL' in workflow
