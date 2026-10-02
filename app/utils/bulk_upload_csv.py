@@ -13,14 +13,14 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import bindparam, text
+from sqlalchemy import Float, bindparam, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from app.utils.timezone import localize_collectiontime
 
 
-STAGING_BATCH_SIZE = 500
+STAGING_BATCH_SIZE = 100
 
 
 @dataclass
@@ -47,13 +47,7 @@ BULK_INSERT_SQL = text(
             stage.source_row_ordinal,
             sensor_value.key::INTEGER AS sensorid,
             sensor_value.value::DOUBLE PRECISION AS measurementvalue,
-            ST_SetSRID(
-                ST_MakePoint(
-                    stage.lon::DOUBLE PRECISION,
-                    stage.lat::DOUBLE PRECISION
-                ),
-                4326
-            ) AS geometry
+            stage.geometry
         FROM upload_measurement_bulk_stage AS stage
         CROSS JOIN LATERAL jsonb_each_text(stage.sensor_values) AS sensor_value
     ), first_source AS (
@@ -178,6 +172,7 @@ def process_measurements_file_bulk(
     upload_event_id: int,
     session: Session,
     station_timezone: str | None = None,
+    staging_batch_size: int = STAGING_BATCH_SIZE,
 ) -> BulkMeasurementsProcessingResult:
     """Process one bounded upload chunk with JSONB staging and SQL unpivoting.
 
@@ -187,6 +182,8 @@ def process_measurements_file_bulk(
     """
     if not alias_to_sensorid_map:
         return BulkMeasurementsProcessingResult()
+    if staging_batch_size <= 0:
+        raise ValueError("staging_batch_size must be positive")
 
     timezone = station_timezone or "UTC"
     text_stream = io.TextIOWrapper(file.file, encoding="utf-8-sig", newline="")
@@ -220,8 +217,9 @@ def process_measurements_file_bulk(
                 source_row_ordinal BIGINT NOT NULL,
                 stationid INTEGER NOT NULL,
                 collectiontime TIMESTAMPTZ NOT NULL,
-                lat TEXT NOT NULL,
-                lon TEXT NOT NULL,
+                lat DOUBLE PRECISION NOT NULL,
+                lon DOUBLE PRECISION NOT NULL,
+                geometry geometry(POINT, 4326) NOT NULL,
                 sensor_values JSONB NOT NULL
             ) ON COMMIT DELETE ROWS
             """
@@ -230,11 +228,26 @@ def process_measurements_file_bulk(
     stage_insert = text(
         """
         INSERT INTO upload_measurement_bulk_stage
-            (source_row_ordinal, stationid, collectiontime, lat, lon, sensor_values)
+            (source_row_ordinal, stationid, collectiontime, lat, lon, geometry, sensor_values)
         VALUES
-            (:source_row_ordinal, :stationid, :collectiontime, :lat, :lon, :sensor_values)
+            (
+                :source_row_ordinal,
+                :stationid,
+                :collectiontime,
+                :lat,
+                :lon,
+                ST_SetSRID(
+                    ST_MakePoint(:lon, :lat),
+                    4326
+                ),
+                :sensor_values
+            )
         """
-    ).bindparams(bindparam("sensor_values", type_=JSONB))
+    ).bindparams(
+        bindparam("lat", type_=Float),
+        bindparam("lon", type_=Float),
+        bindparam("sensor_values", type_=JSONB),
+    )
 
     result = BulkMeasurementsProcessingResult(errors=errors)
     stage_batch: list[dict[str, Any]] = []
@@ -250,7 +263,7 @@ def process_measurements_file_bulk(
                 per_alias=result.per_alias,
             )
         )
-        if len(stage_batch) >= STAGING_BATCH_SIZE:
+        if len(stage_batch) >= staging_batch_size:
             attempted, inserted = _flush_stage_batch(
                 session, stage_insert, stage_batch, upload_event_id
             )

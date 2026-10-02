@@ -5,6 +5,7 @@ PyJWT==2.10.1
 tapipy==1.8.5
 python-dotenv==1.0.1
 sqlalchemy==2.0.39
+alembic
 pydantic-settings
 fastapi[standard]<1.0.0,>=0.114.2
 geoalchemy2

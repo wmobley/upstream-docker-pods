@@ -43,16 +43,16 @@ def test_develop_provisioner_requires_explicit_control_plane_and_worker():
     assert "--poll" in script
 
 
-def test_workflow_uses_one_digest_for_api_and_worker():
+def test_workflow_uses_one_commit_tag_for_api_and_worker():
     workflow = (ROOT / ".github" / "workflows" / "build-docker-image.yaml").read_text()
 
-    assert "image-digest:" in workflow
-    assert 'DIGEST="${{ needs.build-and-push.outputs.image-digest }}"' in workflow
-    assert 'IMAGE="ghcr.io/${{ env.IMAGE_NAME }}@${DIGEST}"' in workflow
+    assert "type=raw,value=develop-${{ github.sha }}" in workflow
+    assert 'IMAGE="ghcr.io/${{ env.IMAGE_NAME }}:develop-${GITHUB_SHA}"' in workflow
     assert 'request_json PUT "/v3/pods/${TAPIS_POD_ID}"' in workflow
     assert 'request_json PUT "/v3/pods/${TAPIS_WORKER_ID}"' in workflow
-    assert '"BULK_INGESTION_ENABLED": "false"' in workflow
-    assert '"ASYNC_BULK_INGESTION_ENABLED": "false"' in workflow
+    assert '"BULK_INGESTION_ENABLED": "true"' in workflow
+    assert '"ASYNC_BULK_INGESTION_ENABLED": "true"' in workflow
+    assert '"BULK_IMPORT_STAGING_BATCH_SIZE": "100"' in workflow
     assert 'https://portals.tapis.io' in workflow
 
 

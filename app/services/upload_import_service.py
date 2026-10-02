@@ -175,7 +175,7 @@ def process_claimed_import(
     settings: Settings,
     record: UploadImport,
     worker_token: str,
-) -> UploadImport:
+) -> tuple[UploadImport, dict[str, int]]:
     if record.status != "processing" or record.worker_token != worker_token:
         raise UploadImportLeaseLost(f"Import {record.id} is not owned by this worker")
 
@@ -225,6 +225,7 @@ def process_claimed_import(
                     getattr(StationRepository(db).get_station(record.station_id), "timezone", None)
                     or "UTC"
                 ),
+                staging_batch_size=settings.BULK_IMPORT_STAGING_BATCH_SIZE,
             )
         event.measurement_rows_read = result.rows_read
         event.measurement_values_attempted = result.values_attempted
@@ -244,6 +245,24 @@ def process_claimed_import(
     heartbeat(db, settings, record.id, worker_token)
     if not alias_to_sensorid:
         raise ValueError("Import produced no sensor mapping")
+    return record, alias_to_sensorid
+
+
+def post_process_claimed_import(
+    db: Session,
+    settings: Settings,
+    record: UploadImport,
+    worker_token: str,
+    alias_to_sensorid: dict[str, int],
+) -> UploadImport:
+    """Run post-import statistics/geometry work after chunk commits complete."""
+    if record.status != "processing" or record.worker_token != worker_token:
+        raise UploadImportLeaseLost(f"Import {record.id} is not owned by this worker")
+
+    if not alias_to_sensorid:
+        raise ValueError("Import produced no sensor mapping")
+
+    heartbeat(db, settings, record.id, worker_token)
     update_sensor_statistics(SensorRepository(db), alias_to_sensorid)
     StationService(StationRepository(db)).refresh_geometry(record.station_id)
     current_record = db.query(UploadImport).filter(UploadImport.id == record.id).first()

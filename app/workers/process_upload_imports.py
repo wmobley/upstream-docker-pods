@@ -27,6 +27,7 @@ from app.services.upload_import_service import (
     UploadImportLeaseLost,
     claim_import,
     mark_import_failure,
+    post_process_claimed_import,
     process_claimed_import,
 )
 from app.services.upload_import_storage import cleanup_import_storage
@@ -55,7 +56,10 @@ def run_once(import_id: str | None = None) -> int:
                 return 0
             record, worker_token = claimed
             try:
-                process_claimed_import(db, settings, record, worker_token)
+                record, alias_to_sensorid = process_claimed_import(db, settings, record, worker_token)
+                post_process_claimed_import(
+                    db, settings, record, worker_token, alias_to_sensorid
+                )
                 logger.info("Completed async import %s", record.id)
                 try:
                     cleanup_import_storage(settings, record.storage_key, status="completed")

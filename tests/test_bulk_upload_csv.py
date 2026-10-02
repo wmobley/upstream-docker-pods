@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from fastapi import UploadFile
 
 from app.utils.bulk_upload_csv import (
+    BULK_INSERT_SQL,
     _parse_stage_row,
     process_measurements_file_bulk,
 )
@@ -60,3 +61,15 @@ def test_bulk_processor_reports_set_based_insert_counts() -> None:
     assert result.values_inserted == 1
     assert result.values_skipped_duplicate == 1
     session.commit.assert_called_once()
+    stage_insert = session.execute.call_args_list[1].args[0]
+    assert stage_insert._bindparams["lat"].type.python_type is float
+    assert stage_insert._bindparams["lon"].type.python_type is float
+
+
+def test_bulk_sql_reuses_staged_geometry_and_keeps_source_deduplication() -> None:
+    sql = str(BULK_INSERT_SQL)
+
+    assert "stage.geometry" in sql
+    assert "ST_MakePoint" not in sql
+    assert "DISTINCT ON (sensorid, collectiontime)" in sql
+    assert "ON CONFLICT (sensorid, collectiontime) DO NOTHING" in sql

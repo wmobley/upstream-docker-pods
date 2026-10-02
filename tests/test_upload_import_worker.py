@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
@@ -114,6 +115,45 @@ def test_poll_worker_processes_until_shutdown(monkeypatch):
         run_once_fn=fake_run_once,
     ) == 0
     assert calls == [1]
+
+
+def test_run_once_separates_chunk_processing_from_post_processing(monkeypatch):
+    settings = Settings(
+        BULK_INGESTION_ENABLED=True,
+        ASYNC_BULK_INGESTION_ENABLED=True,
+    )
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+
+    class FakeDB:
+        def close(self):
+            pass
+
+        def rollback(self):
+            pass
+
+    record = SimpleNamespace(id="import-1", storage_key="import-1")
+    monkeypatch.setattr(worker, "SessionLocal", lambda: FakeDB())
+    monkeypatch.setattr(worker, "claim_import", lambda db, settings, import_id=None: (record, "token"))
+    calls: list[str] = []
+
+    def process_chunks(db, settings, claimed_record, token):
+        calls.append("chunks")
+        return claimed_record, {}
+
+    monkeypatch.setattr(
+        worker,
+        "process_claimed_import",
+        process_chunks,
+    )
+    monkeypatch.setattr(
+        worker,
+        "post_process_claimed_import",
+        lambda db, settings, record, token, alias_to_sensorid: calls.append("post-processing"),
+    )
+    monkeypatch.setattr(worker, "cleanup_import_storage", lambda *args, **kwargs: None)
+
+    assert worker.run_once() == 0
+    assert calls == ["chunks", "post-processing"]
 
 
 def test_poll_interval_must_be_positive_and_bounded():

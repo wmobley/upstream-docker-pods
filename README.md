@@ -136,7 +136,9 @@ restart, lease, and cleanup checks pass.
 
 This experiment is intentionally single-worker/local-volume only. It does not persist Tapis
 tokens or run CKAN synchronization from the worker; partial measurements remain visible while a
-job is processing. Configure the `BULK_IMPORT_*` limits before enabling it.
+job is processing. Configure the `BULK_IMPORT_*` limits before enabling it. The worker defaults
+to `BULK_IMPORT_STAGING_BATCH_SIZE=100`, which bounds each JSONB expansion/insert operation;
+lower it further when database memory is constrained.
 
 Measurements are inserted for every chunk. Expensive post-processing — sensor statistics refresh, station geometry refresh, and CKAN synchronization — runs only once, after the server verifies the session is complete (successful receipts exist for every chunk index `0..total_chunks-1` and the session is not already finalized). A finalizing chunk whose session cannot be verified complete returns `finalized=false` with `ckan_sync.status="skipped_incomplete_upload"`. A retried finalizing chunk for an already-finalized session returns `finalized=true`, `post_processing.status="already_finalized"`, and `ckan_sync.status="already_finalized"`. Legacy requests that omit `upload_session_id` are treated as a complete single-request upload.
 

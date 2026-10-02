@@ -68,6 +68,7 @@ jobs:
             type=ref,event=branch
             type=ref,event=pr
             type=sha
+            type=raw,value=develop-${{ github.sha }}
 
       - name: Build and push Docker image
         id: build-image
@@ -114,16 +115,11 @@ jobs:
       - name: Deploy to Tapis Pods (develop)
         run: |
           set -euo pipefail
-          DIGEST="${{ needs.build-and-push.outputs.image-digest }}"
           if [[ "${TAPIS_BASE_URL}" != "https://portals.tapis.io" ]]; then
             echo "Refusing to update an unapproved Tapis control plane: ${TAPIS_BASE_URL}"
             exit 1
           fi
-          if [[ "${DIGEST}" != sha256:* ]]; then
-            echo "Build did not produce an immutable image digest"
-            exit 1
-          fi
-          IMAGE="ghcr.io/${{ env.IMAGE_NAME }}@${DIGEST}"
+          IMAGE="ghcr.io/${{ env.IMAGE_NAME }}:develop-${GITHUB_SHA}"
           TAPIS_TOKEN="${{ steps.tapis_token.outputs.token }}"
 
           request_json() {
@@ -196,9 +192,10 @@ jobs:
             arguments: .arguments,
             environment_variables: ((.environment_variables // {}) + {
               "TAPIS_BASE_URL": $tapis,
-              "BULK_INGESTION_ENABLED": "false",
-              "ASYNC_BULK_INGESTION_ENABLED": "false",
+              "BULK_INGESTION_ENABLED": "true",
+              "ASYNC_BULK_INGESTION_ENABLED": "true",
               "BULK_IMPORT_STORAGE_PATH": $path,
+              "BULK_IMPORT_STAGING_BATCH_SIZE": "100",
               "BULK_IMPORT_WORKER_POLL_SECONDS": "15"
             }),
             secret_map: (.secret_map // {}),
@@ -219,29 +216,35 @@ jobs:
             worker_payload="$(jq --arg img "$IMAGE" --arg db "$database_url" --arg stack "$(jq -r '.stack_id // "upstreamdevelop"' <<<"$api")" --arg volume "$IMPORT_VOLUME_ID" --arg path "$IMPORT_STORAGE_PATH" --argjson cmd "$WORKER_STARTUP_CMD" --argjson existing "$(jq '.result' <<<"$worker")" '{
               image: $img,
               description: ($existing.description // "Upstream async import worker"),
-              stack_id: ($existing.stack_id // $stack),
               command: $cmd,
               arguments: ($existing.arguments // []),
               environment_variables: {
                 "DATABASE_URL": $db,
                 "ENVIRONMENT": "develop",
                 "ENV": "develop",
-                "BULK_INGESTION_ENABLED": "false",
-                "ASYNC_BULK_INGESTION_ENABLED": "false",
+                "BULK_INGESTION_ENABLED": "true",
+                "ASYNC_BULK_INGESTION_ENABLED": "true",
                 "BULK_IMPORT_STORAGE_PATH": $path,
+                "BULK_IMPORT_STAGING_BATCH_SIZE": "100",
                 "BULK_IMPORT_WORKER_POLL_SECONDS": "15",
                 "BULK_IMPORT_WORKER_LEASE_SECONDS": "1800",
                 "BULK_IMPORT_MAX_ATTEMPTS": "3"
               },
               secret_map: {},
-              status_requested: "RESTART",
+              status_requested: "ON",
               volume_mounts: {($path): {type: "tapisvolume", source_id: $volume, sub_path: ""}},
               time_to_stop_default: ($existing.time_to_stop_default // -1),
               time_to_stop_instance: $existing.time_to_stop_instance,
-              networking: {},
+              networking: ($existing.networking // {
+                default: {
+                  protocol: "local_only",
+                  port: 8000,
+                  url: "upstreamdevelopworker.pods.portals.tapis.io"
+                }
+              }),
               resources: ($existing.resources // {cpu_request: 250, cpu_limit: 2000, mem_request: 256, mem_limit: 3072, gpus: 0}),
               compute_queue: ($existing.compute_queue // "default")
-            }')"
+            }' <<<"$worker")"
             request_json PUT "/v3/pods/${TAPIS_WORKER_ID}" "$worker_payload" | jq -r '.status // .result.status // "updated"' | sed "s/^/${TAPIS_WORKER_ID}: /"
           else
             worker_status=$?
@@ -259,9 +262,10 @@ jobs:
                 "DATABASE_URL": $db,
                 "ENVIRONMENT": "develop",
                 "ENV": "develop",
-                "BULK_INGESTION_ENABLED": "false",
-                "ASYNC_BULK_INGESTION_ENABLED": "false",
+                "BULK_INGESTION_ENABLED": "true",
+                "ASYNC_BULK_INGESTION_ENABLED": "true",
                 "BULK_IMPORT_STORAGE_PATH": $path,
+                "BULK_IMPORT_STAGING_BATCH_SIZE": "100",
                 "BULK_IMPORT_WORKER_POLL_SECONDS": "15",
                 "BULK_IMPORT_WORKER_LEASE_SECONDS": "1800",
                 "BULK_IMPORT_MAX_ATTEMPTS": "3"
@@ -269,7 +273,13 @@ jobs:
               status_requested: "ON",
               volume_mounts: {($path): {type: "tapisvolume", source_id: $volume, sub_path: ""}},
               time_to_stop_default: -1,
-              networking: {},
+              networking: {
+                default: {
+                  protocol: "local_only",
+                  port: 8000,
+                  url: "upstreamdevelopworker.pods.portals.tapis.io"
+                }
+              },
               resources: {cpu_request: 250, cpu_limit: 2000, mem_request: 256, mem_limit: 3072, gpus: 0}
             }')"
             request_json POST "/v3/pods" "$worker_payload" | jq -r '.status // .result.status // "created"' | sed "s/^/${TAPIS_WORKER_ID}: /"
