@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     BULK_IMPORT_WORKER_LEASE_SECONDS: int = Field(default=1800, ge=30)
     BULK_IMPORT_MAX_ATTEMPTS: int = Field(default=3, ge=1, le=10)
     BULK_IMPORT_WORKER_POLL_SECONDS: float = Field(default=15.0, gt=0, le=3600)
+    BULK_IMPORT_GEOMETRY_STATEMENT_TIMEOUT_MS: int = Field(default=300000, ge=0)
 
     model_config = SettingsConfigDict(
         env_file=".env",

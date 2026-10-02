@@ -148,6 +148,7 @@ This experiment is intentionally single-worker/local-volume only. It does not pe
 tokens or run CKAN synchronization from the worker; partial measurements remain visible while a
 job is processing. Configure the `BULK_IMPORT_*` limits before enabling it. The worker defaults
 to `BULK_IMPORT_STAGING_BATCH_SIZE=100`, which bounds each JSONB expansion/insert operation;
+`BULK_IMPORT_GEOMETRY_STATEMENT_TIMEOUT_MS` bounds the station-geometry refresh transaction.
 lower it further when database memory is constrained.
 
 Measurements are inserted for every chunk. The async import status is `data_loaded` after all

@@ -101,31 +101,56 @@ def run_post_process_once(import_id: str | None = None) -> int:
                 logger.info("No data-loaded import awaiting post-processing")
                 return 0
             record, post_processing_token = claimed
+            import_id = record.id
+            storage_key = record.storage_key
             try:
                 post_process_claimed_import(
                     db, settings, record, post_processing_token
                 )
-                logger.info("Completed async import post-processing %s", record.id)
+                logger.info("Completed async import post-processing %s", import_id)
                 try:
-                    cleanup_import_storage(settings, record.storage_key, status="completed")
+                    cleanup_import_storage(settings, storage_key, status="completed")
                 except Exception:
                     logger.exception(
-                        "Could not clean up completed import %s storage", record.id
+                        "Could not clean up completed import %s storage", import_id
                     )
                 return 0
             except UploadImportLeaseLost:
                 db.rollback()
                 logger.warning(
                     "Lost post-processing lease while processing async import %s",
-                    record.id,
+                    import_id,
                 )
                 return 3
             except Exception as exc:
                 db.rollback()
-                logger.exception("Async import post-processing %s failed", record.id)
-                mark_post_processing_failure(
-                    db, settings, record.id, post_processing_token, exc
-                )
+                logger.exception("Async import post-processing %s failed", import_id)
+                # A database/SSL failure can poison the current SQLAlchemy
+                # connection. Record failure through a fresh session so the
+                # original exception is not replaced by a lazy-load or
+                # rollback error from the failed session.
+                db.close()
+                failure_db = SessionLocal()
+                try:
+                    terminal = mark_post_processing_failure(
+                        failure_db, settings, import_id, post_processing_token, exc
+                    )
+                except Exception:
+                    logger.exception(
+                        "Could not persist post-processing failure for %s",
+                        import_id,
+                    )
+                    terminal = False
+                finally:
+                    failure_db.close()
+                if terminal:
+                    try:
+                        cleanup_import_storage(settings, storage_key, status="failed")
+                    except Exception:
+                        logger.exception(
+                            "Could not clean up failed post-processing import %s",
+                            import_id,
+                        )
                 return 1
         finally:
             db.close()

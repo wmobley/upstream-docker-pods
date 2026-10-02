@@ -230,8 +230,15 @@ class StationRepository:
         )
         return db_station
 
-    def refresh_geometry(self, station_id: int) -> None:
+    def refresh_geometry(
+        self, station_id: int, *, statement_timeout_ms: int | None = None
+    ) -> None:
         """Recalculate station geometry from measurement points."""
+        if statement_timeout_ms:
+            self.db.execute(
+                text("SELECT set_config('statement_timeout', :timeout, true)"),
+                {"timeout": f"{statement_timeout_ms}ms"},
+            )
         self.db.execute(
             text("SELECT update_station_geometry(:station_id)"),
             {"station_id": station_id},

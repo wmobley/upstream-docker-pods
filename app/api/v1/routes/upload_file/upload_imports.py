@@ -17,6 +17,7 @@ from app.api.v1.schemas.upload_import import (
     UploadImportStatusResponse,
     FinalizeImportStatus,
     ImportStatus,
+    PostProcessingStage,
     PostProcessingStatus,
 )
 from app.api.v1.schemas.user import User
@@ -75,6 +76,7 @@ def _status_response(db: Session, record: UploadImport) -> UploadImportStatusRes
         values_inserted=record.values_inserted,
         status=cast(ImportStatus, record.status),
         post_processing_status=cast(PostProcessingStatus, record.post_processing_status),
+        post_processing_stage=cast(PostProcessingStage | None, record.post_processing_stage),
         post_processing_attempts=record.post_processing_attempts,
         post_processing_error=record.post_processing_error,
         last_error=record.last_error,

@@ -271,6 +271,7 @@ def claim_post_processing(
             ),
             and_(
                 UploadImport.post_processing_status == "processing",
+                UploadImport.post_processing_attempts < settings.BULK_IMPORT_MAX_ATTEMPTS,
                 UploadImport.post_processing_lease_expires_at.is_not(None),
                 UploadImport.post_processing_lease_expires_at <= now,
             ),
@@ -293,6 +294,8 @@ def claim_post_processing(
     record.post_processing_attempts += 1
     record.post_processing_started_at = now
     record.post_processing_error = None
+    if record.post_processing_stage is None:
+        record.post_processing_stage = "statistics"
     record.updated_at = now
     db.commit()
     return record, token
@@ -327,34 +330,69 @@ def post_process_claimed_import(
     record: UploadImport,
     post_processing_token: str,
 ) -> UploadImport:
-    """Run statistics/geometry work after chunk ingestion has completed."""
+    """Run one retryable statistics/geometry stage after ingestion completes."""
+    import_id = record.id
+    station_id = record.station_id
+    stage = record.post_processing_stage or "statistics"
     if (
         record.status != "data_loaded"
         or record.post_processing_status != "processing"
         or record.post_processing_token != post_processing_token
     ):
         raise UploadImportLeaseLost(
-            f"Post-processing lease for import {record.id} is not owned by this worker"
+            f"Post-processing lease for import {import_id} is not owned by this worker"
         )
 
     alias_to_sensorid = dict(record.sensor_mapping or {})
     if not alias_to_sensorid:
         raise ValueError("Import produced no sensor mapping")
 
-    heartbeat_post_processing(db, settings, record.id, post_processing_token)
-    update_sensor_statistics(
-        SensorRepository(db),
-        alias_to_sensorid,
-        heartbeat_callback=lambda: heartbeat_post_processing(
-            db, settings, record.id, post_processing_token
-        ),
+    if stage == "statistics":
+        heartbeat_post_processing(db, settings, import_id, post_processing_token)
+        update_sensor_statistics(
+            SensorRepository(db),
+            alias_to_sensorid,
+            heartbeat_callback=lambda: heartbeat_post_processing(
+                db, settings, import_id, post_processing_token
+            ),
+        )
+        advanced = (
+            db.query(UploadImport)
+            .filter(
+                UploadImport.id == import_id,
+                UploadImport.status == "data_loaded",
+                UploadImport.post_processing_status == "processing",
+                UploadImport.post_processing_token == post_processing_token,
+            )
+            .update(
+                {
+                    UploadImport.post_processing_stage: "geometry",
+                    UploadImport.updated_at: utcnow(),
+                },
+                synchronize_session=False,
+            )
+        )
+        if advanced != 1:
+            db.rollback()
+            raise UploadImportLeaseLost(
+                f"Post-processing lease for import {import_id} was lost after statistics"
+            )
+        db.commit()
+        stage = "geometry"
+
+    if stage != "geometry":
+        raise ValueError(f"Unknown post-processing stage: {stage}")
+
+    heartbeat_post_processing(db, settings, import_id, post_processing_token)
+    StationService(StationRepository(db)).refresh_geometry(
+        station_id,
+        statement_timeout_ms=settings.BULK_IMPORT_GEOMETRY_STATEMENT_TIMEOUT_MS,
     )
-    StationService(StationRepository(db)).refresh_geometry(record.station_id)
     completed_at = utcnow()
     updated = (
         db.query(UploadImport)
         .filter(
-            UploadImport.id == record.id,
+            UploadImport.id == import_id,
             UploadImport.status == "data_loaded",
             UploadImport.post_processing_status == "processing",
             UploadImport.post_processing_token == post_processing_token,
@@ -362,6 +400,7 @@ def post_process_claimed_import(
         .update(
             {
                 UploadImport.post_processing_status: "completed",
+                UploadImport.post_processing_stage: None,
                 UploadImport.post_processing_error: None,
                 UploadImport.post_processing_completed_at: completed_at,
                 UploadImport.post_processing_lease_expires_at: None,
@@ -376,10 +415,10 @@ def post_process_claimed_import(
     if updated != 1:
         db.rollback()
         raise UploadImportLeaseLost(
-            f"Post-processing lease for import {record.id} was lost before completion"
+            f"Post-processing lease for import {import_id} was lost before completion"
         )
     db.commit()
-    completed_record = db.query(UploadImport).filter(UploadImport.id == record.id).one()
+    completed_record = db.query(UploadImport).filter(UploadImport.id == import_id).one()
     return completed_record
 
 

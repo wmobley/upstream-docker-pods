@@ -18,6 +18,7 @@ FinalizeImportStatus = Literal[
     "queued", "processing", "data_loaded", "completed", "failed"
 ]
 PostProcessingStatus = Literal["pending", "processing", "completed", "failed"]
+PostProcessingStage = Literal["statistics", "geometry"]
 
 
 class UploadImportCreate(BaseModel):
@@ -48,6 +49,7 @@ class UploadImportStatusResponse(BaseModel):
     values_inserted: int
     status: ImportStatus
     post_processing_status: PostProcessingStatus
+    post_processing_stage: PostProcessingStage | None = None
     post_processing_attempts: int
     post_processing_error: str | None = None
     last_error: str | None = None

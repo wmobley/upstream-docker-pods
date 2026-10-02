@@ -55,6 +55,11 @@ class UploadImport(Base):
     post_processing_status: Mapped[str] = mapped_column(
         String(24), nullable=False, default="pending"
     )
+    # Statistics and station geometry are separate retryable stages. A failed
+    # geometry refresh must not force a repeat of all sensor statistics.
+    post_processing_stage: Mapped[Optional[str]] = mapped_column(
+        String(24), nullable=True, default="statistics"
+    )
     post_processing_attempts: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0
     )

@@ -25,6 +25,7 @@ from app.services.upload_import_service import (
     heartbeat,
     mark_import_failure,
     mark_post_processing_failure,
+    post_process_claimed_import,
     process_claimed_import,
 )
 from app.workers import process_upload_imports as worker
@@ -269,3 +270,151 @@ def test_post_processing_has_an_independent_lease_and_retry_state():
     assert second is not None
     _, second_token = second
     assert second_token != first_token
+
+
+def test_expired_post_processing_lease_at_attempt_limit_is_not_reclaimed():
+    db = make_worker_db()
+    now = datetime.now(timezone.utc)
+    db.add(
+        UploadImport(
+            id="import-post-terminal",
+            campaign_id=1,
+            station_id=2,
+            owner_username="alice",
+            total_chunks=1,
+            total_bytes=10,
+            status="data_loaded",
+            storage_key="import-post-terminal",
+            sensor_mapping={"temp": 7},
+            post_processing_status="processing",
+            post_processing_attempts=2,
+            post_processing_lease_expires_at=now - timedelta(seconds=1),
+            data_loaded_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    db.commit()
+
+    settings = Settings(BULK_IMPORT_MAX_ATTEMPTS=2)
+
+    assert claim_post_processing(db, settings, import_id="import-post-terminal") is None
+
+
+def test_geometry_retry_does_not_repeat_successful_statistics(monkeypatch):
+    db = make_worker_db()
+    now = datetime.now(timezone.utc)
+    db.add(
+        UploadImport(
+            id="import-geometry",
+            campaign_id=1,
+            station_id=2,
+            owner_username="alice",
+            total_chunks=1,
+            total_bytes=10,
+            status="data_loaded",
+            storage_key="import-geometry",
+            sensor_mapping={"temp": 7},
+            data_loaded_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    db.commit()
+    settings = Settings(BULK_IMPORT_WORKER_LEASE_SECONDS=60, BULK_IMPORT_MAX_ATTEMPTS=2)
+    events: list[str] = []
+
+    def fake_statistics(*args, **kwargs):
+        events.append("statistics")
+
+    class FailingStationService:
+        def __init__(self, repository):
+            pass
+
+        def refresh_geometry(self, station_id, *, statement_timeout_ms=None):
+            events.append("geometry")
+            if events.count("geometry") == 1:
+                raise RuntimeError("geometry unavailable")
+
+    monkeypatch.setattr(
+        "app.services.upload_import_service.update_sensor_statistics",
+        fake_statistics,
+    )
+    monkeypatch.setattr(
+        "app.services.upload_import_service.StationService",
+        FailingStationService,
+    )
+
+    first = claim_post_processing(db, settings, import_id="import-geometry")
+    assert first is not None
+    record, first_token = first
+    with pytest.raises(RuntimeError, match="geometry unavailable"):
+        post_process_claimed_import(db, settings, record, first_token)
+
+    staged = db.get(UploadImport, "import-geometry")
+    assert staged is not None
+    assert staged.post_processing_stage == "geometry"
+    mark_post_processing_failure(
+        db, settings, staged.id, first_token, RuntimeError("geometry unavailable")
+    )
+
+    second = claim_post_processing(db, settings, import_id="import-geometry")
+    assert second is not None
+    retry_record, second_token = second
+    completed = post_process_claimed_import(
+        db, settings, retry_record, second_token
+    )
+
+    assert events == ["statistics", "geometry", "geometry"]
+    assert completed.status == "completed"
+    assert completed.post_processing_stage is None
+
+
+def test_post_process_failure_uses_recovery_session(monkeypatch):
+    settings = Settings(
+        BULK_INGESTION_ENABLED=True,
+        ASYNC_BULK_INGESTION_ENABLED=True,
+    )
+
+    class FakeDB:
+        def __init__(self, name):
+            self.name = name
+            self.closed = False
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            self.closed = True
+
+    claim_db = FakeDB("claim")
+    failure_db = FakeDB("failure")
+    databases = iter([claim_db, failure_db])
+    record = SimpleNamespace(
+        id="import-failure",
+        storage_key="import-failure",
+    )
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+    monkeypatch.setattr(worker, "SessionLocal", lambda: next(databases))
+    monkeypatch.setattr(
+        worker,
+        "claim_post_processing",
+        lambda db, settings, import_id=None: (record, "post-token"),
+    )
+    monkeypatch.setattr(
+        worker,
+        "post_process_claimed_import",
+        lambda *args: (_ for _ in ()).throw(RuntimeError("geometry unavailable")),
+    )
+    failure_calls: list[tuple[object, str, str]] = []
+
+    def record_failure(db, settings, import_id, token, error):
+        failure_calls.append((db, import_id, token))
+        return False
+
+    monkeypatch.setattr(worker, "mark_post_processing_failure", record_failure)
+
+    assert worker.run_post_process_once("import-failure") == 1
+    assert failure_calls == [(failure_db, "import-failure", "post-token")]
+    assert claim_db.closed is True
+    assert failure_db.closed is True
