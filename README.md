@@ -128,6 +128,16 @@ The deployable worker mode polls for queued imports and handles SIGTERM-safe idl
 python -m app.workers.process_upload_imports --poll
 ```
 
+Chunk ingestion and expensive post-processing are separate worker modes. The chunk worker marks
+an import `data_loaded` after all measurement chunks are committed; it does not run statistics or
+station geometry refresh and it retains the import files. Run the independent post-processing
+worker after reviewing the database load:
+
+```bash
+python -m app.workers.process_upload_imports --post-process --import-id <import-id>
+python -m app.workers.process_upload_imports --post-process-poll
+```
+
 The API and worker must mount the same durable volume at the same path. The develop Pod
 provisioner uses `/var/lib/upstream-bulk-imports` and a dedicated
 `upstreamdevelopimportvolume`; it requires `TAPIS_BASE_URL`, `TAS_SECRET`, and `JWT_SECRET`
@@ -140,7 +150,21 @@ job is processing. Configure the `BULK_IMPORT_*` limits before enabling it. The 
 to `BULK_IMPORT_STAGING_BATCH_SIZE=100`, which bounds each JSONB expansion/insert operation;
 lower it further when database memory is constrained.
 
-Measurements are inserted for every chunk. Expensive post-processing — sensor statistics refresh, station geometry refresh, and CKAN synchronization — runs only once, after the server verifies the session is complete (successful receipts exist for every chunk index `0..total_chunks-1` and the session is not already finalized). A finalizing chunk whose session cannot be verified complete returns `finalized=false` with `ckan_sync.status="skipped_incomplete_upload"`. A retried finalizing chunk for an already-finalized session returns `finalized=true`, `post_processing.status="already_finalized"`, and `ckan_sync.status="already_finalized"`. Legacy requests that omit `upload_session_id` are treated as a complete single-request upload.
+Measurements are inserted for every chunk. The async import status is `data_loaded` after all
+chunks are committed and `completed` only after the independent sensor-statistics and station
+geometry refresh succeeds. Post-processing has its own lease, retry count, error, and completion
+state, so a statistics failure does not roll back or requeue measurement chunks. CKAN
+synchronization is not performed by the async worker.
+
+The legacy request path still runs its existing post-processing behavior: expensive
+post-processing — sensor statistics refresh, station geometry refresh, and CKAN synchronization —
+runs only once, after the server verifies the session is complete (successful receipts exist for
+every chunk index `0..total_chunks-1` and the session is not already finalized). A finalizing chunk
+whose session cannot be verified complete returns `finalized=false` with
+`ckan_sync.status="skipped_incomplete_upload"`. A retried finalizing chunk for an
+already-finalized session returns `finalized=true`, `post_processing.status="already_finalized"`,
+and `ckan_sync.status="already_finalized"`. Legacy requests that omit `upload_session_id` are
+treated as a complete single-request upload.
 
 The response includes per-chunk audit counts under `audit` (`measurement_rows_read`, `measurement_values_attempted`, `measurement_values_inserted`, `measurement_values_skipped_duplicate`, `sensor_alias_count`, `row_errors`), a `post_processing` block, and a `ckan_sync` block, while keeping the legacy keys (`Total sensors processed`, `Total measurements added to database`, `Data Processing time`, `errors`). `measurement_values_skipped_duplicate` is derived as attempted minus inserted.
 

@@ -25,8 +25,10 @@ import app.db.models.station  # noqa: F401,E402
 from app.db.session import SessionLocal
 from app.services.upload_import_service import (
     UploadImportLeaseLost,
+    claim_post_processing,
     claim_import,
     mark_import_failure,
+    mark_post_processing_failure,
     post_process_claimed_import,
     process_claimed_import,
 )
@@ -56,15 +58,13 @@ def run_once(import_id: str | None = None) -> int:
                 return 0
             record, worker_token = claimed
             try:
-                record, alias_to_sensorid = process_claimed_import(db, settings, record, worker_token)
-                post_process_claimed_import(
-                    db, settings, record, worker_token, alias_to_sensorid
+                record, _alias_to_sensorid = process_claimed_import(
+                    db, settings, record, worker_token
                 )
-                logger.info("Completed async import %s", record.id)
-                try:
-                    cleanup_import_storage(settings, record.storage_key, status="completed")
-                except Exception:
-                    logger.exception("Could not clean up completed import %s storage", record.id)
+                logger.info(
+                    "Loaded async import %s; post-processing is pending",
+                    record.id,
+                )
                 return 0
             except UploadImportLeaseLost:
                 db.rollback()
@@ -84,6 +84,53 @@ def run_once(import_id: str | None = None) -> int:
             db.close()
     except Exception:
         logger.exception("Unable to claim an async import")
+        return 1
+
+
+def run_post_process_once(import_id: str | None = None) -> int:
+    """Run statistics/geometry for one data-loaded import."""
+    settings = get_settings()
+    if not (settings.BULK_INGESTION_ENABLED and settings.ASYNC_BULK_INGESTION_ENABLED):
+        logger.error("Async bulk ingestion is not enabled")
+        return 2
+    try:
+        db = SessionLocal()
+        try:
+            claimed = claim_post_processing(db, settings, import_id=import_id)
+            if claimed is None:
+                logger.info("No data-loaded import awaiting post-processing")
+                return 0
+            record, post_processing_token = claimed
+            try:
+                post_process_claimed_import(
+                    db, settings, record, post_processing_token
+                )
+                logger.info("Completed async import post-processing %s", record.id)
+                try:
+                    cleanup_import_storage(settings, record.storage_key, status="completed")
+                except Exception:
+                    logger.exception(
+                        "Could not clean up completed import %s storage", record.id
+                    )
+                return 0
+            except UploadImportLeaseLost:
+                db.rollback()
+                logger.warning(
+                    "Lost post-processing lease while processing async import %s",
+                    record.id,
+                )
+                return 3
+            except Exception as exc:
+                db.rollback()
+                logger.exception("Async import post-processing %s failed", record.id)
+                mark_post_processing_failure(
+                    db, settings, record.id, post_processing_token, exc
+                )
+                return 1
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("Unable to claim async import post-processing")
         return 1
 
 
@@ -121,6 +168,35 @@ def run_loop(
     return 0
 
 
+def run_post_process_loop(
+    *,
+    poll_seconds: float | None = None,
+    stop_event: threading.Event | None = None,
+    run_once_fn: Callable[[], int] | None = None,
+) -> int:
+    """Continuously claim data-loaded imports for post-processing."""
+    settings = get_settings()
+    interval = _validate_poll_seconds(
+        settings.BULK_IMPORT_WORKER_POLL_SECONDS if poll_seconds is None else poll_seconds
+    )
+    shutdown = stop_event or threading.Event()
+    process_once = run_once_fn or (lambda: run_post_process_once())
+
+    if not (settings.BULK_INGESTION_ENABLED and settings.ASYNC_BULK_INGESTION_ENABLED):
+        logger.warning("Async bulk ingestion is disabled; post-processing worker will remain idle")
+
+    while not shutdown.is_set():
+        if settings.BULK_INGESTION_ENABLED and settings.ASYNC_BULK_INGESTION_ENABLED:
+            result = process_once()
+            if result == 2:
+                logger.warning("Async bulk ingestion became disabled; post-processing worker is idle")
+        if shutdown.wait(interval):
+            break
+
+    logger.info("Async post-processing worker shutting down")
+    return 0
+
+
 SignalHandler = signal.Handlers | Callable[[int, FrameType | None], object] | int | None
 
 
@@ -143,13 +219,28 @@ def _restore_shutdown_handlers(previous: dict[int, SignalHandler]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Process one Upstream async bulk import")
+    parser = argparse.ArgumentParser(description="Process Upstream async bulk imports")
     parser.add_argument("--import-id", default=None)
     parser.add_argument("--poll", action="store_true", help="continuously process queued imports")
+    parser.add_argument(
+        "--post-process",
+        action="store_true",
+        help="run statistics/geometry for one data-loaded import",
+    )
+    parser.add_argument(
+        "--post-process-poll",
+        action="store_true",
+        help="continuously process data-loaded imports",
+    )
     parser.add_argument("--poll-seconds", type=float, default=None)
     args = parser.parse_args()
-    if args.poll and args.import_id:
-        parser.error("--poll and --import-id cannot be used together")
+    modes = sum(bool(value) for value in (args.poll, args.post_process, args.post_process_poll))
+    if modes > 1:
+        parser.error("choose only one worker mode")
+    if (args.poll or args.post_process_poll) and args.import_id:
+        parser.error("polling modes cannot use --import-id")
+    if args.post_process and not args.import_id:
+        parser.error("--post-process requires --import-id")
     if args.poll:
         stop_event = threading.Event()
         previous = _install_shutdown_handlers(stop_event)
@@ -157,6 +248,20 @@ def main() -> None:
             raise SystemExit(run_loop(poll_seconds=args.poll_seconds, stop_event=stop_event))
         finally:
             _restore_shutdown_handlers(previous)
+    if args.post_process_poll:
+        stop_event = threading.Event()
+        previous = _install_shutdown_handlers(stop_event)
+        try:
+            raise SystemExit(
+                run_post_process_loop(
+                    poll_seconds=args.poll_seconds,
+                    stop_event=stop_event,
+                )
+            )
+        finally:
+            _restore_shutdown_handlers(previous)
+    if args.post_process:
+        raise SystemExit(run_post_process_once(args.import_id))
     raise SystemExit(run_once(args.import_id))
 
 

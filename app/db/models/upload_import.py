@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -41,6 +41,36 @@ class UploadImport(Base):
         DateTime(timezone=True), nullable=True
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    data_loaded_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Chunk ingestion and expensive statistics/geometry work have independent
+    # lifecycles. The mapping is retained so post-processing does not need the
+    # original sensor CSV after chunk storage is cleaned up.
+    sensor_mapping: Mapped[Optional[dict[str, int]]] = mapped_column(
+        JSON, nullable=True
+    )
+    post_processing_status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="pending"
+    )
+    post_processing_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    post_processing_token: Mapped[Optional[str]] = mapped_column(
+        String(36), nullable=True
+    )
+    post_processing_lease_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    post_processing_error: Mapped[Optional[str]] = mapped_column(
+        String(2000), nullable=True
+    )
+    post_processing_started_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    post_processing_completed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 

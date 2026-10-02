@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -403,10 +404,15 @@ def process_measurements_file(
 
 
 def update_sensor_statistics(
-    sensor_repository: SensorRepository, alias_to_sensorid_map: dict[str, int]
+    sensor_repository: SensorRepository,
+    alias_to_sensorid_map: dict[str, int],
+    *,
+    heartbeat_callback: Callable[[], None] | None = None,
 ) -> None:
     """Update statistics for all sensors."""
     for sensor_id in alias_to_sensorid_map.values():
+        if heartbeat_callback is not None:
+            heartbeat_callback()
         logger.info(
             "update_sensor_statistics_sensor_start extra=%s",
             {"sensor_id": sensor_id},

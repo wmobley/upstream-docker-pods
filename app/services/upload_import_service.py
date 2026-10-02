@@ -192,7 +192,7 @@ def process_claimed_import(
     if len(chunks) != record.total_chunks:
         raise ValueError("Import manifest is incomplete")
 
-    alias_to_sensorid: dict[str, int] = {}
+    alias_to_sensorid = dict(record.sensor_mapping or {})
     for chunk in chunks:
         heartbeat(db, settings, record.id, worker_token)
         if chunk.processed:
@@ -213,6 +213,7 @@ def process_claimed_import(
             event_id=event.id,
             db=db,
         )
+        record.sensor_mapping = alias_to_sensorid
         measurement_path = import_file_path(settings, record.storage_key, chunk.storage_key)
         with measurement_path.open("rb") as handle:
             result = process_measurements_file_bulk(
@@ -245,41 +246,141 @@ def process_claimed_import(
     heartbeat(db, settings, record.id, worker_token)
     if not alias_to_sensorid:
         raise ValueError("Import produced no sensor mapping")
+    record.status = "data_loaded"
+    record.last_error = None
+    record.data_loaded_at = utcnow()
+    record.lease_expires_at = None
+    record.worker_token = None
+    record.updated_at = utcnow()
+    db.commit()
     return record, alias_to_sensorid
+
+
+def claim_post_processing(
+    db: Session, settings: Settings, import_id: str | None = None
+) -> tuple[UploadImport, str] | None:
+    """Claim a data-loaded import for its independent statistics refresh."""
+    now = utcnow()
+    eligible = and_(
+        UploadImport.status == "data_loaded",
+        or_(
+            UploadImport.post_processing_status == "pending",
+            and_(
+                UploadImport.post_processing_status == "failed",
+                UploadImport.post_processing_attempts < settings.BULK_IMPORT_MAX_ATTEMPTS,
+            ),
+            and_(
+                UploadImport.post_processing_status == "processing",
+                UploadImport.post_processing_lease_expires_at.is_not(None),
+                UploadImport.post_processing_lease_expires_at <= now,
+            ),
+        ),
+    )
+    query = db.query(UploadImport).filter(eligible)
+    if import_id:
+        query = query.filter(UploadImport.id == import_id)
+    record = query.order_by(
+        UploadImport.data_loaded_at, UploadImport.created_at
+    ).with_for_update(skip_locked=True).first()
+    if record is None:
+        return None
+    token = str(uuid4())
+    record.post_processing_status = "processing"
+    record.post_processing_token = token
+    record.post_processing_lease_expires_at = now + timedelta(
+        seconds=settings.BULK_IMPORT_WORKER_LEASE_SECONDS
+    )
+    record.post_processing_attempts += 1
+    record.post_processing_started_at = now
+    record.post_processing_error = None
+    record.updated_at = now
+    db.commit()
+    return record, token
+
+
+def heartbeat_post_processing(
+    db: Session, settings: Settings, import_id: str, post_processing_token: str
+) -> None:
+    now = utcnow()
+    record = (
+        db.query(UploadImport)
+        .filter(
+            UploadImport.id == import_id,
+            UploadImport.status == "data_loaded",
+            UploadImport.post_processing_status == "processing",
+            UploadImport.post_processing_token == post_processing_token,
+        )
+        .first()
+    )
+    if record is None:
+        raise UploadImportLeaseLost(f"Post-processing lease lost for import {import_id}")
+    record.post_processing_lease_expires_at = now + timedelta(
+        seconds=settings.BULK_IMPORT_WORKER_LEASE_SECONDS
+    )
+    record.updated_at = now
+    db.commit()
 
 
 def post_process_claimed_import(
     db: Session,
     settings: Settings,
     record: UploadImport,
-    worker_token: str,
-    alias_to_sensorid: dict[str, int],
+    post_processing_token: str,
 ) -> UploadImport:
-    """Run post-import statistics/geometry work after chunk commits complete."""
-    if record.status != "processing" or record.worker_token != worker_token:
-        raise UploadImportLeaseLost(f"Import {record.id} is not owned by this worker")
+    """Run statistics/geometry work after chunk ingestion has completed."""
+    if (
+        record.status != "data_loaded"
+        or record.post_processing_status != "processing"
+        or record.post_processing_token != post_processing_token
+    ):
+        raise UploadImportLeaseLost(
+            f"Post-processing lease for import {record.id} is not owned by this worker"
+        )
 
+    alias_to_sensorid = dict(record.sensor_mapping or {})
     if not alias_to_sensorid:
         raise ValueError("Import produced no sensor mapping")
 
-    heartbeat(db, settings, record.id, worker_token)
-    update_sensor_statistics(SensorRepository(db), alias_to_sensorid)
+    heartbeat_post_processing(db, settings, record.id, post_processing_token)
+    update_sensor_statistics(
+        SensorRepository(db),
+        alias_to_sensorid,
+        heartbeat_callback=lambda: heartbeat_post_processing(
+            db, settings, record.id, post_processing_token
+        ),
+    )
     StationService(StationRepository(db)).refresh_geometry(record.station_id)
-    current_record = db.query(UploadImport).filter(UploadImport.id == record.id).first()
-    if (
-        current_record is None
-        or current_record.worker_token != worker_token
-        or current_record.status != "processing"
-    ):
-        raise UploadImportLeaseLost(f"Import {worker_token} lost ownership before completion")
-    current_record.status = "completed"
-    current_record.last_error = None
-    current_record.completed_at = utcnow()
-    current_record.lease_expires_at = None
-    current_record.worker_token = None
-    current_record.updated_at = utcnow()
+    completed_at = utcnow()
+    updated = (
+        db.query(UploadImport)
+        .filter(
+            UploadImport.id == record.id,
+            UploadImport.status == "data_loaded",
+            UploadImport.post_processing_status == "processing",
+            UploadImport.post_processing_token == post_processing_token,
+        )
+        .update(
+            {
+                UploadImport.post_processing_status: "completed",
+                UploadImport.post_processing_error: None,
+                UploadImport.post_processing_completed_at: completed_at,
+                UploadImport.post_processing_lease_expires_at: None,
+                UploadImport.post_processing_token: None,
+                UploadImport.status: "completed",
+                UploadImport.completed_at: completed_at,
+                UploadImport.updated_at: completed_at,
+            },
+            synchronize_session=False,
+        )
+    )
+    if updated != 1:
+        db.rollback()
+        raise UploadImportLeaseLost(
+            f"Post-processing lease for import {record.id} was lost before completion"
+        )
     db.commit()
-    return current_record
+    completed_record = db.query(UploadImport).filter(UploadImport.id == record.id).one()
+    return completed_record
 
 
 def mark_import_failure(
@@ -302,6 +403,38 @@ def mark_import_failure(
     record.last_error = f"{type(error).__name__}: import processing failed"
     record.worker_token = None
     record.lease_expires_at = None
+    record.updated_at = utcnow()
+    db.commit()
+    return terminal
+
+
+def mark_post_processing_failure(
+    db: Session,
+    settings: Settings,
+    import_id: str,
+    post_processing_token: str,
+    error: Exception,
+) -> bool:
+    record = (
+        db.query(UploadImport)
+        .filter(
+            UploadImport.id == import_id,
+            UploadImport.status == "data_loaded",
+            UploadImport.post_processing_status == "processing",
+            UploadImport.post_processing_token == post_processing_token,
+        )
+        .with_for_update()
+        .first()
+    )
+    if record is None:
+        return False
+    terminal = record.post_processing_attempts >= settings.BULK_IMPORT_MAX_ATTEMPTS
+    record.post_processing_status = "failed" if terminal else "pending"
+    record.post_processing_error = (
+        f"{type(error).__name__}: post-processing failed"
+    )
+    record.post_processing_token = None
+    record.post_processing_lease_expires_at = None
     record.updated_at = utcnow()
     db.commit()
     return terminal

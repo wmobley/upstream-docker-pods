@@ -21,8 +21,10 @@ from app.db.models.upload_import import UploadImport, UploadImportChunk
 from app.services.upload_import_service import (
     UploadImportLeaseLost,
     claim_import,
+    claim_post_processing,
     heartbeat,
     mark_import_failure,
+    mark_post_processing_failure,
     process_claimed_import,
 )
 from app.workers import process_upload_imports as worker
@@ -117,7 +119,7 @@ def test_poll_worker_processes_until_shutdown(monkeypatch):
     assert calls == [1]
 
 
-def test_run_once_separates_chunk_processing_from_post_processing(monkeypatch):
+def test_run_once_stops_after_chunk_processing(monkeypatch):
     settings = Settings(
         BULK_INGESTION_ENABLED=True,
         ASYNC_BULK_INGESTION_ENABLED=True,
@@ -145,15 +147,41 @@ def test_run_once_separates_chunk_processing_from_post_processing(monkeypatch):
         "process_claimed_import",
         process_chunks,
     )
+    assert worker.run_once() == 0
+    assert calls == ["chunks"]
+
+
+def test_post_process_worker_is_a_separate_execution_path(monkeypatch):
+    settings = Settings(
+        BULK_INGESTION_ENABLED=True,
+        ASYNC_BULK_INGESTION_ENABLED=True,
+    )
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+
+    class FakeDB:
+        def close(self):
+            pass
+
+        def rollback(self):
+            pass
+
+    record = SimpleNamespace(id="import-1", storage_key="import-1")
+    monkeypatch.setattr(worker, "SessionLocal", lambda: FakeDB())
+    monkeypatch.setattr(
+        worker,
+        "claim_post_processing",
+        lambda db, settings, import_id=None: (record, "post-token"),
+    )
+    calls: list[str] = []
     monkeypatch.setattr(
         worker,
         "post_process_claimed_import",
-        lambda db, settings, record, token, alias_to_sensorid: calls.append("post-processing"),
+        lambda db, settings, claimed_record, token: calls.append(token),
     )
     monkeypatch.setattr(worker, "cleanup_import_storage", lambda *args, **kwargs: None)
 
-    assert worker.run_once() == 0
-    assert calls == ["chunks", "post-processing"]
+    assert worker.run_post_process_once("import-1") == 0
+    assert calls == ["post-token"]
 
 
 def test_poll_interval_must_be_positive_and_bounded():
@@ -197,3 +225,47 @@ def test_reclaimed_import_rejects_stale_worker_before_processing():
 
     with pytest.raises(UploadImportLeaseLost):
         process_claimed_import(db, settings, stale_record, stale_token)
+
+
+def test_post_processing_has_an_independent_lease_and_retry_state():
+    db = make_worker_db()
+    now = datetime.now(timezone.utc)
+    db.add(
+        UploadImport(
+            id="import-post",
+            campaign_id=1,
+            station_id=2,
+            owner_username="alice",
+            total_chunks=1,
+            total_bytes=10,
+            status="data_loaded",
+            storage_key="import-post",
+            sensor_mapping={"temp": 7},
+            data_loaded_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    db.commit()
+    settings = Settings(BULK_IMPORT_WORKER_LEASE_SECONDS=60, BULK_IMPORT_MAX_ATTEMPTS=2)
+
+    first = claim_post_processing(db, settings, import_id="import-post")
+    assert first is not None
+    record, first_token = first
+    assert record.status == "data_loaded"
+    assert record.post_processing_status == "processing"
+    assert record.post_processing_attempts == 1
+
+    mark_post_processing_failure(
+        db, settings, record.id, first_token, RuntimeError("stats failed")
+    )
+    refreshed = db.get(UploadImport, record.id)
+    assert refreshed is not None
+    assert refreshed.status == "data_loaded"
+    assert refreshed.post_processing_status == "pending"
+    assert refreshed.post_processing_error == "RuntimeError: post-processing failed"
+
+    second = claim_post_processing(db, settings, import_id="import-post")
+    assert second is not None
+    _, second_token = second
+    assert second_token != first_token

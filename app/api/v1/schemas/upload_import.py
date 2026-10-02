@@ -10,10 +10,14 @@ ImportStatus = Literal[
     "sealed",
     "queued",
     "processing",
+    "data_loaded",
     "completed",
     "failed",
 ]
-FinalizeImportStatus = Literal["queued", "processing", "completed", "failed"]
+FinalizeImportStatus = Literal[
+    "queued", "processing", "data_loaded", "completed", "failed"
+]
+PostProcessingStatus = Literal["pending", "processing", "completed", "failed"]
 
 
 class UploadImportCreate(BaseModel):
@@ -43,10 +47,16 @@ class UploadImportStatusResponse(BaseModel):
     values_attempted: int
     values_inserted: int
     status: ImportStatus
+    post_processing_status: PostProcessingStatus
+    post_processing_attempts: int
+    post_processing_error: str | None = None
     last_error: str | None = None
     created_at: datetime
     updated_at: datetime
     sealed_at: datetime | None = None
+    data_loaded_at: datetime | None = None
+    post_processing_started_at: datetime | None = None
+    post_processing_completed_at: datetime | None = None
     completed_at: datetime | None = None
 
 

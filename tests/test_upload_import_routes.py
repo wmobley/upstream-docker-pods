@@ -94,3 +94,4 @@ def test_async_import_manifest_is_idempotent_and_seals(tmp_path):
     assert status.received_chunks == 1
     assert status.processed_chunks == 0
     assert status.status == "queued"
+    assert status.post_processing_status == "pending"

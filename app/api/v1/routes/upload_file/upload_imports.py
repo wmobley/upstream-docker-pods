@@ -17,6 +17,7 @@ from app.api.v1.schemas.upload_import import (
     UploadImportStatusResponse,
     FinalizeImportStatus,
     ImportStatus,
+    PostProcessingStatus,
 )
 from app.api.v1.schemas.user import User
 from app.core.config import get_settings
@@ -73,10 +74,16 @@ def _status_response(db: Session, record: UploadImport) -> UploadImportStatusRes
         values_attempted=record.values_attempted,
         values_inserted=record.values_inserted,
         status=cast(ImportStatus, record.status),
+        post_processing_status=cast(PostProcessingStatus, record.post_processing_status),
+        post_processing_attempts=record.post_processing_attempts,
+        post_processing_error=record.post_processing_error,
         last_error=record.last_error,
         created_at=record.created_at,
         updated_at=record.updated_at,
         sealed_at=record.sealed_at,
+        data_loaded_at=record.data_loaded_at,
+        post_processing_started_at=record.post_processing_started_at,
+        post_processing_completed_at=record.post_processing_completed_at,
         completed_at=record.completed_at,
     )
 
@@ -270,7 +277,7 @@ def finalize_async_import(
     )
     if record is None or record.owner_username != current_user.username:
         raise HTTPException(status_code=404, detail="Import not found")
-    if record.status in {"queued", "processing", "completed"}:
+    if record.status in {"queued", "processing", "data_loaded", "completed"}:
         received_chunks, _ = import_progress(db, record)
         return UploadImportFinalizeResponse(
             import_id=record.id,
