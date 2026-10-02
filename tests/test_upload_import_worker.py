@@ -120,6 +120,34 @@ def test_poll_worker_processes_until_shutdown(monkeypatch):
     assert calls == [1]
 
 
+def test_combined_poll_worker_processes_both_stages_until_shutdown(monkeypatch):
+    settings = Settings(
+        BULK_INGESTION_ENABLED=True,
+        ASYNC_BULK_INGESTION_ENABLED=True,
+        BULK_IMPORT_WORKER_POLL_SECONDS=0.01,
+    )
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+    stop_event = threading.Event()
+    calls: list[str] = []
+
+    def fake_run_once() -> int:
+        calls.append("ingestion")
+        return 0
+
+    def fake_run_post_process_once() -> int:
+        calls.append("post-processing")
+        stop_event.set()
+        return 0
+
+    assert worker.run_poll_all_loop(
+        stop_event=stop_event,
+        poll_seconds=0.01,
+        run_once_fn=fake_run_once,
+        run_post_process_once_fn=fake_run_post_process_once,
+    ) == 0
+    assert calls == ["ingestion", "post-processing"]
+
+
 def test_run_once_stops_after_chunk_processing(monkeypatch):
     settings = Settings(
         BULK_INGESTION_ENABLED=True,

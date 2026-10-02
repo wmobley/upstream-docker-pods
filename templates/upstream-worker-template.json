@@ -5,7 +5,7 @@
     "pod_id": "{{BASE}}worker",
     "image": "{{WORKER_IMAGE}}",
     "description": "Upstream async import worker",
-    "command": ["/bin/bash", "-c", "python -m app.workers.process_upload_imports --poll"],
+    "command": ["/bin/bash", "-c", "python -m app.workers.process_upload_imports --poll-all"],
     "environment_variables": {
       "DATABASE_URL": "postgresql+psycopg://{{PG_USER}}:{{PG_PASSWORD}}@{{BASE}}postgres.pods.portals.tapis.io:443/{{PG_USER}}",
       "ENVIRONMENT": "{{ENVIRONMENT}}",

@@ -183,7 +183,7 @@ jobs:
           fi
 
           API_STARTUP_CMD='["/bin/bash","-c","until alembic upgrade heads; do echo Waiting for DB...; sleep 10; done && uvicorn app.main:app --host 0.0.0.0"]'
-          WORKER_STARTUP_CMD='["/bin/bash","-c","python -m app.workers.process_upload_imports --poll"]'
+          WORKER_STARTUP_CMD='["/bin/bash","-c","python -m app.workers.process_upload_imports --poll-all"]'
 
           api_payload="$(jq --arg img "$IMAGE" --arg tapis "$TAPIS_BASE_URL" --arg volume "$IMPORT_VOLUME_ID" --arg path "$IMPORT_STORAGE_PATH" --argjson cmd "$API_STARTUP_CMD" '{
             image: $img,

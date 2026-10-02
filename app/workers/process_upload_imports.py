@@ -222,6 +222,45 @@ def run_post_process_loop(
     return 0
 
 
+def run_poll_all_loop(
+    *,
+    poll_seconds: float | None = None,
+    stop_event: threading.Event | None = None,
+    run_once_fn: Callable[[], int] | None = None,
+    run_post_process_once_fn: Callable[[], int] | None = None,
+) -> int:
+    """Poll both ingestion and post-processing queues in one worker process.
+
+    The develop deployment uses one worker Pod. Running both stages sequentially
+    preserves the independent leases while ensuring a data-loaded import is not
+    left waiting for a manually started second worker.
+    """
+    settings = get_settings()
+    interval = _validate_poll_seconds(
+        settings.BULK_IMPORT_WORKER_POLL_SECONDS if poll_seconds is None else poll_seconds
+    )
+    shutdown = stop_event or threading.Event()
+    process_once = run_once_fn or (lambda: run_once())
+    process_post_once = run_post_process_once_fn or (lambda: run_post_process_once())
+
+    if not (settings.BULK_INGESTION_ENABLED and settings.ASYNC_BULK_INGESTION_ENABLED):
+        logger.warning("Async bulk ingestion is disabled; combined worker will remain idle")
+
+    while not shutdown.is_set():
+        if settings.BULK_INGESTION_ENABLED and settings.ASYNC_BULK_INGESTION_ENABLED:
+            ingestion_result = process_once()
+            if ingestion_result == 2:
+                logger.warning("Async bulk ingestion became disabled; combined worker is idle")
+            post_processing_result = process_post_once()
+            if post_processing_result == 2:
+                logger.warning("Async bulk ingestion became disabled; combined worker is idle")
+        if shutdown.wait(interval):
+            break
+
+    logger.info("Async combined import worker shutting down")
+    return 0
+
+
 SignalHandler = signal.Handlers | Callable[[int, FrameType | None], object] | int | None
 
 
@@ -248,6 +287,11 @@ def main() -> None:
     parser.add_argument("--import-id", default=None)
     parser.add_argument("--poll", action="store_true", help="continuously process queued imports")
     parser.add_argument(
+        "--poll-all",
+        action="store_true",
+        help="continuously process queued imports and post-processing",
+    )
+    parser.add_argument(
         "--post-process",
         action="store_true",
         help="run statistics/geometry for one data-loaded import",
@@ -259,10 +303,13 @@ def main() -> None:
     )
     parser.add_argument("--poll-seconds", type=float, default=None)
     args = parser.parse_args()
-    modes = sum(bool(value) for value in (args.poll, args.post_process, args.post_process_poll))
+    modes = sum(
+        bool(value)
+        for value in (args.poll, args.poll_all, args.post_process, args.post_process_poll)
+    )
     if modes > 1:
         parser.error("choose only one worker mode")
-    if (args.poll or args.post_process_poll) and args.import_id:
+    if (args.poll or args.poll_all or args.post_process_poll) and args.import_id:
         parser.error("polling modes cannot use --import-id")
     if args.post_process and not args.import_id:
         parser.error("--post-process requires --import-id")
@@ -271,6 +318,15 @@ def main() -> None:
         previous = _install_shutdown_handlers(stop_event)
         try:
             raise SystemExit(run_loop(poll_seconds=args.poll_seconds, stop_event=stop_event))
+        finally:
+            _restore_shutdown_handlers(previous)
+    if args.poll_all:
+        stop_event = threading.Event()
+        previous = _install_shutdown_handlers(stop_event)
+        try:
+            raise SystemExit(
+                run_poll_all_loop(poll_seconds=args.poll_seconds, stop_event=stop_event)
+            )
         finally:
             _restore_shutdown_handlers(previous)
     if args.post_process_poll:

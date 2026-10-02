@@ -26,7 +26,7 @@ def test_api_and_worker_templates_share_import_volume_contract():
 def test_worker_template_is_private_and_polling():
     worker = load_template("upstream-worker-template.json")["template"]
 
-    assert "--poll" in worker["command"][-1]
+    assert "--poll-all" in worker["command"][-1]
     assert worker["networking"] == {}
     assert worker["image"] == "{{WORKER_IMAGE}}"
     assert not {"TAS_USER", "TAS_SECRET", "JWT_SECRET", "CKAN_ADMIN_API_KEY"}.intersection(
@@ -40,7 +40,7 @@ def test_develop_provisioner_requires_explicit_control_plane_and_worker():
     assert "TAPIS_BASE_URL must be set explicitly" in script
     assert 'IMPORT_VOLUME_ID = "upstreamdevelopimportvolume"' in script
     assert 'WORKER_ID     = "upstreamdevelopworker"' in script
-    assert "--poll" in script
+    assert "--poll-all" in script
 
 
 def test_workflow_uses_one_commit_tag_for_api_and_worker():
@@ -50,6 +50,7 @@ def test_workflow_uses_one_commit_tag_for_api_and_worker():
     assert 'IMAGE="ghcr.io/${{ env.IMAGE_NAME }}:develop-${GITHUB_SHA}"' in workflow
     assert 'request_json PUT "/v3/pods/${TAPIS_POD_ID}"' in workflow
     assert 'request_json PUT "/v3/pods/${TAPIS_WORKER_ID}"' in workflow
+    assert "--poll-all" in workflow
     assert '"BULK_INGESTION_ENABLED": "true"' in workflow
     assert '"ASYNC_BULK_INGESTION_ENABLED": "true"' in workflow
     assert '"BULK_IMPORT_STAGING_BATCH_SIZE": "100"' in workflow

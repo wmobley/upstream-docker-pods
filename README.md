@@ -128,10 +128,17 @@ The deployable worker mode polls for queued imports and handles SIGTERM-safe idl
 python -m app.workers.process_upload_imports --poll
 ```
 
-Chunk ingestion and expensive post-processing are separate worker modes. The chunk worker marks
-an import `data_loaded` after all measurement chunks are committed; it does not run statistics or
-station geometry refresh and it retains the import files. Run the independent post-processing
-worker after reviewing the database load:
+The combined deployable worker mode polls both queues sequentially, so it advances imports from
+chunk ingestion through post-processing in one Pod while retaining independent leases:
+
+```bash
+python -m app.workers.process_upload_imports --poll-all
+```
+
+The chunk-only worker marks an import `data_loaded` after all measurement chunks are committed;
+it does not run statistics or station geometry refresh and it retains the import files. Use it for
+controlled ingestion-only diagnostics. The independent post-processing worker remains available
+when database load needs to be reviewed between stages:
 
 ```bash
 python -m app.workers.process_upload_imports --post-process --import-id <import-id>

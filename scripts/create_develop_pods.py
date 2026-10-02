@@ -277,7 +277,7 @@ worker_payload = {
     "image": API_IMAGE,
     "description": "[upstream] Develop async import worker",
     "stack_id": STACK_ID,
-    "command": ["/bin/bash", "-c", "python -m app.workers.process_upload_imports --poll"],
+    "command": ["/bin/bash", "-c", "python -m app.workers.process_upload_imports --poll-all"],
     "environment_variables": {
         "DATABASE_URL": f"postgresql+psycopg://{PG_USER}:{PG_PASSWORD}@{POSTGRES_ID}.{PODS_DOMAIN}:443/{PG_USER}",
         "ENVIRONMENT": "develop",
