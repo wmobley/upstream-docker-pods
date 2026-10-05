@@ -177,7 +177,8 @@ def _stage_rows(
     counts = session.execute(
         text(
             f"""
-            SELECT COUNT(*) AS rows, COALESCE(SUM(jsonb_object_length(sensor_values)), 0) AS values
+            SELECT COUNT(*) AS rows,
+                   COALESCE(SUM((SELECT COUNT(*) FROM jsonb_object_keys(sensor_values))), 0) AS values
             FROM {raw}
             WHERE source_chunk_index = :chunk_index
             """
@@ -217,7 +218,7 @@ def stage_backfill_chunk(
     state.staged_values = int(
         session.execute(
             text(
-                f"SELECT COALESCE(SUM(jsonb_object_length(sensor_values)), 0) "
+                "SELECT COALESCE(SUM((SELECT COUNT(*) FROM jsonb_object_keys(sensor_values))), 0) "
                 f"FROM {_quote_identifier(state.raw_table_name)}"
             )
         ).scalar_one()
