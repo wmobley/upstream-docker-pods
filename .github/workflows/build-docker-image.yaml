@@ -155,6 +155,11 @@ jobs:
               return 4
             fi
 
+            if [[ "$status" == "409" ]]; then
+              rm -f "$response_file"
+              return 5
+            fi
+
             echo "Tapis ${method} ${path} failed with HTTP ${status}" >&2
             jq -c '{message: (.message // .error_message // .result // .)}' "$response_file" >&2 || true
             rm -f "$response_file"
@@ -172,7 +177,26 @@ jobs:
               exit "$import_status"
             fi
             echo "Creating missing import volume ${IMPORT_VOLUME_ID}"
-            request_json POST "/v3/pods/volumes" "$(jq -n --arg id "$IMPORT_VOLUME_ID" '{volume_id: $id, description: "Durable async import chunks for upstream-develop"}')" >/dev/null
+            if request_json POST "/v3/pods/volumes" "$(jq -n --arg id "$IMPORT_VOLUME_ID" '{volume_id: $id, description: "Durable async import chunks for upstream-develop"}')" >/dev/null; then
+              echo "Created import volume ${IMPORT_VOLUME_ID}"
+            else
+              create_status=$?
+              if [[ "$create_status" -ne 4 && "$create_status" -ne 5 ]]; then
+                exit "$create_status"
+              fi
+              echo "Import volume ${IMPORT_VOLUME_ID} appeared during create; verifying it"
+              for attempt in 1 2 3 4 5; do
+                if request_json GET "/v3/pods/volumes/${IMPORT_VOLUME_ID}" >/dev/null; then
+                  echo "Using import volume ${IMPORT_VOLUME_ID} after create race"
+                  break
+                fi
+                verify_status=$?
+                if [[ "$verify_status" -ne 4 || "$attempt" -eq 5 ]]; then
+                  exit "$verify_status"
+                fi
+                sleep 2
+              done
+            fi
           fi
 
           api="$(request_json GET "/v3/pods/${TAPIS_POD_ID}" | jq '.result')"
