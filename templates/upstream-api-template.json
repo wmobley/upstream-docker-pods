@@ -32,6 +32,7 @@
       "API_BASE_URL": "https://{{BASE}}api.pods.portals.tapis.io",
       "BULK_INGESTION_ENABLED": "false",
       "ASYNC_BULK_INGESTION_ENABLED": "false",
+      "BULK_BACKFILL_ENABLED": "false",
       "BULK_IMPORT_STORAGE_PATH": "/var/lib/upstream-bulk-imports",
       "BULK_IMPORT_WORKER_POLL_SECONDS": "15",
       "UPSTREAM_RELEASE": "{{IMAGE_TAG}}"

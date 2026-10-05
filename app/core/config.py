@@ -50,15 +50,19 @@ class Settings(BaseSettings):
     BULK_INGESTION_ENABLED: bool = Field(default=False)
     # Phase 2A async importer; requires one worker and a shared durable volume.
     ASYNC_BULK_INGESTION_ENABLED: bool = Field(default=False)
+    # Separate opt-in gate for the isolated shadow-table backfill path.
+    BULK_BACKFILL_ENABLED: bool = Field(default=False)
     BULK_IMPORT_STORAGE_PATH: str = Field(default="/tmp/upstream-bulk-imports")
     BULK_IMPORT_MAX_CHUNK_BYTES: int = Field(default=100 * 1024 * 1024, ge=1)
     BULK_IMPORT_MAX_TOTAL_BYTES: int = Field(default=2 * 1024 * 1024 * 1024, ge=1)
+    BULK_BACKFILL_MAX_TOTAL_BYTES: int = Field(default=2 * 1024 * 1024 * 1024, ge=1)
     BULK_IMPORT_MAX_CHUNKS: int = Field(default=10000, ge=1)
     BULK_IMPORT_STAGING_BATCH_SIZE: int = Field(default=100, ge=1)
     BULK_IMPORT_WORKER_LEASE_SECONDS: int = Field(default=1800, ge=30)
     BULK_IMPORT_MAX_ATTEMPTS: int = Field(default=3, ge=1, le=10)
     BULK_IMPORT_WORKER_POLL_SECONDS: float = Field(default=15.0, gt=0, le=3600)
     BULK_IMPORT_GEOMETRY_STATEMENT_TIMEOUT_MS: int = Field(default=300000, ge=0)
+    BULK_BACKFILL_MERGE_BATCH_SIZE: int = Field(default=10000, ge=1)
 
     model_config = SettingsConfigDict(
         env_file=".env",

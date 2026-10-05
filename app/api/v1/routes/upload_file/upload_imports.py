@@ -15,14 +15,17 @@ from app.api.v1.schemas.upload_import import (
     UploadImportCreate,
     UploadImportFinalizeResponse,
     UploadImportStatusResponse,
+    BackfillPhase,
     FinalizeImportStatus,
     ImportStatus,
+    IngestionMode,
     PostProcessingStage,
     PostProcessingStatus,
 )
 from app.api.v1.schemas.user import User
 from app.core.config import get_settings
 from app.db.models.upload_import import UploadImport, UploadImportChunk
+from app.db.models.upload_import_backfill import UploadImportBackfill
 from app.db.repositories.station_repository import StationRepository
 from app.db.session import get_db
 from app.services.upload_import_service import (
@@ -30,6 +33,7 @@ from app.services.upload_import_service import (
     get_import_for_owner,
     import_progress,
 )
+from app.services.upload_import_backfill_service import rollback_backfill
 from app.services.upload_import_storage import (
     import_directory,
     import_file_path,
@@ -62,6 +66,11 @@ def _get_owned_import(db: Session, import_id: str, current_user: User) -> Upload
 
 def _status_response(db: Session, record: UploadImport) -> UploadImportStatusResponse:
     received_chunks, processed_chunks = import_progress(db, record)
+    backfill = (
+        db.query(UploadImportBackfill)
+        .filter(UploadImportBackfill.import_id == record.id)
+        .one_or_none()
+    )
     return UploadImportStatusResponse(
         import_id=record.id,
         campaign_id=record.campaign_id,
@@ -75,6 +84,13 @@ def _status_response(db: Session, record: UploadImport) -> UploadImportStatusRes
         values_attempted=record.values_attempted,
         values_inserted=record.values_inserted,
         status=cast(ImportStatus, record.status),
+        ingestion_mode=cast(IngestionMode, record.ingestion_mode),
+        backfill_phase=cast(BackfillPhase | None, backfill.phase if backfill else None),
+        backfill_staged_rows=backfill.staged_rows if backfill else 0,
+        backfill_staged_values=backfill.staged_values if backfill else 0,
+        backfill_shadow_rows=backfill.shadow_rows if backfill else 0,
+        backfill_merged_values=backfill.merged_values if backfill else 0,
+        backfill_target_collisions=backfill.target_collisions if backfill else 0,
         post_processing_status=cast(PostProcessingStatus, record.post_processing_status),
         post_processing_stage=cast(PostProcessingStage | None, record.post_processing_stage),
         post_processing_attempts=record.post_processing_attempts,
@@ -104,7 +120,14 @@ def create_async_import(
     settings = get_settings()
     if request.total_chunks > settings.BULK_IMPORT_MAX_CHUNKS:
         raise HTTPException(status_code=413, detail="Import has too many chunks")
-    if request.total_bytes > settings.BULK_IMPORT_MAX_TOTAL_BYTES:
+    if request.ingestion_mode == "backfill" and not settings.BULK_BACKFILL_ENABLED:
+        raise HTTPException(status_code=404, detail="Bulk backfill is not enabled.")
+    max_total_bytes = (
+        settings.BULK_BACKFILL_MAX_TOTAL_BYTES
+        if request.ingestion_mode == "backfill"
+        else settings.BULK_IMPORT_MAX_TOTAL_BYTES
+    )
+    if request.total_bytes > max_total_bytes:
         raise HTTPException(status_code=413, detail="Import exceeds the configured byte limit")
 
     import_id = str(uuid4())
@@ -118,6 +141,7 @@ def create_async_import(
         total_chunks=request.total_chunks,
         total_bytes=request.total_bytes,
         storage_key=import_id,
+        ingestion_mode=request.ingestion_mode,
     )
     return _status_response(db, record)
 
@@ -311,3 +335,21 @@ def finalize_async_import(
         received_chunks=len(chunks),
         total_chunks=record.total_chunks,
     )
+
+
+@router.post("/{import_id}/backfill/rollback", response_model=UploadImportStatusResponse)
+def rollback_async_backfill(
+    import_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_edit_user),
+) -> UploadImportStatusResponse:
+    _ensure_enabled()
+    record = _get_owned_import(db, import_id, current_user)
+    if record.ingestion_mode != "backfill":
+        raise HTTPException(status_code=409, detail="Import is not a backfill")
+    try:
+        rollback_backfill(db, record)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _status_response(db, record)

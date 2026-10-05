@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.db.models.upload_import_backfill import UploadImportBackfill
 
 
 class UploadImport(Base):
@@ -20,6 +25,9 @@ class UploadImport(Base):
     total_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     received_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="created")
+    ingestion_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="standard", server_default="standard"
+    )
     storage_key: Mapped[str] = mapped_column(String(36), nullable=False, unique=True)
     sensors_storage_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     rows_read: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -84,6 +92,9 @@ class UploadImport(Base):
         cascade="all, delete-orphan",
         order_by="UploadImportChunk.chunk_index",
     )
+    backfill: Mapped["UploadImportBackfill | None"] = relationship(
+        back_populates="upload_import", uselist=False, cascade="all, delete-orphan"
+    )
 
 
 class UploadImportChunk(Base):
@@ -118,3 +129,7 @@ class UploadImportChunk(Base):
     )
 
     upload_import: Mapped[UploadImport] = relationship(back_populates="chunks")
+
+
+# Register the one-to-one model whenever the existing import model is imported.
+from app.db.models.upload_import_backfill import UploadImportBackfill  # noqa: E402,F401

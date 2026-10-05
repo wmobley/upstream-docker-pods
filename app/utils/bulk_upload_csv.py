@@ -150,10 +150,13 @@ def _flush_stage_batch(
     stage_insert: Any,
     stage_batch: list[dict[str, Any]],
     upload_event_id: int,
+    station_lock_callback: Any = None,
 ) -> tuple[int, int]:
     """Insert and process one bounded stage batch, then commit it."""
     if not stage_batch:
         return 0, 0
+    if station_lock_callback is not None:
+        station_lock_callback()
     session.execute(stage_insert, stage_batch)
     counts = session.execute(
         BULK_INSERT_SQL,
@@ -173,6 +176,7 @@ def process_measurements_file_bulk(
     session: Session,
     station_timezone: str | None = None,
     staging_batch_size: int = STAGING_BATCH_SIZE,
+    station_lock_callback: Any = None,
 ) -> BulkMeasurementsProcessingResult:
     """Process one bounded upload chunk with JSONB staging and SQL unpivoting.
 
@@ -265,7 +269,11 @@ def process_measurements_file_bulk(
         )
         if len(stage_batch) >= staging_batch_size:
             attempted, inserted = _flush_stage_batch(
-                session, stage_insert, stage_batch, upload_event_id
+                session,
+                stage_insert,
+                stage_batch,
+                upload_event_id,
+                station_lock_callback,
             )
             result.values_attempted += attempted
             result.values_inserted += inserted
@@ -273,7 +281,11 @@ def process_measurements_file_bulk(
 
     if stage_batch:
         attempted, inserted = _flush_stage_batch(
-            session, stage_insert, stage_batch, upload_event_id
+            session,
+            stage_insert,
+            stage_batch,
+            upload_event_id,
+            station_lock_callback,
         )
         result.values_attempted += attempted
         result.values_inserted += inserted

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import UploadFile
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -25,13 +26,19 @@ from app.core.config import Settings
 from app.db.base import Base
 from app.db.models.upload_file_event import UploadFileEvent
 from app.db.models.upload_import import UploadImport, UploadImportChunk
+from app.db.models.upload_import_backfill import UploadImportBackfill
 
 
 def make_db() -> Session:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(
         engine,
-        tables=[UploadFileEvent.__table__, UploadImport.__table__, UploadImportChunk.__table__],
+        tables=[
+            UploadFileEvent.__table__,
+            UploadImport.__table__,
+            UploadImportChunk.__table__,
+            UploadImportBackfill.__table__,
+        ],
     )
     return Session(engine)
 
@@ -95,3 +102,41 @@ def test_async_import_manifest_is_idempotent_and_seals(tmp_path):
     assert status.processed_chunks == 0
     assert status.status == "queued"
     assert status.post_processing_status == "pending"
+
+
+def test_backfill_mode_is_opt_in(tmp_path):
+    db = make_db()
+    user = SimpleNamespace(username="alice")
+    request = UploadImportCreate(total_chunks=1, total_bytes=10, ingestion_mode="backfill")
+    base_settings = Settings(
+        BULK_INGESTION_ENABLED=True,
+        ASYNC_BULK_INGESTION_ENABLED=True,
+        BULK_BACKFILL_ENABLED=False,
+        BULK_IMPORT_STORAGE_PATH=str(tmp_path),
+    )
+    with patch(
+        "app.api.v1.routes.upload_file.upload_imports.get_settings", return_value=base_settings
+    ), patch(
+        "app.api.v1.routes.upload_file.upload_imports.StationRepository.station_belongs_to_campaign",
+        return_value=True,
+    ):
+        try:
+            create_async_import(request, campaign_id=1, station_id=2, db=db, current_user=user)
+        except HTTPException as exc:
+            assert exc.status_code == 404
+        else:
+            raise AssertionError("backfill creation must be gated")
+
+    enabled = base_settings.model_copy(update={"BULK_BACKFILL_ENABLED": True})
+    with patch(
+        "app.api.v1.routes.upload_file.upload_imports.get_settings", return_value=enabled
+    ), patch(
+        "app.api.v1.routes.upload_file.upload_imports.StationRepository.station_belongs_to_campaign",
+        return_value=True,
+    ):
+        created = create_async_import(
+            request, campaign_id=1, station_id=2, db=db, current_user=user
+        )
+
+    assert created.ingestion_mode == "backfill"
+    assert created.backfill_phase is None

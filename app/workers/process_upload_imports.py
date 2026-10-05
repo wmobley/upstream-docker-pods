@@ -33,6 +33,7 @@ from app.services.upload_import_service import (
     process_claimed_import,
 )
 from app.services.upload_import_storage import cleanup_import_storage
+from app.services.upload_import_backfill_service import cleanup_backfill_tables, cleanup_backfill_shadow
 
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,11 @@ def run_once(import_id: str | None = None) -> int:
                 logger.exception("Async import %s failed", record.id)
                 terminal = mark_import_failure(db, settings, record.id, worker_token, exc)
                 if terminal:
+                    if getattr(record, "ingestion_mode", "standard") == "backfill":
+                        try:
+                            cleanup_backfill_tables(db, record)
+                        except Exception:
+                            logger.exception("Could not clean up failed backfill tables %s", record.id)
                     try:
                         cleanup_import_storage(settings, record.storage_key, status="failed")
                     except Exception:
@@ -107,6 +113,8 @@ def run_post_process_once(import_id: str | None = None) -> int:
                 post_process_claimed_import(
                     db, settings, record, post_processing_token
                 )
+                if getattr(record, "ingestion_mode", "standard") == "backfill":
+                    cleanup_backfill_shadow(db, record)
                 logger.info("Completed async import post-processing %s", import_id)
                 try:
                     cleanup_import_storage(settings, storage_key, status="completed")

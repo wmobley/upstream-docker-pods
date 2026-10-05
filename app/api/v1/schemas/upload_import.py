@@ -14,6 +14,10 @@ ImportStatus = Literal[
     "completed",
     "failed",
 ]
+IngestionMode = Literal["standard", "backfill"]
+BackfillPhase = Literal[
+    "staging", "materializing", "validating", "ready", "merging", "merged", "failed", "rolled_back"
+]
 FinalizeImportStatus = Literal[
     "queued", "processing", "data_loaded", "completed", "failed"
 ]
@@ -24,6 +28,7 @@ PostProcessingStage = Literal["statistics", "geometry"]
 class UploadImportCreate(BaseModel):
     total_chunks: int = Field(gt=0)
     total_bytes: int = Field(gt=0)
+    ingestion_mode: IngestionMode = "standard"
 
 
 class UploadImportChunkResponse(BaseModel):
@@ -48,6 +53,13 @@ class UploadImportStatusResponse(BaseModel):
     values_attempted: int
     values_inserted: int
     status: ImportStatus
+    ingestion_mode: IngestionMode
+    backfill_phase: BackfillPhase | None = None
+    backfill_staged_rows: int = 0
+    backfill_staged_values: int = 0
+    backfill_shadow_rows: int = 0
+    backfill_merged_values: int = 0
+    backfill_target_collisions: int = 0
     post_processing_status: PostProcessingStatus
     post_processing_stage: PostProcessingStage | None = None
     post_processing_attempts: int

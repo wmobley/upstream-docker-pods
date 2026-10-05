@@ -18,6 +18,7 @@ import app.db.models.station  # noqa: F401,E402
 from app.db.base import Base
 from app.db.models.upload_file_event import UploadFileEvent
 from app.db.models.upload_import import UploadImport, UploadImportChunk
+from app.db.models.upload_import_backfill import UploadImportBackfill
 from app.services.upload_import_service import (
     UploadImportLeaseLost,
     claim_import,
@@ -35,7 +36,12 @@ def make_worker_db() -> Session:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(
         engine,
-        tables=[UploadFileEvent.__table__, UploadImport.__table__, UploadImportChunk.__table__],
+        tables=[
+            UploadFileEvent.__table__,
+            UploadImport.__table__,
+            UploadImportChunk.__table__,
+            UploadImportBackfill.__table__,
+        ],
     )
     return Session(engine)
 

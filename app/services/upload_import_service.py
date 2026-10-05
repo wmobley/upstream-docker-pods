@@ -12,12 +12,20 @@ from app.core.config import Settings
 from app.db.models.sensor import Sensor
 from app.db.models.upload_file_event import UploadFileEvent
 from app.db.models.upload_import import UploadImport, UploadImportChunk
+from app.db.models.upload_import_backfill import UploadImportBackfill
 from app.db.repositories.sensor_repository import SensorRepository
 from app.db.repositories.station_repository import StationRepository
 from app.services.station_service import StationService
-from app.utils.bulk_upload_csv import process_measurements_file_bulk
+from app.utils.bulk_upload_csv import BulkMeasurementsProcessingResult, process_measurements_file_bulk
 from app.utils.upload_csv import process_sensors_file, update_sensor_statistics
 from app.services.upload_import_storage import import_file_path
+from app.services.upload_import_backfill_service import (
+    ensure_backfill_state,
+    materialize_and_validate,
+    merge_backfill,
+    stage_backfill_chunk,
+    _station_lock,
+)
 
 
 TERMINAL_IMPORT_STATUSES = {"completed", "failed"}
@@ -41,6 +49,7 @@ def create_import(
     total_chunks: int,
     total_bytes: int,
     storage_key: str,
+    ingestion_mode: str = "standard",
 ) -> UploadImport:
     now = utcnow()
     record = UploadImport(
@@ -51,6 +60,7 @@ def create_import(
         total_chunks=total_chunks,
         total_bytes=total_bytes,
         status="created",
+        ingestion_mode=ingestion_mode,
         storage_key=storage_key,
         created_at=now,
         updated_at=now,
@@ -100,6 +110,8 @@ def claim_import(
         ),
     )
     query = db.query(UploadImport).filter(eligible)
+    if not settings.BULK_BACKFILL_ENABLED:
+        query = query.filter(UploadImport.ingestion_mode != "backfill")
     if import_id:
         query = query.filter(UploadImport.id == import_id)
     record = query.order_by(UploadImport.created_at).with_for_update(skip_locked=True).first()
@@ -145,7 +157,7 @@ def _create_or_get_event(db: Session, record: UploadImport, chunk: UploadImportC
         station_id=record.station_id,
         chunk_index=chunk.chunk_index,
         total_chunks=record.total_chunks,
-        ingestion_mode="bulk_async",
+        ingestion_mode=("bulk_backfill" if record.ingestion_mode == "backfill" else "bulk_async"),
     )
     db.add(event)
     db.flush()
@@ -178,11 +190,16 @@ def process_claimed_import(
 ) -> tuple[UploadImport, dict[str, int]]:
     if record.status != "processing" or record.worker_token != worker_token:
         raise UploadImportLeaseLost(f"Import {record.id} is not owned by this worker")
+    if record.ingestion_mode == "backfill" and not settings.BULK_BACKFILL_ENABLED:
+        raise ValueError("Bulk backfill is not enabled")
 
     sensors_key = record.sensors_storage_key
     if not sensors_key:
         raise ValueError("Import has no sensor metadata")
     sensors_path = import_file_path(settings, record.storage_key, sensors_key)
+    backfill_state: UploadImportBackfill | None = None
+    if record.ingestion_mode == "backfill":
+        backfill_state = ensure_backfill_state(db, record)
     chunks = (
         db.query(UploadImportChunk)
         .filter(UploadImportChunk.import_id == record.id)
@@ -215,19 +232,39 @@ def process_claimed_import(
         )
         record.sensor_mapping = alias_to_sensorid
         measurement_path = import_file_path(settings, record.storage_key, chunk.storage_key)
-        with measurement_path.open("rb") as handle:
-            result = process_measurements_file_bulk(
-                UploadFile(file=handle, filename=f"chunk-{chunk.chunk_index}.csv"),
-                record.station_id,
-                alias_to_sensorid,
-                event.id,
+        station_timezone = (
+            getattr(StationRepository(db).get_station(record.station_id), "timezone", None)
+            or "UTC"
+        )
+        if backfill_state is not None:
+            rows_read, values_attempted = stage_backfill_chunk(
                 db,
-                station_timezone=(
-                    getattr(StationRepository(db).get_station(record.station_id), "timezone", None)
-                    or "UTC"
-                ),
-                staging_batch_size=settings.BULK_IMPORT_STAGING_BATCH_SIZE,
+                settings,
+                record,
+                backfill_state,
+                chunk,
+                event,
+                measurement_path,
+                alias_to_sensorid,
+                station_timezone,
             )
+            result = BulkMeasurementsProcessingResult(
+                rows_read=rows_read,
+                values_attempted=values_attempted,
+                values_inserted=0,
+            )
+        else:
+            with measurement_path.open("rb") as handle:
+                result = process_measurements_file_bulk(
+                    UploadFile(file=handle, filename=f"chunk-{chunk.chunk_index}.csv"),
+                    record.station_id,
+                    alias_to_sensorid,
+                    event.id,
+                    db,
+                    station_timezone=station_timezone,
+                    staging_batch_size=settings.BULK_IMPORT_STAGING_BATCH_SIZE,
+                    station_lock_callback=lambda: _station_lock(db, record.station_id),
+                )
         event.measurement_rows_read = result.rows_read
         event.measurement_values_attempted = result.values_attempted
         event.measurement_values_inserted = result.values_inserted
@@ -246,6 +283,12 @@ def process_claimed_import(
     heartbeat(db, settings, record.id, worker_token)
     if not alias_to_sensorid:
         raise ValueError("Import produced no sensor mapping")
+    if backfill_state is not None and backfill_state.phase != "merged":
+        if backfill_state.phase in {"staging", "materializing", "validating"}:
+            materialize_and_validate(db, record, backfill_state)
+        merge_backfill(db, settings, record, backfill_state)
+    if backfill_state is not None:
+        record.values_inserted = backfill_state.merged_values
     record.status = "data_loaded"
     record.last_error = None
     record.data_loaded_at = utcnow()

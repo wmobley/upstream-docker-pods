@@ -158,6 +158,27 @@ to `BULK_IMPORT_STAGING_BATCH_SIZE=100`, which bounds each JSONB expansion/inser
 `BULK_IMPORT_GEOMETRY_STATEMENT_TIMEOUT_MS` bounds the station-geometry refresh transaction.
 lower it further when database memory is constrained.
 
+#### Isolated historical backfill mode
+
+Historical wide CSVs may opt into the shadow-table path by setting
+`BULK_BACKFILL_ENABLED=true` on both the API and worker and creating the manifest with
+`{"ingestion_mode":"backfill"}`. The flag is false by default and must be enabled only after
+checking database-volume headroom. The worker stages raw JSONB rows in an import-scoped table,
+materializes and deduplicates a long-form shadow table, builds its unique index once, validates
+it, and then performs a bounded merge into `measurements`.
+
+`BULK_BACKFILL_MAX_TOTAL_BYTES` is an independent admission limit for backfill manifests, and
+`BULK_BACKFILL_MERGE_BATCH_SIZE` bounds each live-table merge transaction.
+
+Backfill target writes use the same station advisory lock as standard async imports. The live
+unique constraint remains authoritative, so status collision counts are pre-merge observations.
+If a backfill fails before post-processing starts, an owner may call
+`POST /api/v1/imports/{import_id}/backfill/rollback`; rollback deletes only measurements tied
+to that import's `upload_session_id`. Partition attach is not implemented because the current
+`measurements` table is not partitioned. Do not enable this path in production until a bounded
+develop benchmark records acceptable table/index growth, WAL, memory, disk, restart, and
+rollback behavior.
+
 Measurements are inserted for every chunk. The async import status is `data_loaded` after all
 chunks are committed and `completed` only after the independent sensor-statistics and station
 geometry refresh succeeds. Post-processing has its own lease, retry count, error, and completion

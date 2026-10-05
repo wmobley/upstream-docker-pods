@@ -194,6 +194,7 @@ jobs:
               "TAPIS_BASE_URL": $tapis,
               "BULK_INGESTION_ENABLED": "true",
               "ASYNC_BULK_INGESTION_ENABLED": "true",
+              "BULK_BACKFILL_ENABLED": "false",
               "BULK_IMPORT_STORAGE_PATH": $path,
               "BULK_IMPORT_STAGING_BATCH_SIZE": "100",
               "BULK_IMPORT_WORKER_POLL_SECONDS": "15"
@@ -224,6 +225,7 @@ jobs:
                 "ENV": "develop",
                 "BULK_INGESTION_ENABLED": "true",
                 "ASYNC_BULK_INGESTION_ENABLED": "true",
+                "BULK_BACKFILL_ENABLED": "false",
                 "BULK_IMPORT_STORAGE_PATH": $path,
                 "BULK_IMPORT_STAGING_BATCH_SIZE": "100",
                 "BULK_IMPORT_WORKER_POLL_SECONDS": "15",
