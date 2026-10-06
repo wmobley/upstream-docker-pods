@@ -186,15 +186,21 @@ rollback behavior.
 #### Develop-only partition migration prototype
 
 The identity-table and sensor-partitioned measurements prototype is opt-in and develop-only.
-The additive Alembic migration creates `measurement_identity` and a transactional trigger that
-registers generated IDs. After that migration is validated, pause measurement writers and run
-the guarded cutover helper inside the develop API container:
+The additive Alembic migration creates an empty `measurement_identity` table and its trigger
+function; it does not copy the existing measurements during API startup. Pause measurement
+writers, then run the guarded, resumable seed before preparing the replacement table:
 
 ```bash
+python scripts/seed_measurement_identity_develop.py --confirm-develop --batch-size 25000
 python scripts/partition_measurements_develop.py --confirm-develop prepare
 python scripts/partition_measurements_develop.py --confirm-develop status
 python scripts/partition_measurements_develop.py --confirm-develop cutover
 ```
+
+The seed commits batches and records its cursor in `measurement_identity_seed_state`, so an
+interrupted develop run can be resumed with the same command. It validates the source and
+identity counts before installing the live-table identity trigger. The helper requires
+`ENV=develop` and must not be run while measurement writers are active.
 
 The helper requires `ENV=develop`, keeps the unpartitioned table as
 `measurements_legacy_20261006`, and never drops it automatically. If the cutover must be

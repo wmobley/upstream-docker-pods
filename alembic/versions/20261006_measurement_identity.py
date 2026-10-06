@@ -31,16 +31,9 @@ def upgrade() -> None:
         sa.UniqueConstraint("measurementid", "sensorid"),
     )
 
-    # Existing measurements already have a database-enforced unique primary key.  The
-    # identity table is populated before the trigger is installed so the trigger only
-    # handles future writes and the later partitioned-table cutover.
-    op.execute(sa.text(f"""
-            INSERT INTO {IDENTITY_TABLE} (measurementid, sensorid)
-            SELECT measurementid, sensorid
-            FROM measurements
-            WHERE measurementid IS NOT NULL AND sensorid IS NOT NULL
-            ON CONFLICT (measurementid) DO NOTHING
-            """))
+    # The existing 64M-row table is intentionally not copied during Alembic startup.
+    # The guarded develop seed helper performs that work in resumable batches, validates
+    # the result, and installs the trigger only after the identity table is complete.
 
     op.execute(sa.text(f"""
             CREATE OR REPLACE FUNCTION {TRIGGER_FUNCTION}()
@@ -74,12 +67,6 @@ def upgrade() -> None:
                 RETURN NEW;
             END;
             $$
-            """))
-    op.execute(sa.text(f"""
-            CREATE TRIGGER {TRIGGER_NAME}
-            BEFORE INSERT ON measurements
-            FOR EACH ROW
-            EXECUTE FUNCTION {TRIGGER_FUNCTION}()
             """))
 
 

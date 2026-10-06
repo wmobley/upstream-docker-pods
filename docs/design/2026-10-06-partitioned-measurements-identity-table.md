@@ -67,9 +67,9 @@ Change `notes.measurement_id` to reference the identity table. The public field 
 integer measurement ID; no API caller needs to provide `sensorid` to resolve a note.
 
 Use a database-side canonical measurement-ID registration path. Existing IDs are copied into the
-identity table before the cutover. A `BEFORE INSERT` trigger on the live/replacement measurements
-table registers each `(measurementid, sensorid)` transactionally, preserving the current
-sequence's next value and rejecting a measurement ID reused for a different sensor. This keeps
+identity table by the guarded seed phase before the cutover. A `BEFORE INSERT` trigger on the
+live/replacement measurements table registers each `(measurementid, sensorid)` transactionally,
+preserving the current sequence's next value and rejecting a measurement ID reused for a different sensor. This keeps
 the ORM, legacy CSV, bulk SQL, and backfill writers on one allocation path without four separate
 application-level ID implementations.
 
@@ -77,8 +77,8 @@ The migration should be phased:
 
 1. Add the identity table and validate that existing `measurementid` values are unique and
    non-null.
-2. Seed identity rows from existing measurements and validate counts, sensor relationships,
-   and the sequence high-water mark.
+2. Seed identity rows from existing measurements with a guarded, resumable helper that commits
+   bounded batches, then validate counts, sensor relationships, and the sequence high-water mark.
 3. Build and validate a partitioned shadow measurements table, including all indexes and
    foreign keys.
 4. Add the identity-registration trigger to every live/replacement measurement table and update
@@ -268,6 +268,23 @@ it is not treated as an automatic transaction rollback.
   and sensor-local uniqueness can coexist under PostgreSQL's partitioning rules.
 - **Result:** 388,000 identities, 388,000 partitioned measurements, two note references, and
   both uniqueness indexes succeeded; all probe tables were removed afterward.
+
+### 2026-10-06 — Defer the historical identity seed out of Alembic startup
+
+- **Decision:** Keep the Alembic migration additive: create the empty identity table and trigger
+  function, then seed existing measurements with a guarded, resumable develop helper and install
+  the live trigger only after validation succeeds.
+- **Reason:** The first develop deployment attempted to seed all 64,431,777 measurements in one
+  migration transaction and reached the PostgreSQL cgroup memory ceiling while checkpoints and
+  WAL accumulated. The deployment was stopped before OOM and the migration rolled back cleanly.
+- **Alternatives rejected:** Repeating the automatic one-shot seed was rejected because API
+  startup would remain coupled to an unbounded data operation; a smaller batch inside Alembic
+  would still make startup non-resumable and difficult to stop safely.
+- **User feedback:** The user asked to deploy and check the develop implementation; develop-only
+  scope and the explicit maintenance-window workflow remain approved.
+- **Impact on implementation:** Add `scripts/seed_measurement_identity_develop.py`, update the
+  migration regression tests and README, and require the seed validation to pass before running
+  the partition prepare/cutover helper.
 
 ## User feedback / decisions
 

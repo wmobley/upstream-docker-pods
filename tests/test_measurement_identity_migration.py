@@ -19,12 +19,24 @@ def test_measurement_identity_migration_is_headed_from_bounded_backfill() -> Non
     assert 'IDENTITY_TABLE = "measurement_identity"' in source
 
 
-def test_measurement_identity_migration_seeds_before_installing_trigger() -> None:
+def test_measurement_identity_migration_defers_large_seed_and_trigger() -> None:
     source = MIGRATION.read_text()
 
-    seed_position = source.index("INSERT INTO {IDENTITY_TABLE}")
-    trigger_position = source.index("CREATE OR REPLACE FUNCTION {TRIGGER_FUNCTION}")
-
-    assert seed_position < trigger_position
-    assert "BEFORE INSERT ON measurements" in source
+    assert "The existing 64M-row table is intentionally not copied" in source
+    assert "SELECT measurementid, sensorid\n            FROM measurements" not in source
+    assert "CREATE TRIGGER {TRIGGER_NAME}" not in source
+    assert "CREATE OR REPLACE FUNCTION {TRIGGER_FUNCTION}" in source
     assert "measurement identity % is already registered to sensor" in source
+
+
+def test_develop_seed_helper_is_guarded_and_resumable() -> None:
+    source = (
+        MIGRATION.parents[2] / "scripts" / "seed_measurement_identity_develop.py"
+    ).read_text()
+
+    assert "ENV=develop and --confirm-develop" in source
+    assert "measurement_identity_seed_state" in source
+    assert "ON CONFLICT (measurementid) DO NOTHING" in source
+    assert "SET cursor = :cursor, phase = 'seeding'" in source
+    assert "measurements={source_count}, identity={identity_count}" in source
+    assert "CREATE TRIGGER {TRIGGER_NAME}" in source
