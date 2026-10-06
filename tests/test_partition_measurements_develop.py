@@ -18,7 +18,8 @@ def test_prepare_uses_hash_partition_routing_and_explicit_columns() -> None:
     module = _load_script()
 
     assert module.PARTITION_COUNT == 16
-    assert "hashint4(sensorid)" in module._partition_predicate()
+    assert "satisfies_hash_partition" in module._partition_predicate()
+    assert "::regclass" in module._partition_predicate()
     assert ":remainder" in module._partition_predicate()
     assert "measurementid" in module.COPY_COLUMNS
     assert "geometry" in module.COPY_COLUMNS

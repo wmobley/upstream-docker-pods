@@ -235,8 +235,8 @@ def _partition_table_name(remainder: int) -> str:
 
 def _partition_predicate() -> str:
     return (
-        f"(((hashint4(sensorid) % {PARTITION_COUNT}) + {PARTITION_COUNT}) "
-        f"% {PARTITION_COUNT}) = :remainder"
+        f"satisfies_hash_partition("
+        f"'public.{SHADOW_TABLE}'::regclass, {PARTITION_COUNT}, :remainder, sensorid)"
     )
 
 

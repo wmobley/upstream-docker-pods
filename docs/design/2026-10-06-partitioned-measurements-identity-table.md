@@ -303,6 +303,17 @@ it is not treated as an automatic transaction rollback.
   cursor, commit each partition step, add focused tests for cursor progression and partition
   routing, and keep cutover gated on complete validation.
 
+### 2026-10-06 — Delegate copy routing to PostgreSQL's partition predicate
+
+- **Decision:** Use PostgreSQL's `satisfies_hash_partition()` function against the shadow
+  table's `regclass` when selecting each source partition.
+- **Reason:** A develop probe showed that a raw `hashint4(sensorid) % 16` expression does not
+  necessarily match PostgreSQL's partition routing; sensor `8704` was selected for remainder 0
+  by the raw expression but belongs to remainder 8 according to the actual partition bound.
+- **Impact on implementation:** The copy step now uses the server's own partition-routing logic,
+  eliminating a silent misrouting risk and making the check directly testable against the shadow
+  table definition.
+
 ## User feedback / decisions
 
 - 2026-10-06: User approved trying the identity-table design after clarifying that measurement
