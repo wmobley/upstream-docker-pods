@@ -286,6 +286,23 @@ it is not treated as an automatic transaction rollback.
   migration regression tests and README, and require the seed validation to pass before running
   the partition prepare/cutover helper.
 
+### 2026-10-06 — Make partition preparation resumable after the full-copy failure
+
+- **Decision:** Replace the single long `INSERT ... SELECT` prepare operation with durable,
+  sensor-hash-partitioned copy steps that commit independently and resume from a partition cursor.
+- **Reason:** The first real develop prepare attempt against approximately 69 million rows lost
+  its remote execution connection before recording `prepared`; it left only an empty shadow shell,
+  which was removed without changing the live table. A single operation is too fragile for this
+  table size and memory limit.
+- **Alternatives rejected:** Re-running the unchanged helper was rejected because it repeats the
+  same unbounded operation and provides no safe resume point. Cutting over after a partial copy was
+  rejected because source/shadow validation had not completed.
+- **User feedback:** The user approved trying the partitioned approach again after the failed
+  prepare and recovery.
+- **Impact on implementation:** Extend the develop helper's migration state with a copy/index
+  cursor, commit each partition step, add focused tests for cursor progression and partition
+  routing, and keep cutover gated on complete validation.
+
 ## User feedback / decisions
 
 - 2026-10-06: User approved trying the identity-table design after clarifying that measurement

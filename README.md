@@ -200,7 +200,10 @@ python scripts/partition_measurements_develop.py --confirm-develop cutover
 The seed commits batches and records its cursor in `measurement_identity_seed_state`, so an
 interrupted develop run can be resumed with the same command. It validates the source and
 identity counts before installing the live-table identity trigger. The helper requires
-`ENV=develop` and must not be run while measurement writers are active.
+`ENV=develop` and must not be run while measurement writers are active. `prepare` copies each
+sensor-hash partition and then builds each local index independently, recording `copy_cursor`
+and `index_cursor` in `measurement_partition_migration`; rerunning `prepare` resumes from the
+last committed step. It does not cut over a partially copied or partially indexed shadow.
 
 The helper requires `ENV=develop`, keeps the unpartitioned table as
 `measurements_legacy_20261006`, and never drops it automatically. If the cutover must be
