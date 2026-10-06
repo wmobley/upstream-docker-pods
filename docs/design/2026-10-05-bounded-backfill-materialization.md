@@ -146,3 +146,7 @@ rows.
 - 2026-10-06: Implemented as specified. The only deviation is that the focused unit tests cover
   predicate parameterization and configuration bounds; real bucket/resume semantics remain a
   develop integration-test gate because the local suite has no PostgreSQL/PostGIS fixture.
+- 2026-10-06: The develop integration gate passed with a disposable 1,000-row real-data slice:
+  776,000 values staged/materialized/merged/inserted, post-processing completed, zero collisions,
+  zero OOM events, and exact cleanup verified. The full historical file remains out of scope until
+  additional capacity and throughput evidence is collected.
