@@ -285,7 +285,7 @@ def process_claimed_import(
         raise ValueError("Import produced no sensor mapping")
     if backfill_state is not None and backfill_state.phase != "merged":
         if backfill_state.phase in {"staging", "materializing", "validating"}:
-            materialize_and_validate(db, record, backfill_state)
+            materialize_and_validate(db, settings, record, backfill_state)
         merge_backfill(db, settings, record, backfill_state)
     if backfill_state is not None:
         record.values_inserted = backfill_state.merged_values

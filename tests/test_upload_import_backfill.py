@@ -1,6 +1,7 @@
 import pytest
 
 from app.services.upload_import_backfill_service import (
+    _materialize_bucket_predicate,
     _quote_identifier,
     _shadow_index_name,
     _table_names,
@@ -19,3 +20,16 @@ def test_backfill_table_names_are_uuid_scoped_and_index_name_is_postgres_safe():
 def test_backfill_identifier_helper_rejects_untrusted_sql_identifiers():
     with pytest.raises(ValueError):
         _quote_identifier('raw_table"; DROP TABLE measurements; --')
+
+
+def test_materialization_bucket_predicate_is_bounded_and_parameterized():
+    predicate = _materialize_bucket_predicate(64)
+
+    assert ":bucket_count" in predicate
+    assert ":bucket" in predicate
+    assert "sensor_value.key::INTEGER" in predicate
+
+
+def test_materialization_bucket_predicate_rejects_invalid_bucket_counts():
+    with pytest.raises(ValueError):
+        _materialize_bucket_predicate(0)

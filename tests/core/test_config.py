@@ -80,3 +80,11 @@ def test_primary_instance_rejects_placeholder_tas_credentials() -> None:
 def test_primary_instance_accepts_real_tas_credentials() -> None:
     settings = Settings(IS_PRIMARY_INSTANCE=True, TAS_USER="real_user", TAS_SECRET="real_secret")
     assert settings.IS_PRIMARY_INSTANCE is True
+
+
+def test_backfill_materialization_bucket_setting_is_bounded() -> None:
+    assert Settings().BULK_BACKFILL_MATERIALIZE_BUCKETS == 64
+    with pytest.raises(ValidationError):
+        Settings(BULK_BACKFILL_MATERIALIZE_BUCKETS=0)
+    with pytest.raises(ValidationError):
+        Settings(BULK_BACKFILL_MATERIALIZE_BUCKETS=4097)

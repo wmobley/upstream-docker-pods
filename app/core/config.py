@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     BULK_IMPORT_WORKER_POLL_SECONDS: float = Field(default=15.0, gt=0, le=3600)
     BULK_IMPORT_GEOMETRY_STATEMENT_TIMEOUT_MS: int = Field(default=300000, ge=0)
     BULK_BACKFILL_MERGE_BATCH_SIZE: int = Field(default=10000, ge=1)
+    BULK_BACKFILL_MATERIALIZE_BUCKETS: int = Field(default=64, ge=1, le=4096)
 
     model_config = SettingsConfigDict(
         env_file=".env",

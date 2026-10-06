@@ -168,7 +168,11 @@ materializes and deduplicates a long-form shadow table, builds its unique index 
 it, and then performs a bounded merge into `measurements`.
 
 `BULK_BACKFILL_MAX_TOTAL_BYTES` is an independent admission limit for backfill manifests, and
-`BULK_BACKFILL_MERGE_BATCH_SIZE` bounds each live-table merge transaction.
+`BULK_BACKFILL_MERGE_BATCH_SIZE` bounds each live-table merge transaction. Materialization
+processes disjoint sensor-id buckets, commits each bucket, and resumes from the durable
+`materialize_cursor` after a worker restart; `BULK_BACKFILL_MATERIALIZE_BUCKETS` controls the
+number of buckets and defaults to 64. The unique shadow index is still built once after all
+buckets finish.
 
 Backfill target writes use the same station advisory lock as standard async imports. The live
 unique constraint remains authoritative, so status collision counts are pre-merge observations.

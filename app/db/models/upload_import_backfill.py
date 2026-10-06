@@ -27,6 +27,7 @@ class UploadImportBackfill(Base):
     staged_values: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     shadow_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     shadow_values: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    materialize_cursor: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     merged_values: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     merge_cursor: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     target_collisions: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)

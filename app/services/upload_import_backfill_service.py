@@ -37,6 +37,15 @@ def _shadow_index_name(table_name: str) -> str:
     return f"ubf_{table_name[-32:]}_sensor_time_uq"
 
 
+def _materialize_bucket_predicate(bucket_count: int) -> str:
+    if bucket_count <= 0:
+        raise ValueError("bucket_count must be positive")
+    return (
+        "mod(mod(sensor_value.key::INTEGER, :bucket_count) + :bucket_count, "
+        ":bucket_count) = :bucket"
+    )
+
+
 def _station_lock(session: Session, station_id: int) -> None:
     session.execute(
         text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
@@ -229,45 +238,78 @@ def stage_backfill_chunk(
 
 def materialize_and_validate(
     session: Session,
+    settings: Settings,
     record: UploadImport,
     state: UploadImportBackfill,
 ) -> None:
+    state = (
+        session.query(UploadImportBackfill)
+        .filter(UploadImportBackfill.import_id == record.id)
+        .with_for_update()
+        .one()
+    )
     raw = _quote_identifier(state.raw_table_name)
     shadow = _quote_identifier(state.shadow_table_name)
-    state.phase = "materializing"
-    state.updated_at = datetime.now().astimezone()
-    session.commit()
-    session.execute(text(f"TRUNCATE TABLE {shadow}"))
-    session.execute(
-        text(
-            f"""
-            WITH candidates AS (
-                SELECT raw.stationid, raw.collectiontime, raw.lat, raw.lon,
-                       raw.source_chunk_index, raw.source_row_ordinal,
-                       raw.upload_file_event_id,
-                       sensor_value.key::INTEGER AS sensorid,
-                       sensor_value.value::DOUBLE PRECISION AS measurementvalue
-                FROM {raw} AS raw
-                CROSS JOIN LATERAL jsonb_each_text(raw.sensor_values) AS sensor_value
-            ), first_source AS (
-                SELECT DISTINCT ON (sensorid, collectiontime)
-                    stationid, collectiontime, lat, lon, source_chunk_index,
-                    source_row_ordinal, upload_file_event_id, sensorid, measurementvalue
-                FROM candidates
-                ORDER BY sensorid, collectiontime, source_chunk_index, source_row_ordinal
+    bucket_count = settings.BULK_BACKFILL_MATERIALIZE_BUCKETS
+    bucket_predicate = _materialize_bucket_predicate(bucket_count)
+
+    if state.phase == "staging":
+        session.execute(text(f"TRUNCATE TABLE {shadow}"))
+        state.materialize_cursor = 0
+        state.phase = "materializing"
+        state.updated_at = datetime.now().astimezone()
+        session.commit()
+    elif state.phase not in {"materializing", "validating"}:
+        raise ValueError(f"Backfill is not ready to materialize: {state.phase}")
+
+    if state.phase == "materializing":
+        for bucket in range(state.materialize_cursor, bucket_count):
+            session.execute(
+                text(
+                    f"""
+                    WITH candidates AS (
+                        SELECT raw.stationid, raw.collectiontime, raw.lat, raw.lon,
+                               raw.source_chunk_index, raw.source_row_ordinal,
+                               raw.upload_file_event_id,
+                               sensor_value.key::INTEGER AS sensorid,
+                               sensor_value.value::DOUBLE PRECISION AS measurementvalue
+                        FROM {raw} AS raw
+                        CROSS JOIN LATERAL jsonb_each_text(raw.sensor_values) AS sensor_value
+                        WHERE {bucket_predicate}
+                    ), first_source AS (
+                        SELECT DISTINCT ON (sensorid, collectiontime)
+                            stationid, collectiontime, lat, lon, source_chunk_index,
+                            source_row_ordinal, upload_file_event_id, sensorid,
+                            measurementvalue
+                        FROM candidates
+                        ORDER BY sensorid, collectiontime, source_chunk_index, source_row_ordinal
+                    )
+                    INSERT INTO {shadow}
+                        (stationid, collectiontime, measurementvalue, geometry, sensorid,
+                         variablename, upload_file_event_id)
+                    SELECT first_source.stationid, first_source.collectiontime,
+                           first_source.measurementvalue,
+                           ST_SetSRID(ST_MakePoint(first_source.lon, first_source.lat), 4326),
+                           first_source.sensorid, sensors.alias, first_source.upload_file_event_id
+                    FROM first_source
+                    LEFT JOIN sensors ON sensors.sensorid = first_source.sensorid
+                    """
+                ),
+                {"bucket": bucket, "bucket_count": bucket_count},
             )
-            INSERT INTO {shadow}
-                (stationid, collectiontime, measurementvalue, geometry, sensorid,
-                 variablename, upload_file_event_id)
-            SELECT first_source.stationid, first_source.collectiontime,
-                   first_source.measurementvalue,
-                   ST_SetSRID(ST_MakePoint(first_source.lon, first_source.lat), 4326),
-                   first_source.sensorid, sensors.alias, first_source.upload_file_event_id
-            FROM first_source
-            LEFT JOIN sensors ON sensors.sensorid = first_source.sensorid
-            """
-        )
-    )
+            state.materialize_cursor = bucket + 1
+            state.updated_at = datetime.now().astimezone()
+            session.commit()
+            if record.worker_token:
+                from app.services.upload_import_service import heartbeat
+
+                heartbeat(session, settings, record.id, record.worker_token)
+            state = (
+                session.query(UploadImportBackfill)
+                .filter(UploadImportBackfill.import_id == record.id)
+                .one()
+            )
+
     index_name = _quote_identifier(_shadow_index_name(state.shadow_table_name))
     session.execute(
         text(
