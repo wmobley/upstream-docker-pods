@@ -183,6 +183,25 @@ to that import's `upload_session_id`. Partition attach is not implemented becaus
 develop benchmark records acceptable table/index growth, WAL, memory, disk, restart, and
 rollback behavior.
 
+#### Develop-only partition migration prototype
+
+The identity-table and sensor-partitioned measurements prototype is opt-in and develop-only.
+The additive Alembic migration creates `measurement_identity` and a transactional trigger that
+registers generated IDs. After that migration is validated, pause measurement writers and run
+the guarded cutover helper inside the develop API container:
+
+```bash
+python scripts/partition_measurements_develop.py --confirm-develop prepare
+python scripts/partition_measurements_develop.py --confirm-develop status
+python scripts/partition_measurements_develop.py --confirm-develop cutover
+```
+
+The helper requires `ENV=develop`, keeps the unpartitioned table as
+`measurements_legacy_20261006`, and never drops it automatically. If the cutover must be
+reversed before writes resume, run `rollback`; it retains the partitioned table as
+`measurements_partitioned_failed_20261006` for inspection. Do not run these commands in
+production or while measurement writers are active.
+
 Measurements are inserted for every chunk. The async import status is `data_loaded` after all
 chunks are committed and `completed` only after the independent sensor-statistics and station
 geometry refresh succeeds. Post-processing has its own lease, retry count, error, and completion
