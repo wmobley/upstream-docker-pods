@@ -314,6 +314,20 @@ it is not treated as an automatic transaction rollback.
   eliminating a silent misrouting risk and making the check directly testable against the shadow
   table definition.
 
+### 2026-10-08 — Hold cutover pending ID-lookup compatibility work
+
+- **Decision:** Keep the prepared shadow table out of service until application ID-only lookup
+  paths and the notes foreign key are updated and benchmarked.
+- **Evidence:** Develop benchmarks showed sensor/time lookup at approximately 3.2 ms on the
+  shadow versus 3.1 ms on the live table, but the identity-join measurement-ID lookup took
+  approximately 824 ms to plan and 53 ms to execute versus approximately 0.08 ms on the live
+  primary-key lookup. The current ORM still maps `Measurement.measurementid` as a direct primary
+  key and `Note.measurement_id` to `measurements.measurementid`.
+- **Impact:** The shadow remains prepared and validated, but no rename, foreign-key cutover, or
+  writer restart against the partitioned table is authorized by this benchmark. The next change
+  must provide an efficient ID lookup strategy and update the affected ORM/repository paths before
+  another cutover decision.
+
 ## User feedback / decisions
 
 - 2026-10-06: User approved trying the identity-table design after clarifying that measurement
