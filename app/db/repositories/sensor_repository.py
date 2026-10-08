@@ -14,6 +14,7 @@ from app.api.v1.schemas.sensor import (
 )
 from app.db.models.sensor import Sensor
 from app.db.models.measurement import Measurement
+from app.db.models.measurement_identity import MeasurementIdentity
 from app.db.models.sensor_statistics import SensorStatistics
 
 
@@ -141,6 +142,9 @@ class SensorRepository:
 
     def delete_sensor_measurements(self, sensor_id: int) -> None:
         self.db.query(Measurement).filter(Measurement.sensorid == sensor_id).delete()
+        self.db.query(MeasurementIdentity).filter(
+            MeasurementIdentity.sensorid == sensor_id
+        ).delete()
         self.db.commit()
 
     def get_sort_column(self, sort_by: SortField) -> Column[Any] | None:

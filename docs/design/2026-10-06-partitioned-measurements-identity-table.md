@@ -94,6 +94,7 @@ this first implementation.
 ## Files likely affected
 
 - `app/db/models/measurement.py`
+- `app/db/models/measurement_identity.py`
 - `app/db/models/note.py`
 - `app/db/repositories/measurement_repository.py`
 - `app/db/repositories/note_repository.py`
@@ -118,6 +119,8 @@ API changes:
 
 - No intended route or response-shape changes.
 - Measurement IDs remain the identifiers used by measurement and note endpoints.
+- Existing measurements retain their `sensorid`; update requests cannot move a measurement to a
+  different sensor because `sensorid` is the partition key and part of the ORM identity.
 
 The SQLAlchemy mapping must be reviewed carefully because the database uniqueness guarantee for
 the partitioned table is composite while existing application lookups are ID-only. The identity
@@ -328,6 +331,18 @@ it is not treated as an automatic transaction rollback.
   must provide an efficient ID lookup strategy and update the affected ORM/repository paths before
   another cutover decision.
 
+### 2026-10-08 — Add application compatibility for the prepared partition
+
+- **Decision:** Add a `MeasurementIdentity` ORM model, map `Measurement` with the composite
+  `(measurementid, sensorid)` identity, resolve ID-only measurement reads through the identity
+  table, and move note joins/FK metadata to the identity table.
+- **Reason:** The partitioned table can only enforce uniqueness with the partition key included;
+  an ID-only lookup must first resolve the sensor so PostgreSQL can prune to one child partition.
+- **Safety rule:** Treat `sensorid` as immutable for existing measurements. Allowing it to change
+  would move the row's partition without changing the canonical identity mapping.
+- **Validation:** The focused compatibility tests and full backend suite pass locally; the
+  develop deployment and post-deploy lookup benchmark remain outstanding before cutover.
+
 ## User feedback / decisions
 
 - 2026-10-06: User approved trying the identity-table design after clarifying that measurement
@@ -338,3 +353,5 @@ it is not treated as an automatic transaction rollback.
 - 2026-10-06: Develop invariant checks found 64,431,777 measurements, no null IDs/sensors, no
   duplicate IDs, and an existing integer sequence ahead of the current maximum; retain INTEGER
   for the first migration rather than widening the API type.
+- 2026-10-08: Application compatibility was implemented and validated locally; deploy and
+  benchmark it on develop before deciding whether the prepared shadow is ready for cutover.

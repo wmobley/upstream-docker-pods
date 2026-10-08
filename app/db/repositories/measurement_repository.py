@@ -12,6 +12,7 @@ from app.api.v1.schemas.measurement import (
     MeasurementUpdate,
 )
 from app.db.models.measurement import Measurement
+from app.db.models.measurement_identity import MeasurementIdentity
 from app.db.models.sensor import Sensor
 from app.db.models.station import Station
 from app.utils.timezone import localize_collectiontime
@@ -59,7 +60,14 @@ class MeasurementRepository:
         return db_measurement
 
     def get_measurement(self, measurement_id: int) -> Measurement | None:
-        return self.db.query(Measurement).get(measurement_id)
+        sensor_id = self.db.execute(
+            select(MeasurementIdentity.sensorid).where(
+                MeasurementIdentity.measurementid == measurement_id
+            )
+        ).scalar_one_or_none()
+        if sensor_id is None:
+            return None
+        return self.db.get(Measurement, (measurement_id, sensor_id))
 
     def list_measurements(
         self,
@@ -143,6 +151,9 @@ class MeasurementRepository:
         db_measurement = self.get_measurement(measurement_id)
         if db_measurement:
             self.db.delete(db_measurement)
+            self.db.query(MeasurementIdentity).filter(
+                MeasurementIdentity.measurementid == measurement_id
+            ).delete(synchronize_session=False)
             self.db.commit()
             return True
         return False
@@ -219,11 +230,7 @@ class MeasurementRepository:
         self, measurement_id: int, request: MeasurementUpdate, partial: bool = False
     ) -> Measurement | None:
 
-        db_measurement = (
-            self.db.query(Measurement)
-            .filter(Measurement.measurementid == measurement_id)
-            .first()
-        )
+        db_measurement = self.get_measurement(measurement_id)
 
         if not db_measurement:
             return None
@@ -231,8 +238,13 @@ class MeasurementRepository:
         if partial:
             # Get only the fields that were explicitly set in the request
             update_data = request.model_dump(exclude_unset=True)
+            if "sensorid" in update_data:
+                if update_data["sensorid"] != db_measurement.sensorid:
+                    raise ValueError(
+                        "Sensor ID cannot be changed for an existing measurement"
+                    )
+                update_data.pop("sensorid")
             field_mapping = {
-                "sensorid": "sensorid",  # This field is not updatable via this method
                 "collectiontime": "collectiontime",
                 "geometry": "geometry",
                 "measurementvalue": "measurementvalue",
@@ -273,8 +285,9 @@ class MeasurementRepository:
                 raise ValueError("measurementvalue must be provided for a full update")
             if variabletype is None:
                 raise ValueError("variabletype must be provided for a full update")
+            if sensorid != db_measurement.sensorid:
+                raise ValueError("Sensor ID cannot be changed for an existing measurement")
 
-            db_measurement.sensorid = sensorid
             db_measurement.collectiontime = localize_collectiontime(
                 collectiontime, self._station_timezone_for_sensor(sensorid)
             )

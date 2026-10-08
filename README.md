@@ -211,6 +211,12 @@ reversed before writes resume, run `rollback`; it retains the partitioned table 
 `measurements_partitioned_failed_20261006` for inspection. Do not run these commands in
 production or while measurement writers are active.
 
+The application compatibility layer must be deployed and benchmarked before `cutover`: ID-only
+measurement reads resolve `measurement_identity` first and then use `(measurementid, sensorid)`
+to target the partitioned table, and measurement-note queries use the same identity join. An
+existing measurement's `sensorid` cannot be changed because it is the partition key and is part
+of the ORM identity.
+
 Measurements are inserted for every chunk. The async import status is `data_loaded` after all
 chunks are committed and `completed` only after the independent sensor-statistics and station
 geometry refresh succeeds. Post-processing has its own lease, retry count, error, and completion
