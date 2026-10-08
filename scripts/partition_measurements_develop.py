@@ -206,6 +206,7 @@ def _create_shadow(db) -> None:  # type: ignore[no-untyped-def]
                     FOREIGN KEY (upload_file_events_id) REFERENCES upload_file_events(id) ON DELETE CASCADE,
                 CONSTRAINT measurements_partitioned_shadow_identity_fk
                     FOREIGN KEY (measurementid) REFERENCES measurement_identity(measurementid)
+                    DEFERRABLE INITIALLY DEFERRED
             ) PARTITION BY HASH (sensorid)
             """))
     for remainder in range(PARTITION_COUNT):
@@ -314,7 +315,7 @@ def _ensure_parent_indexes(db) -> None:  # type: ignore[no-untyped-def]
 
 
 def _ensure_shadow_trigger(db) -> None:  # type: ignore[no-untyped-def]
-    trigger_name = "measurements_partitioned_register_identity_before_insert"
+    trigger_name = "measurements_partitioned_register_identity_after_insert"
     exists = db.execute(
         text(
             "SELECT EXISTS ("
@@ -328,7 +329,7 @@ def _ensure_shadow_trigger(db) -> None:  # type: ignore[no-untyped-def]
         db.execute(
             text(
                 f"CREATE TRIGGER {_quote(trigger_name)} "
-                f"BEFORE INSERT ON {_quote(SHADOW_TABLE)} FOR EACH ROW "
+                f"AFTER INSERT ON {_quote(SHADOW_TABLE)} FOR EACH ROW "
                 "EXECUTE FUNCTION register_measurement_identity()"
             )
         )

@@ -28,7 +28,7 @@ from app.db.session import SessionLocal
 IDENTITY_TABLE = "measurement_identity"
 STATE_TABLE = "measurement_identity_seed_state"
 TRIGGER_FUNCTION = "register_measurement_identity"
-TRIGGER_NAME = "measurements_register_identity_before_insert"
+TRIGGER_NAME = "measurements_register_identity_after_insert"
 DEFAULT_BATCH_SIZE = 100_000
 
 
@@ -181,7 +181,7 @@ def _seed(db: Session, batch_size: int) -> None:
     if not trigger_exists:
         db.execute(text(f"""
                 CREATE TRIGGER {TRIGGER_NAME}
-                BEFORE INSERT ON measurements
+                AFTER INSERT ON measurements
                 FOR EACH ROW
                 EXECUTE FUNCTION {TRIGGER_FUNCTION}()
                 """))

@@ -18,7 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 IDENTITY_TABLE = "measurement_identity"
 TRIGGER_FUNCTION = "register_measurement_identity"
-TRIGGER_NAME = "measurements_register_identity_before_insert"
+TRIGGER_NAME = "measurements_register_identity_after_insert"
 
 
 def upgrade() -> None:

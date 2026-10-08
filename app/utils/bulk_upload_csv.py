@@ -89,6 +89,20 @@ BULK_INSERT_SQL = text(
     """
 )
 
+STAGE_TABLE_SQL = text(
+    """
+    CREATE TEMPORARY TABLE IF NOT EXISTS upload_measurement_bulk_stage (
+        source_row_ordinal BIGINT NOT NULL,
+        stationid INTEGER NOT NULL,
+        collectiontime TIMESTAMPTZ NOT NULL,
+        lat DOUBLE PRECISION NOT NULL,
+        lon DOUBLE PRECISION NOT NULL,
+        geometry geometry(POINT, 4326) NOT NULL,
+        sensor_values JSONB NOT NULL
+    ) ON COMMIT DELETE ROWS
+    """
+)
+
 
 def _parse_stage_row(
     row: dict[str, str | None],
@@ -157,6 +171,10 @@ def _flush_stage_batch(
         return 0, 0
     if station_lock_callback is not None:
         station_lock_callback()
+    # Session commits may return the connection to the pool. Recreate the
+    # connection-local temporary table before every batch so a later batch
+    # cannot land on a connection where the table has not been created.
+    session.execute(STAGE_TABLE_SQL)
     session.execute(stage_insert, stage_batch)
     counts = session.execute(
         BULK_INSERT_SQL,
@@ -214,21 +232,7 @@ def process_measurements_file_bulk(
     if not usable_aliases:
         return BulkMeasurementsProcessingResult(errors=errors)
 
-    session.execute(
-        text(
-            """
-            CREATE TEMPORARY TABLE IF NOT EXISTS upload_measurement_bulk_stage (
-                source_row_ordinal BIGINT NOT NULL,
-                stationid INTEGER NOT NULL,
-                collectiontime TIMESTAMPTZ NOT NULL,
-                lat DOUBLE PRECISION NOT NULL,
-                lon DOUBLE PRECISION NOT NULL,
-                geometry geometry(POINT, 4326) NOT NULL,
-                sensor_values JSONB NOT NULL
-            ) ON COMMIT DELETE ROWS
-            """
-        )
-    )
+    session.execute(STAGE_TABLE_SQL)
     stage_insert = text(
         """
         INSERT INTO upload_measurement_bulk_stage

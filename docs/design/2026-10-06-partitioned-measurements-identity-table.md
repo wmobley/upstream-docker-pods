@@ -67,11 +67,12 @@ Change `notes.measurement_id` to reference the identity table. The public field 
 integer measurement ID; no API caller needs to provide `sensorid` to resolve a note.
 
 Use a database-side canonical measurement-ID registration path. Existing IDs are copied into the
-identity table by the guarded seed phase before the cutover. A `BEFORE INSERT` trigger on the
+identity table by the guarded seed phase before the cutover. An `AFTER INSERT` trigger on the
 live/replacement measurements table registers each `(measurementid, sensorid)` transactionally,
-preserving the current sequence's next value and rejecting a measurement ID reused for a different sensor. This keeps
-the ORM, legacy CSV, bulk SQL, and backfill writers on one allocation path without four separate
-application-level ID implementations.
+so duplicate-skipped measurement rows cannot leave orphan identities. The measurement-to-identity
+foreign key is deferred until transaction commit, allowing the trigger to satisfy it while
+preserving referential integrity. This keeps the ORM, legacy CSV, bulk SQL, and backfill writers
+on one allocation path without four separate application-level ID implementations.
 
 The migration should be phased:
 
@@ -343,6 +344,19 @@ it is not treated as an automatic transaction rollback.
 - **Validation:** The focused compatibility tests and full backend suite pass locally; the
   develop deployment and post-deploy lookup benchmark remain outstanding before cutover.
 
+### 2026-10-08 — Register identities after successful measurement inserts
+
+- **Decision:** Use an `AFTER INSERT` identity trigger with a deferred measurement-to-identity
+  foreign key, and recreate the bulk staging table on every pooled connection used for a batch.
+- **Reason:** The develop full-file benchmark exposed two correctness failures: a before-insert
+  trigger registered IDs for rows later skipped by `ON CONFLICT`, and the bulk importer lost its
+  connection-local temporary table after a commit. The fixes preserve identity/measurement parity
+  and make bounded bulk batches safe across SQLAlchemy pool checkouts.
+- **Alternatives rejected:** Keeping the before-insert trigger would require accepting orphan
+  identities or redesigning duplicate handling; dropping the foreign key would weaken integrity.
+- **Validation:** Focused bulk-upload tests pass locally; the develop full-file rerun is pending
+  deployment of this fix.
+
 ## User feedback / decisions
 
 - 2026-10-06: User approved trying the identity-table design after clarifying that measurement
@@ -355,3 +369,7 @@ it is not treated as an automatic transaction rollback.
   for the first migration rather than widening the API type.
 - 2026-10-08: Application compatibility was implemented and validated locally; deploy and
   benchmark it on develop before deciding whether the prepared shadow is ready for cutover.
+- 2026-10-08: The develop full-file test was explicitly approved. Legacy mode measured 1,552,000
+  values from 2,000 source rows in 12m29s, so the full legacy run was stopped as impractical;
+  the set-based bulk mode was selected for the full-file test after fixing the trigger and
+  temporary-table defects.
