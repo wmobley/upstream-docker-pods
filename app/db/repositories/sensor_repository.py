@@ -3,6 +3,7 @@ from typing import Optional, List, Tuple, Any
 import typing
 from sqlalchemy.orm import Session
 from sqlalchemy import Row, select, func, Column
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.sql import text
 from enum import Enum
 
@@ -141,10 +142,15 @@ class SensorRepository:
         return True
 
     def delete_sensor_measurements(self, sensor_id: int) -> None:
+        try:
+            self.db.query(MeasurementIdentity).filter(
+                MeasurementIdentity.sensorid == sensor_id
+            ).delete()
+        except ProgrammingError:
+            # The identity migration is optional during the production
+            # compatibility window; a missing table must not block legacy cleanup.
+            self.db.rollback()
         self.db.query(Measurement).filter(Measurement.sensorid == sensor_id).delete()
-        self.db.query(MeasurementIdentity).filter(
-            MeasurementIdentity.sensorid == sensor_id
-        ).delete()
         self.db.commit()
 
     def get_sort_column(self, sort_by: SortField) -> Column[Any] | None:

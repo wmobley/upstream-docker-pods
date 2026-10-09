@@ -2,11 +2,9 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from geoalchemy2 import WKTElement
-from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from app.db.models.measurement import Measurement
-from app.db.models.measurement_identity import MeasurementIdentity
 from app.db.models.note import Note, NoteScope
 
 
@@ -75,21 +73,14 @@ class NoteRepository:
         rows = (
             self.db.query(Note, Measurement.collectiontime)
             .join(
-                MeasurementIdentity,
-                Note.measurement_id == MeasurementIdentity.measurementid,
-            )
-            .join(
                 Measurement,
-                and_(
-                    Measurement.measurementid == MeasurementIdentity.measurementid,
-                    Measurement.sensorid == MeasurementIdentity.sensorid,
-                ),
+                Note.measurement_id == Measurement.measurementid,
             )
             .filter(
                 Note.campaign_id == campaign_id,
                 Note.station_id == station_id,
                 Note.scope == NoteScope.MEASUREMENT,
-                MeasurementIdentity.sensorid == sensor_id,
+                Measurement.sensorid == sensor_id,
             )
             .order_by(Measurement.collectiontime.desc(), Note.created_at.desc())
             .all()
