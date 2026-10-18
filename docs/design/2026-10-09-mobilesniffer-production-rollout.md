@@ -460,6 +460,28 @@ live unpartitioned measurements
   The candidate still requires CI image build and a separately approved production canary before
   any external deployment.
 
+### 2026-10-18 — Bound station geometry refreshes before further develop loading
+
+- **Decision:** Replace the station geometry function's `ST_Collect` aggregate with
+  `ST_SetSRID(ST_Envelope(ST_Extent(m.geometry)), 4326)` in a new additive migration. Preserve
+  the sensor-based station membership join, retain the existing application call chain, and do
+  not refresh every station during migration startup.
+- **Reason:** The develop canary inserted its measurement rows but finalization failed when
+  `ST_Collect` requested a 1 GiB allocation. The station needs only the envelope, so a bounded
+  extent aggregate removes the catastrophic memory behavior while retaining the existing result
+  semantics for 2-D measurement points.
+- **Alternatives rejected:** Editing the already-applied historical migration; using
+  `measurements.stationid` as the authority; or continuing to load additional files before the
+  geometry path is safe.
+- **User feedback:** The user explicitly authorized fixing the develop blocker.
+- **Impact on implementation:** Add a new Alembic function replacement and source-level
+  regression tests. Rebuild and deploy only to develop after tests pass; retry one canary file
+  before loading the remaining groups. Production rollout remains separately gated.
+- **Rollback note:** The migration downgrade intentionally leaves the safe function installed;
+  restoring the prior `ST_Collect` implementation is not an accepted rollback because it would
+  reintroduce the known allocation failure. The rollback boundary is the application image and
+  migration marker, followed by a later forward migration if a different function is needed.
+
 ## User feedback / decisions
 
 - 2026-10-09: User requested a rollout plan for the production `mobilesnifferpostgres` and
