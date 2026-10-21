@@ -8,6 +8,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.db.models.measurement_identity import MeasurementIdentity  # noqa: F401
 
 
 class NoteScope(str, PyEnum):
@@ -45,7 +46,8 @@ class Note(Base):
         ForeignKey("sensors.sensorid", ondelete="CASCADE"), nullable=True
     )
     measurement_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("measurements.measurementid", ondelete="CASCADE"), nullable=True
+        ForeignKey("measurement_identity.measurementid", ondelete="CASCADE"),
+        nullable=True,
     )
 
     campaign: Mapped["Campaign"] = relationship(back_populates="notes")

@@ -128,6 +128,23 @@ The deployable worker mode polls for queued imports and handles SIGTERM-safe idl
 python -m app.workers.process_upload_imports --poll
 ```
 
+The combined deployable worker mode polls both queues sequentially, so it advances imports from
+chunk ingestion through post-processing in one Pod while retaining independent leases:
+
+```bash
+python -m app.workers.process_upload_imports --poll-all
+```
+
+The chunk-only worker marks an import `data_loaded` after all measurement chunks are committed;
+it does not run statistics or station geometry refresh and it retains the import files. Use it for
+controlled ingestion-only diagnostics. The independent post-processing worker remains available
+when database load needs to be reviewed between stages:
+
+```bash
+python -m app.workers.process_upload_imports --post-process --import-id <import-id>
+python -m app.workers.process_upload_imports --post-process-poll
+```
+
 The API and worker must mount the same durable volume at the same path. The develop Pod
 provisioner uses `/var/lib/upstream-bulk-imports` and a dedicated
 `upstreamdevelopimportvolume`; it requires `TAPIS_BASE_URL`, `TAS_SECRET`, and `JWT_SECRET`
@@ -136,9 +153,85 @@ restart, lease, and cleanup checks pass.
 
 This experiment is intentionally single-worker/local-volume only. It does not persist Tapis
 tokens or run CKAN synchronization from the worker; partial measurements remain visible while a
-job is processing. Configure the `BULK_IMPORT_*` limits before enabling it.
+job is processing. Configure the `BULK_IMPORT_*` limits before enabling it. The worker defaults
+to `BULK_IMPORT_STAGING_BATCH_SIZE=100`, which bounds each JSONB expansion/insert operation;
+`BULK_IMPORT_GEOMETRY_STATEMENT_TIMEOUT_MS` bounds the station-geometry refresh transaction.
+lower it further when database memory is constrained.
 
-Measurements are inserted for every chunk. Expensive post-processing — sensor statistics refresh, station geometry refresh, and CKAN synchronization — runs only once, after the server verifies the session is complete (successful receipts exist for every chunk index `0..total_chunks-1` and the session is not already finalized). A finalizing chunk whose session cannot be verified complete returns `finalized=false` with `ckan_sync.status="skipped_incomplete_upload"`. A retried finalizing chunk for an already-finalized session returns `finalized=true`, `post_processing.status="already_finalized"`, and `ckan_sync.status="already_finalized"`. Legacy requests that omit `upload_session_id` are treated as a complete single-request upload.
+#### Isolated historical backfill mode
+
+Historical wide CSVs may opt into the shadow-table path by setting
+`BULK_BACKFILL_ENABLED=true` on both the API and worker and creating the manifest with
+`{"ingestion_mode":"backfill"}`. The flag is false by default and must be enabled only after
+checking database-volume headroom. The worker stages raw JSONB rows in an import-scoped table,
+materializes and deduplicates a long-form shadow table, builds its unique index once, validates
+it, and then performs a bounded merge into `measurements`.
+
+`BULK_BACKFILL_MAX_TOTAL_BYTES` is an independent admission limit for backfill manifests, and
+`BULK_BACKFILL_MERGE_BATCH_SIZE` bounds each live-table merge transaction. Materialization
+processes disjoint sensor-id buckets, commits each bucket, and resumes from the durable
+`materialize_cursor` after a worker restart; `BULK_BACKFILL_MATERIALIZE_BUCKETS` controls the
+number of buckets and defaults to 64. The unique shadow index is still built once after all
+buckets finish.
+
+Backfill target writes use the same station advisory lock as standard async imports. The live
+unique constraint remains authoritative, so status collision counts are pre-merge observations.
+If a backfill fails before post-processing starts, an owner may call
+`POST /api/v1/imports/{import_id}/backfill/rollback`; rollback deletes only measurements tied
+to that import's `upload_session_id`. Partition attach is not implemented because the current
+`measurements` table is not partitioned. Do not enable this path in production until a bounded
+develop benchmark records acceptable table/index growth, WAL, memory, disk, restart, and
+rollback behavior.
+
+#### Develop-only partition migration prototype
+
+The identity-table and sensor-partitioned measurements prototype is opt-in and develop-only.
+The additive Alembic migration creates an empty `measurement_identity` table and its trigger
+function; it does not copy the existing measurements during API startup. Pause measurement
+writers, then run the guarded, resumable seed before preparing the replacement table:
+
+```bash
+python scripts/seed_measurement_identity_develop.py --confirm-develop --batch-size 25000
+python scripts/partition_measurements_develop.py --confirm-develop prepare
+python scripts/partition_measurements_develop.py --confirm-develop status
+python scripts/partition_measurements_develop.py --confirm-develop cutover
+```
+
+The seed commits batches and records its cursor in `measurement_identity_seed_state`, so an
+interrupted develop run can be resumed with the same command. It validates the source and
+identity counts before installing the live-table identity trigger. The helper requires
+`ENV=develop` and must not be run while measurement writers are active. `prepare` copies each
+sensor-hash partition and then builds each local index independently, recording `copy_cursor`
+and `index_cursor` in `measurement_partition_migration`; rerunning `prepare` resumes from the
+last committed step. It does not cut over a partially copied or partially indexed shadow.
+
+The helper requires `ENV=develop`, keeps the unpartitioned table as
+`measurements_legacy_20261006`, and never drops it automatically. If the cutover must be
+reversed before writes resume, run `rollback`; it retains the partitioned table as
+`measurements_partitioned_failed_20261006` for inspection. Do not run these commands in
+production or while measurement writers are active.
+
+The application compatibility layer must be deployed and benchmarked before `cutover`: ID-only
+measurement reads resolve `measurement_identity` first and then use `(measurementid, sensorid)`
+to target the partitioned table, and measurement-note queries use the same identity join. An
+existing measurement's `sensorid` cannot be changed because it is the partition key and is part
+of the ORM identity.
+
+Measurements are inserted for every chunk. The async import status is `data_loaded` after all
+chunks are committed and `completed` only after the independent sensor-statistics and station
+geometry refresh succeeds. Post-processing has its own lease, retry count, error, and completion
+state, so a statistics failure does not roll back or requeue measurement chunks. CKAN
+synchronization is not performed by the async worker.
+
+The legacy request path still runs its existing post-processing behavior: expensive
+post-processing — sensor statistics refresh, station geometry refresh, and CKAN synchronization —
+runs only once, after the server verifies the session is complete (successful receipts exist for
+every chunk index `0..total_chunks-1` and the session is not already finalized). A finalizing chunk
+whose session cannot be verified complete returns `finalized=false` with
+`ckan_sync.status="skipped_incomplete_upload"`. A retried finalizing chunk for an
+already-finalized session returns `finalized=true`, `post_processing.status="already_finalized"`,
+and `ckan_sync.status="already_finalized"`. Legacy requests that omit `upload_session_id` are
+treated as a complete single-request upload.
 
 The response includes per-chunk audit counts under `audit` (`measurement_rows_read`, `measurement_values_attempted`, `measurement_values_inserted`, `measurement_values_skipped_duplicate`, `sensor_alias_count`, `row_errors`), a `post_processing` block, and a `ckan_sync` block, while keeping the legacy keys (`Total sensors processed`, `Total measurements added to database`, `Data Processing time`, `errors`). `measurement_values_skipped_duplicate` is derived as attempted minus inserted.
 

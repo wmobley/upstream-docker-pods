@@ -72,7 +72,10 @@ class NoteRepository:
     ) -> list[tuple[Note, datetime]]:
         rows = (
             self.db.query(Note, Measurement.collectiontime)
-            .join(Measurement, Note.measurement_id == Measurement.measurementid)
+            .join(
+                Measurement,
+                Note.measurement_id == Measurement.measurementid,
+            )
             .filter(
                 Note.campaign_id == campaign_id,
                 Note.station_id == station_id,

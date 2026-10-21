@@ -146,6 +146,10 @@ class StationService:
         )
         return result is not None
 
-    def refresh_geometry(self, station_id: int) -> None:
+    def refresh_geometry(
+        self, station_id: int, *, statement_timeout_ms: int | None = None
+    ) -> None:
         """Recalculate station geometry based on associated measurements."""
-        self.station_repository.refresh_geometry(station_id)
+        self.station_repository.refresh_geometry(
+            station_id, statement_timeout_ms=statement_timeout_ms
+        )

@@ -4,6 +4,7 @@ from typing import List
 
 from geoalchemy2 import WKTElement
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
 from app.api.v1.schemas.measurement import (
@@ -12,6 +13,7 @@ from app.api.v1.schemas.measurement import (
     MeasurementUpdate,
 )
 from app.db.models.measurement import Measurement
+from app.db.models.measurement_identity import MeasurementIdentity
 from app.db.models.sensor import Sensor
 from app.db.models.station import Station
 from app.utils.timezone import localize_collectiontime
@@ -58,8 +60,44 @@ class MeasurementRepository:
         self.db.refresh(db_measurement)
         return db_measurement
 
+    def _identity_sensor_id(self, measurement_id: int) -> tuple[int | None, bool]:
+        """Return the identity sensor and whether the registry is available.
+
+        The identity migration is additive and may be applied before its historical
+        seed completes.  Production compatibility therefore requires the legacy
+        measurements table to remain a valid lookup source during that interval.
+        """
+        try:
+            sensor_id = self.db.execute(
+                select(MeasurementIdentity.sensorid).where(
+                    MeasurementIdentity.measurementid == measurement_id
+                )
+            ).scalar_one_or_none()
+        except ProgrammingError:
+            # A missing identity table aborts the current transaction.  The
+            # rollback is safe here because this helper only performs a SELECT.
+            self.db.rollback()
+            return None, False
+        return sensor_id, True
+
+    def _legacy_sensor_id(self, measurement_id: int) -> int | None:
+        return self.db.execute(
+            select(Measurement.sensorid).where(
+                Measurement.measurementid == measurement_id
+            )
+        ).scalar_one_or_none()
+
+    def _measurement_sensor_id(self, measurement_id: int) -> int | None:
+        identity_sensor_id, _ = self._identity_sensor_id(measurement_id)
+        if identity_sensor_id is not None:
+            return identity_sensor_id
+        return self._legacy_sensor_id(measurement_id)
+
     def get_measurement(self, measurement_id: int) -> Measurement | None:
-        return self.db.query(Measurement).get(measurement_id)
+        sensor_id = self._measurement_sensor_id(measurement_id)
+        if sensor_id is None:
+            return None
+        return self.db.get(Measurement, (measurement_id, sensor_id))
 
     def list_measurements(
         self,
@@ -140,9 +178,23 @@ class MeasurementRepository:
         )
 
     def delete_measurement(self, measurement_id: int) -> bool:
-        db_measurement = self.get_measurement(measurement_id)
+        identity_sensor_id, identity_available = self._identity_sensor_id(measurement_id)
+        sensor_id = (
+            identity_sensor_id
+            if identity_sensor_id is not None
+            else self._legacy_sensor_id(measurement_id)
+        )
+        db_measurement = (
+            self.db.get(Measurement, (measurement_id, sensor_id))
+            if sensor_id is not None
+            else None
+        )
         if db_measurement:
             self.db.delete(db_measurement)
+            if identity_available:
+                self.db.query(MeasurementIdentity).filter(
+                    MeasurementIdentity.measurementid == measurement_id
+                ).delete(synchronize_session=False)
             self.db.commit()
             return True
         return False
@@ -219,11 +271,7 @@ class MeasurementRepository:
         self, measurement_id: int, request: MeasurementUpdate, partial: bool = False
     ) -> Measurement | None:
 
-        db_measurement = (
-            self.db.query(Measurement)
-            .filter(Measurement.measurementid == measurement_id)
-            .first()
-        )
+        db_measurement = self.get_measurement(measurement_id)
 
         if not db_measurement:
             return None
@@ -231,8 +279,13 @@ class MeasurementRepository:
         if partial:
             # Get only the fields that were explicitly set in the request
             update_data = request.model_dump(exclude_unset=True)
+            if "sensorid" in update_data:
+                if update_data["sensorid"] != db_measurement.sensorid:
+                    raise ValueError(
+                        "Sensor ID cannot be changed for an existing measurement"
+                    )
+                update_data.pop("sensorid")
             field_mapping = {
-                "sensorid": "sensorid",  # This field is not updatable via this method
                 "collectiontime": "collectiontime",
                 "geometry": "geometry",
                 "measurementvalue": "measurementvalue",
@@ -273,8 +326,9 @@ class MeasurementRepository:
                 raise ValueError("measurementvalue must be provided for a full update")
             if variabletype is None:
                 raise ValueError("variabletype must be provided for a full update")
+            if sensorid != db_measurement.sensorid:
+                raise ValueError("Sensor ID cannot be changed for an existing measurement")
 
-            db_measurement.sensorid = sensorid
             db_measurement.collectiontime = localize_collectiontime(
                 collectiontime, self._station_timezone_for_sensor(sensorid)
             )

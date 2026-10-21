@@ -13,14 +13,14 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import bindparam, text
+from sqlalchemy import Float, bindparam, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
 from app.utils.timezone import localize_collectiontime
 
 
-STAGING_BATCH_SIZE = 500
+STAGING_BATCH_SIZE = 100
 
 
 @dataclass
@@ -47,13 +47,7 @@ BULK_INSERT_SQL = text(
             stage.source_row_ordinal,
             sensor_value.key::INTEGER AS sensorid,
             sensor_value.value::DOUBLE PRECISION AS measurementvalue,
-            ST_SetSRID(
-                ST_MakePoint(
-                    stage.lon::DOUBLE PRECISION,
-                    stage.lat::DOUBLE PRECISION
-                ),
-                4326
-            ) AS geometry
+            stage.geometry
         FROM upload_measurement_bulk_stage AS stage
         CROSS JOIN LATERAL jsonb_each_text(stage.sensor_values) AS sensor_value
     ), first_source AS (
@@ -92,6 +86,20 @@ BULK_INSERT_SQL = text(
     SELECT
         (SELECT COUNT(*) FROM candidates) AS values_attempted,
         (SELECT COUNT(*) FROM inserted) AS values_inserted
+    """
+)
+
+STAGE_TABLE_SQL = text(
+    """
+    CREATE TEMPORARY TABLE IF NOT EXISTS upload_measurement_bulk_stage (
+        source_row_ordinal BIGINT NOT NULL,
+        stationid INTEGER NOT NULL,
+        collectiontime TIMESTAMPTZ NOT NULL,
+        lat DOUBLE PRECISION NOT NULL,
+        lon DOUBLE PRECISION NOT NULL,
+        geometry geometry(POINT, 4326) NOT NULL,
+        sensor_values JSONB NOT NULL
+    ) ON COMMIT DELETE ROWS
     """
 )
 
@@ -156,10 +164,17 @@ def _flush_stage_batch(
     stage_insert: Any,
     stage_batch: list[dict[str, Any]],
     upload_event_id: int,
+    station_lock_callback: Any = None,
 ) -> tuple[int, int]:
     """Insert and process one bounded stage batch, then commit it."""
     if not stage_batch:
         return 0, 0
+    if station_lock_callback is not None:
+        station_lock_callback()
+    # Session commits may return the connection to the pool. Recreate the
+    # connection-local temporary table before every batch so a later batch
+    # cannot land on a connection where the table has not been created.
+    session.execute(STAGE_TABLE_SQL)
     session.execute(stage_insert, stage_batch)
     counts = session.execute(
         BULK_INSERT_SQL,
@@ -178,6 +193,8 @@ def process_measurements_file_bulk(
     upload_event_id: int,
     session: Session,
     station_timezone: str | None = None,
+    staging_batch_size: int = STAGING_BATCH_SIZE,
+    station_lock_callback: Any = None,
 ) -> BulkMeasurementsProcessingResult:
     """Process one bounded upload chunk with JSONB staging and SQL unpivoting.
 
@@ -187,6 +204,8 @@ def process_measurements_file_bulk(
     """
     if not alias_to_sensorid_map:
         return BulkMeasurementsProcessingResult()
+    if staging_batch_size <= 0:
+        raise ValueError("staging_batch_size must be positive")
 
     timezone = station_timezone or "UTC"
     text_stream = io.TextIOWrapper(file.file, encoding="utf-8-sig", newline="")
@@ -213,28 +232,30 @@ def process_measurements_file_bulk(
     if not usable_aliases:
         return BulkMeasurementsProcessingResult(errors=errors)
 
-    session.execute(
-        text(
-            """
-            CREATE TEMPORARY TABLE IF NOT EXISTS upload_measurement_bulk_stage (
-                source_row_ordinal BIGINT NOT NULL,
-                stationid INTEGER NOT NULL,
-                collectiontime TIMESTAMPTZ NOT NULL,
-                lat TEXT NOT NULL,
-                lon TEXT NOT NULL,
-                sensor_values JSONB NOT NULL
-            ) ON COMMIT DELETE ROWS
-            """
-        )
-    )
+    session.execute(STAGE_TABLE_SQL)
     stage_insert = text(
         """
         INSERT INTO upload_measurement_bulk_stage
-            (source_row_ordinal, stationid, collectiontime, lat, lon, sensor_values)
+            (source_row_ordinal, stationid, collectiontime, lat, lon, geometry, sensor_values)
         VALUES
-            (:source_row_ordinal, :stationid, :collectiontime, :lat, :lon, :sensor_values)
+            (
+                :source_row_ordinal,
+                :stationid,
+                :collectiontime,
+                :lat,
+                :lon,
+                ST_SetSRID(
+                    ST_MakePoint(:lon, :lat),
+                    4326
+                ),
+                :sensor_values
+            )
         """
-    ).bindparams(bindparam("sensor_values", type_=JSONB))
+    ).bindparams(
+        bindparam("lat", type_=Float),
+        bindparam("lon", type_=Float),
+        bindparam("sensor_values", type_=JSONB),
+    )
 
     result = BulkMeasurementsProcessingResult(errors=errors)
     stage_batch: list[dict[str, Any]] = []
@@ -250,9 +271,13 @@ def process_measurements_file_bulk(
                 per_alias=result.per_alias,
             )
         )
-        if len(stage_batch) >= STAGING_BATCH_SIZE:
+        if len(stage_batch) >= staging_batch_size:
             attempted, inserted = _flush_stage_batch(
-                session, stage_insert, stage_batch, upload_event_id
+                session,
+                stage_insert,
+                stage_batch,
+                upload_event_id,
+                station_lock_callback,
             )
             result.values_attempted += attempted
             result.values_inserted += inserted
@@ -260,7 +285,11 @@ def process_measurements_file_bulk(
 
     if stage_batch:
         attempted, inserted = _flush_stage_batch(
-            session, stage_insert, stage_batch, upload_event_id
+            session,
+            stage_insert,
+            stage_batch,
+            upload_event_id,
+            station_lock_callback,
         )
         result.values_attempted += attempted
         result.values_inserted += inserted
