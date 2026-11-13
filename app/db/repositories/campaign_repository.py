@@ -1,6 +1,6 @@
 from datetime import datetime
 import json
-from typing import Union
+from typing import Any, Union
 
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, select, or_
@@ -10,6 +10,7 @@ from app.api.v1.schemas.campaign import CampaignsIn, CampaignUpdate
 from app.db.models.campaign import Campaign
 from app.db.models.station import Station
 from app.db.models.sensor import Sensor
+from app.db.models.sensor_statistics import SensorStatistics
 
 
 class CampaignRepository:
@@ -122,6 +123,34 @@ class CampaignRepository:
             self.db.commit()
             return True
         return False
+
+    def get_station_freshness(
+        self, campaign_ids: list[int]
+    ) -> list[tuple[int, int, dict[str, Any] | None, datetime | None]]:
+        """Newest measurement time per station, for the given campaigns.
+
+        Reads the precomputed ``sensor_statistics`` rows rather than scanning
+        measurements. Returns ``(campaign_id, station_id, metadata, last_time)``;
+        ``last_time`` is None for stations without statistics.
+        """
+        if not campaign_ids:
+            return []
+        # station_id is the primary key, so the other station columns are
+        # functionally dependent on it (``meta`` is JSON and cannot be grouped).
+        rows = (
+            self.db.query(
+                Station.campaignid,
+                Station.stationid,
+                Station.meta,
+                func.max(SensorStatistics.last_measurement_collectiontime),
+            )
+            .outerjoin(Sensor, Sensor.stationid == Station.stationid)
+            .outerjoin(SensorStatistics, SensorStatistics.sensorid == Sensor.sensorid)
+            .filter(Station.campaignid.in_(campaign_ids))
+            .group_by(Station.stationid)
+            .all()
+        )
+        return [(r[0], r[1], r[2], r[3]) for r in rows]
 
     def count_stations(self, campaign_id: int) -> int:
         return self.db.query(Station).filter(Station.campaignid == campaign_id).count()

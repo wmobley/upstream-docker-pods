@@ -694,6 +694,7 @@ class TestCampaignDetailIncludesStationTimezone:
         repo.count_sensors.return_value = 0
         repo.get_sensor_types.return_value = []
         repo.get_sensor_variables.return_value = []
+        repo.get_station_freshness.return_value = []
 
         result = CampaignService(repo).get_campaign_with_summary(1)
 
