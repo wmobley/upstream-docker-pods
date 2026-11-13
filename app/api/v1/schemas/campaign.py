@@ -30,6 +30,9 @@ class SummaryListCampaigns(BaseModel):
     variable_names: List[str] | None = None
     is_published: bool | None = None
     published_at: datetime | None = None
+    station_count: int | None = None
+    last_measurement_time: datetime | None = None
+    stale_station_count: int | None = None
 
 class ListCampaignsResponseItem(BaseModel):
     id: int
@@ -59,6 +62,8 @@ class SummaryGetCampaign(BaseModel):
     sensor_count: int
     sensor_types: List[str]
     sensor_variables: List[str]
+    last_measurement_time: datetime | None = None
+    stale_station_count: int | None = None
 
 class GetCampaignResponse(BaseModel):
     id: int

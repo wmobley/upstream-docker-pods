@@ -1,8 +1,29 @@
-from datetime import datetime
+from datetime import datetime, timezone
+from collections import defaultdict
 import json
+from typing import Any
 from app.api.v1.schemas.station import SensorSummaryForStations, StationsListResponseItem
 from app.db.repositories.campaign_repository import CampaignRepository
+from app.services.staleness import is_station_stale
 from app.api.v1.schemas.campaign import CampaignsIn, CampaignCreateResponse, GetCampaignResponse, ListCampaignsResponseItem, Location, SummaryGetCampaign, SummaryListCampaigns, CampaignUpdate
+
+
+def summarize_freshness(
+    stations: list[tuple[dict[str, Any] | None, datetime | None]],
+    campaign_start: datetime | None,
+    campaign_end: datetime | None,
+) -> tuple[datetime | None, int]:
+    """Newest measurement time and number of stale stations in a campaign.
+
+    ``stations`` holds ``(station_metadata, last_measurement_time)`` pairs.
+    """
+    times = [t for _, t in stations if t is not None]
+    # Mixed naive/aware values would make max() raise; normalise to UTC first.
+    aware = [t if t.tzinfo else t.replace(tzinfo=timezone.utc) for t in times]
+    stale = sum(
+        is_station_stale(t, meta, campaign_start, campaign_end) for meta, t in stations
+    )
+    return (max(aware) if aware else None), stale
 
 
 class CampaignService:
@@ -41,8 +62,18 @@ class CampaignService:
         rows, total_count = self.campaign_repository.get_campaigns_and_summary(
             bbox, start_date, end_date, sensor_variables, page, limit
         )
+        freshness_by_campaign: dict[int, list[tuple[dict[str, Any] | None, datetime | None]]] = defaultdict(list)
+        for campaign_id, _station_id, meta, last_time in self.campaign_repository.get_station_freshness(
+            [row[0].campaignid for row in rows]
+        ):
+            freshness_by_campaign[campaign_id].append((meta, last_time))
         items: list[ListCampaignsResponseItem] = []
         for row in rows:
+            last_measurement_time, stale_station_count = summarize_freshness(
+                freshness_by_campaign.get(row[0].campaignid, []),
+                row[0].startdate,
+                row[0].enddate,
+            )
             sensor_types : list[str | None] = row[3]
             variable_names : list[str | None] = row[4]
             item = ListCampaignsResponseItem(
@@ -64,7 +95,10 @@ class CampaignService:
                 metadata=row[0].meta if getattr(row[0], "meta", None) is not None else None,
                 summary=SummaryListCampaigns(
                     sensor_types=[x for x in sensor_types if x is not None],
-                    variable_names=[x for x in variable_names if x is not None]
+                    variable_names=[x for x in variable_names if x is not None],
+                    station_count=row[1],
+                    last_measurement_time=last_measurement_time,
+                    stale_station_count=stale_station_count,
                 )
             )
             items.append(item)
@@ -93,6 +127,16 @@ class CampaignService:
                 measurement_unit=sensor.units,
             ) for sensor in station.sensors]
         ) for station in campaign.stations]
+        last_measurement_time, stale_station_count = summarize_freshness(
+            [
+                (meta, last_time)
+                for _, _, meta, last_time in self.campaign_repository.get_station_freshness(
+                    [campaign_id]
+                )
+            ],
+            campaign.startdate,
+            campaign.enddate,
+        )
         return GetCampaignResponse(
             id=campaign.campaignid,
             name=campaign.campaignname,
@@ -115,6 +159,8 @@ class CampaignService:
                 sensor_count=self.campaign_repository.count_sensors(campaign_id),
                 sensor_types=self.campaign_repository.get_sensor_types(campaign_id),
                 sensor_variables=self.campaign_repository.get_sensor_variables(campaign_id),
+                last_measurement_time=last_measurement_time,
+                stale_station_count=stale_station_count,
             ),
             metadata=campaign.meta if getattr(campaign, "meta", None) is not None else None,
         )
